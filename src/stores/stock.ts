@@ -1,74 +1,79 @@
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
-import { fetchStocks, type Stock, fetchMinuteData } from '../api/stock'
+import { computed, ref, watch } from 'vue'
+import { fetchMinuteData, fetchStocks, type Stock } from '../api/stock'
 
-// 分时价格数据（用于sparkline）
+const WATCHLIST_STORAGE_KEY = 'watchList'
+
 export interface SparklineData {
   code: string
   prices: number[]
 }
 
 export const useStockStore = defineStore('stock', () => {
-  // 自选股列表
   const watchList = ref<string[]>([])
-  // 股票数据
   const stocks = ref<Map<string, Stock>>(new Map())
-  // sparkline数据
   const sparklines = ref<Map<string, number[]>>(new Map())
-  // 当前选中的股票代码
-  const currentStock = ref<string | null>(null)
-  // 是否正在加载
   const loading = ref(false)
-  // 最后更新时间
   const lastUpdate = ref<Date | null>(null)
-  // 刷新定时器
+
   let refreshTimer: number | null = null
 
-  // 初始化 - 从本地存储加载
+  watch(watchList, (nextWatchList) => {
+    localStorage.setItem(WATCHLIST_STORAGE_KEY, JSON.stringify(nextWatchList))
+  }, { deep: true })
+
   async function init() {
-    const saved = localStorage.getItem('watchList')
+    const saved = localStorage.getItem(WATCHLIST_STORAGE_KEY)
     if (saved) {
       watchList.value = JSON.parse(saved)
-      await refreshStocks()
+      await refreshAll()
     }
+
     startAutoRefresh()
   }
 
-  // 保存到本地存储
-  function saveWatchList() {
-    localStorage.setItem('watchList', JSON.stringify(watchList.value))
-  }
-
-  // 刷新股票数据
   async function refreshStocks() {
-    if (watchList.value.length === 0) return
-    if (loading.value) return
+    if (watchList.value.length === 0 || loading.value) {
+      return
+    }
 
     loading.value = true
     try {
       const data = await fetchStocks(watchList.value)
-      const newMap = new Map<string, Stock>()
-      data.forEach(stock => {
-        newMap.set(stock.code, stock)
+      const nextStocks = new Map<string, Stock>()
+      data.forEach((stock) => {
+        nextStocks.set(stock.code, stock)
       })
-      stocks.value = newMap
+      stocks.value = nextStocks
       lastUpdate.value = new Date()
-    } catch (e) {
-      console.error('Refresh stocks error:', e)
+    } catch (error) {
+      console.error('Refresh stocks error:', error)
     } finally {
       loading.value = false
     }
   }
 
-  // 开始自动刷新（30秒）
+  async function refreshAll() {
+    if (watchList.value.length === 0) {
+      stocks.value = new Map()
+      sparklines.value = new Map()
+      lastUpdate.value = new Date()
+      return
+    }
+
+    await Promise.all([
+      refreshStocks(),
+      fetchAllSparklines()
+    ])
+  }
+
   function startAutoRefresh() {
     stopAutoRefresh()
     refreshTimer = window.setInterval(() => {
-      refreshStocks()
+      void refreshAll()
     }, 30000)
   }
 
-  // 停止自动刷新
   function stopAutoRefresh() {
     if (refreshTimer) {
       clearInterval(refreshTimer)
@@ -76,87 +81,120 @@ export const useStockStore = defineStore('stock', () => {
     }
   }
 
-  // 添加股票
   async function addStock(code: string) {
-    if (!watchList.value.includes(code)) {
-      watchList.value.push(code)
-      saveWatchList()
-      await refreshStocks()
-      await fetchSparkline(code)
+    if (watchList.value.includes(code)) {
+      return
     }
+
+    console.log('addStock: fetching data for', code)
+    const data = await fetchStocks([code])
+    console.log('addStock: fetchStocks returned', data)
+    if (data.length === 0) {
+      console.warn('fetchStocks returned empty for', code)
+      return
+    }
+
+    watchList.value = [...watchList.value, code]
+    const nextMap = new Map(stocks.value)
+    nextMap.set(data[0].code, data[0])
+    stocks.value = nextMap
+    console.log('Added stock:', code, 'stock count:', stocks.value.size, 'watchList:', watchList.value)
+
+    void fetchSparkline(code)
   }
 
-  // 删除股票
   async function removeStock(code: string) {
     const index = watchList.value.indexOf(code)
-    if (index > -1) {
-      watchList.value.splice(index, 1)
-      stocks.value.delete(code)
-      saveWatchList()
+    if (index === -1) {
+      return
     }
+
+    watchList.value.splice(index, 1)
+    stocks.value.delete(code)
+
+    const nextSparklines = new Map(sparklines.value)
+    nextSparklines.delete(code)
+    sparklines.value = nextSparklines
   }
 
-  // 设置当前股票
-  function setCurrentStock(code: string | null) {
-    currentStock.value = code
+  function normalizeTargetIndex(targetIndex: number, listLength: number) {
+    return Math.max(0, Math.min(targetIndex, Math.max(listLength - 1, 0)))
   }
 
-  // 移动股票位置
   function moveStock(fromIndex: number, toIndex: number) {
-    if (fromIndex === toIndex) return
+    if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0) {
+      return
+    }
+
     const list = [...watchList.value]
-    const code = list.splice(fromIndex, 1)[0]
-    list.splice(toIndex, 0, code)
+    const [code] = list.splice(fromIndex, 1)
+    if (!code) {
+      return
+    }
+
+    list.splice(normalizeTargetIndex(toIndex, list.length + 1), 0, code)
     watchList.value = list
-    saveWatchList()
   }
 
-  // 获取sparkline数据
+  function moveStockByCode(code: string, targetIndex: number) {
+    const fromIndex = watchList.value.indexOf(code)
+    if (fromIndex === -1) {
+      return
+    }
+
+    moveStock(fromIndex, normalizeTargetIndex(targetIndex, watchList.value.length))
+  }
+
+  function moveStockToTop(code: string) {
+    moveStockByCode(code, 0)
+  }
+
+  function moveStockToBottom(code: string) {
+    moveStockByCode(code, watchList.value.length - 1)
+  }
+
   async function fetchSparkline(code: string) {
     const minuteData = await fetchMinuteData(code)
-    if (minuteData.length > 0) {
-      const prices = minuteData.map(m => m.price)
-      const newMap = new Map(sparklines.value)
-      newMap.set(code, prices)
-      sparklines.value = newMap
+    if (minuteData.length === 0) {
+      return
     }
+
+    const prices = minuteData.map((item) => item.price)
+    const nextSparklines = new Map(sparklines.value)
+    nextSparklines.set(code, prices)
+    sparklines.value = nextSparklines
   }
 
-  // 获取所有自选股的sparkline
   async function fetchAllSparklines() {
-    const promises = watchList.value.map(code => fetchSparkline(code))
-    await Promise.all(promises)
+    await Promise.all(watchList.value.map((code) => fetchSparkline(code)))
   }
 
-  // 获取单个sparkline
   const getSparkline = computed(() => (code: string) => sparklines.value.get(code))
-
-  // 获取股票数据
   const getStock = computed(() => (code: string) => stocks.value.get(code))
-
-  // 股票列表（保持顺序）
-  const stockList = computed(() => {
-    return watchList.value
-      .map(code => stocks.value.get(code))
-      .filter((s): s is Stock => !!s)
-  })
+  const stockList = computed(() =>
+    watchList.value
+      .map((code) => stocks.value.get(code))
+      .filter((stock): stock is Stock => Boolean(stock))
+  )
 
   return {
     watchList,
     stocks,
     sparklines,
-    currentStock,
     loading,
     lastUpdate,
     stockList,
     init,
     refreshStocks,
+    refreshAll,
     addStock,
     removeStock,
-    setCurrentStock,
     getStock,
     getSparkline,
     moveStock,
+    moveStockByCode,
+    moveStockToTop,
+    moveStockToBottom,
     fetchSparkline,
     fetchAllSparklines,
     startAutoRefresh,

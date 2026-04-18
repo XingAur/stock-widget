@@ -1,211 +1,166 @@
 <template>
-  <div class="home-view">
-    <!-- 大盘指数 -->
-    <div v-if="settingsStore.settings.showIndices" class="indices-section">
-      <div v-for="index in indices" :key="index.code" class="index-item">
-        <div class="index-name">{{ index.name }}</div>
-        <div class="index-price" :class="{ up: index.changePercent >= 0, down: index.changePercent < 0 }">
-          {{ index.price.toFixed(2) }}
-        </div>
-        <div class="index-change-info">
-          <span class="index-change" :class="{ up: index.changePercent >= 0, down: index.changePercent < 0 }">
-            {{ index.change >= 0 ? '+' : '' }}{{ index.change.toFixed(3) }}
-            {{ formatChange(index.changePercent) }}
-          </span>
-        </div>
-        <svg v-if="index.sparkline.length > 0" class="sparkline-svg" viewBox="0 0 100 30" preserveAspectRatio="none">
-          <polyline
-            :points="getSparklinePoints(index.sparkline)"
-            fill="none"
-            :stroke="index.changePercent >= 0 ? 'var(--success)' : 'var(--danger)'"
-            stroke-width="1.5"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          />
-        </svg>
-      </div>
-    </div>
-
-    <!-- 股票列表 -->
-    <div class="stock-list">
+  <div class="home-view" @click="closeContextMenu">
+    <div class="stock-list" @scroll="closeContextMenu">
       <div v-if="stockStore.stockList.length === 0" class="empty-state">
-        <p>暂无自选股</p>
-        <p class="hint">在下方搜索框添加股票</p>
+        <p>No stocks yet</p>
+        <span>Add one from the search box below</span>
       </div>
-      <div
-        v-for="stock in stockStore.stockList"
+
+      <button
+        v-for="(stock, index) in stockStore.stockList"
         :key="stock.code"
-        class="stock-item"
-        @click="handleItemClick(stock.code)"
-        @contextmenu.prevent="showContextMenu(stock.code, $event)"
+        class="stock-card"
+        :class="{ selected: stock.code === props.selectedCode }"
+        type="button"
+        :title="`Open ${stock.name} detail`"
+        @click.stop="handleOpenDetail(stock.code)"
+        @contextmenu.prevent.stop="openContextMenu($event, stock.code, index)"
       >
-        <div class="stock-info">
-          <div class="stock-name">{{ stock.name }}</div>
-          <div class="stock-code">{{ stock.code }}</div>
+        <div class="stock-main">
+          <div class="stock-info">
+            <div class="stock-name">{{ stock.name }}</div>
+            <div class="stock-code">{{ stock.code }}</div>
+          </div>
+          <div v-if="settingsStore.settings.showSparklines && getSparklinePoints(stock.code)" class="stock-sparkline-wrap">
+            <svg class="stock-sparkline" viewBox="0 0 120 24" preserveAspectRatio="none" aria-hidden="true">
+              <polyline
+                class="stock-sparkline-line"
+                :class="{ up: stock.changePercent >= 0, down: stock.changePercent < 0 }"
+                :points="getSparklinePoints(stock.code)"
+              />
+            </svg>
+          </div>
         </div>
-        <!-- Sparkline 折线图 -->
-        <svg v-if="settingsStore.settings.showSparklines && stockStore.getSparkline(stock.code)?.length" class="sparkline-svg stock-sparkline" :viewBox="`0 0 ${sparklineWidth} 30`" preserveAspectRatio="none">
-          <line
-            :x1="0" :x2="sparklineWidth"
-            :y1="getReferenceY(stockStore.getSparkline(stock.code) || [])"
-            :y2="getReferenceY(stockStore.getSparkline(stock.code) || [])"
-            :stroke="stock.changePercent >= 0 ? 'var(--success)' : 'var(--danger)'"
-            stroke-width="0.5"
-            stroke-dasharray="4,2"
-            opacity="0.4"
-            vector-effect="non-scaling-stroke"
-          />
-          <polyline
-            :points="getSparklinePoints(stockStore.getSparkline(stock.code) || [])"
-            fill="none"
-            :stroke="stock.changePercent >= 0 ? 'var(--success)' : 'var(--danger)'"
-            stroke-width="1.5"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            vector-effect="non-scaling-stroke"
-          />
-        </svg>
-        <div class="stock-price">
-          <div class="price">{{ stock.price.toFixed(2) }}</div>
-          <div class="change" :class="{ up: stock.changePercent >= 0, down: stock.changePercent < 0 }">
+
+        <div class="stock-side">
+          <div class="change-pill" :class="{ up: stock.changePercent >= 0, down: stock.changePercent < 0 }">
             {{ formatChange(stock.changePercent) }}
           </div>
+          <div class="stock-price">{{ stock.price.toFixed(2) }}</div>
         </div>
-        <button class="remove-btn" @click.stop="stockStore.removeStock(stock.code)" title="删除">×</button>
-      </div>
-    </div>
 
-    <div class="footer-area">
-      <div class="footer-bar">
-        <div class="search-box">
-          <svg class="search-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="11" cy="11" r="8"></circle>
-            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+        <button
+          class="remove-btn"
+          type="button"
+          title="Remove"
+          @click.stop="handleRemoveStock(stock.code)"
+        >
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
           </svg>
-          <input
-            v-model="searchQuery"
-            type="text"
-            placeholder="搜索股票代码或名称"
-            @input="handleSearch"
-            @focus="showSearch = true"
-            @blur="handleBlur"
-          />
-          <div v-if="showSearch && searchResults.length > 0" class="search-results">
-            <div
-              v-for="item in searchResults"
-              :key="item.code"
-              class="search-item"
-              @mousedown.prevent="handleSelect(item.code)"
-            >
-              <span class="search-name">{{ item.name }}</span>
-              <span class="search-code">{{ item.code }}</span>
-            </div>
-          </div>
-        </div>
-        <button class="refresh-btn" @click="handleRefresh" :class="{ spinning: stockStore.loading }">
-          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="23 4 23 10 17 10"></polyline>
-            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
-          </svg>
-          <span>更新于 {{ stockStore.lastUpdate ? formatTime(stockStore.lastUpdate) : '--:--:--' }}</span>
         </button>
+      </button>
+    </div>
+
+    <div class="bottom-bar">
+      <div class="search-shell">
+        <svg class="search-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="11" cy="11" r="7" />
+          <line x1="20" y1="20" x2="16.65" y2="16.65" />
+        </svg>
+
+        <input
+          v-model="searchQuery"
+          type="text"
+          placeholder="搜索名称或代码"
+          @input="handleSearch"
+          @focus="showSearch = true"
+          @blur="handleBlur"
+          @keydown.enter.prevent="handleEnter"
+        />
+
+        <div v-if="showSearch && searchResults.length > 0" class="search-results search-results-top">
+          <button
+            v-for="item in searchResults"
+            :key="item.code"
+            class="search-item"
+            type="button"
+            @mousedown.prevent="handleSelect(item.code)"
+          >
+            <span class="search-name">{{ item.name }}</span>
+            <span class="search-code">{{ item.code }}</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="bottom-actions">
+        <button class="refresh-btn" type="button" title="Refresh" @click.stop="handleRefresh">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="23 4 23 10 17 10" />
+            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+          </svg>
+        </button>
+        <span class="update-time">{{ stockStore.lastUpdate ? formatTime(stockStore.lastUpdate) : '--:--:--' }}</span>
       </div>
     </div>
-  </div>
 
-  <!-- Context menu -->
-  <div v-if="contextMenu.visible" class="context-menu" :style="{ top: contextMenu.y + 'px', left: contextMenu.x + 'px' }">
     <div
-      v-if="stockStore.watchList.indexOf(contextMenu.code) > 0"
-      class="context-item"
-      @mousedown.prevent="moveStockTo(contextMenu.code, stockStore.watchList.indexOf(contextMenu.code) - 1)"
+      v-if="contextMenu.visible"
+      class="context-menu"
+      :style="{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }"
+      @click.stop
     >
-      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="18 15 12 9 6 15"></polyline></svg>
-      上移
-    </div>
-    <div
-      v-if="stockStore.watchList.indexOf(contextMenu.code) < stockStore.watchList.length - 1"
-      class="context-item"
-      @mousedown.prevent="moveStockTo(contextMenu.code, stockStore.watchList.indexOf(contextMenu.code) + 1)"
-    >
-      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
-      下移
-    </div>
-    <div v-if="stockStore.watchList.indexOf(contextMenu.code) > 0" class="context-divider"></div>
-    <div
-      v-if="stockStore.watchList.indexOf(contextMenu.code) > 0"
-      class="context-item"
-      @mousedown.prevent="moveStockTo(contextMenu.code, 0)"
-    >
-      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="18 15 12 9 6 15"></polyline></svg>
-      置顶
-    </div>
-    <div
-      v-if="stockStore.watchList.indexOf(contextMenu.code) < stockStore.watchList.length - 1"
-      class="context-item"
-      @mousedown.prevent="moveStockTo(contextMenu.code, stockStore.watchList.length - 1)"
-    >
-      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
-      置底
+      <button
+        v-for="action in contextActions"
+        :key="action.key"
+        class="context-menu-item"
+        type="button"
+        :disabled="action.disabled"
+        @click="handleContextAction(action.key)"
+      >
+        {{ action.label }}
+      </button>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, onUnmounted } from 'vue'
-import { useStockStore } from '../stores/stock'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { searchStock } from '../api/stock'
 import { useSettingsStore } from '../stores/settings'
-import { searchStock, fetchIndices, type IndexData } from '../api/stock'
+import { useStockStore } from '../stores/stock'
 
-const emit = defineEmits<{
-  select: [code: string]
-}>()
+type ContextActionKey = 'move-up' | 'move-down' | 'move-top' | 'move-bottom'
+
+interface ContextMenuState {
+  visible: boolean
+  x: number
+  y: number
+  code: string
+  index: number
+}
+
+const MENU_WIDTH = 132
+const MENU_ITEM_HEIGHT = 34
+const MENU_OFFSET = 8
+
+const props = defineProps<{ selectedCode: string }>()
+const emit = defineEmits<{ select: [code: string] }>()
 
 const stockStore = useStockStore()
 const settingsStore = useSettingsStore()
+
 const searchQuery = ref('')
 const searchResults = ref<{ code: string; name: string; market: string }[]>([])
 const showSearch = ref(false)
-const sparklineWidth = ref(100)
-const indices = ref<IndexData[]>([])
-let searchTimer: ReturnType<typeof setTimeout> | null = null
-let blurTimer: ReturnType<typeof setTimeout> | null = null
-
-// Context menu state
-const contextMenu = reactive({
+const contextMenu = ref<ContextMenuState>({
   visible: false,
-  code: '',
   x: 0,
   y: 0,
+  code: '',
+  index: -1
 })
 
-function moveStockTo(code: string, to: number) {
-  const from = stockStore.watchList.indexOf(code)
-  if (from < 0 || from === to) return
-  const list = [...stockStore.watchList]
-  list.splice(from, 1)
-  const adjustedTo = Math.min(to, list.length)
-  list.splice(adjustedTo, 0, code)
-  stockStore.watchList = list
-  localStorage.setItem('watchList', JSON.stringify(list))
-  closeContextMenu()
-}
+const contextActions = computed(() => [
+  { key: 'move-up' as const, label: '上移', disabled: contextMenu.value.index <= 0 },
+  { key: 'move-down' as const, label: '下移', disabled: contextMenu.value.index === -1 || contextMenu.value.index >= stockStore.stockList.length - 1 },
+  { key: 'move-top' as const, label: '置顶', disabled: contextMenu.value.index <= 0 },
+  { key: 'move-bottom' as const, label: '置底', disabled: contextMenu.value.index === -1 || contextMenu.value.index >= stockStore.stockList.length - 1 }
+])
 
-function showContextMenu(code: string, e: MouseEvent) {
-  const btn = (e.target as HTMLElement).closest('.remove-btn')
-  if (btn) return
-
-  e.stopPropagation()
-  contextMenu.visible = true
-  contextMenu.code = code
-  contextMenu.x = e.clientX
-  contextMenu.y = e.clientY
-}
-
-function closeContextMenu() {
-  contextMenu.visible = false
-  contextMenu.code = ''
-}
+let searchTimer: ReturnType<typeof setTimeout> | null = null
+let blurTimer: ReturnType<typeof setTimeout> | null = null
 
 function formatChange(percent: number): string {
   const sign = percent >= 0 ? '+' : ''
@@ -216,455 +171,198 @@ function formatTime(date: Date): string {
   return `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}:${date.getSeconds().toString().padStart(2, '0')}`
 }
 
-// SVG sparkline points generator
-function getSparklinePoints(prices: number[]): string {
-  if (prices.length < 2) return ''
+function getSparklinePoints(code: string): string {
+  const prices = stockStore.getSparkline(code)
+  if (!prices || prices.length < 2) {
+    return ''
+  }
+
+  const width = 120
+  const height = 24
   const min = Math.min(...prices)
   const max = Math.max(...prices)
   const range = max - min || 1
-  const w = sparklineWidth.value
-  const h = 30
-  const padding = 2
-  const step = (w - padding * 2) / (prices.length - 1)
 
-  return prices.map((p, i) => {
-    const x = padding + i * step
-    const y = padding + (1 - (p - min) / range) * (h - padding * 2)
-    return `${x.toFixed(1)},${y.toFixed(1)}`
-  }).join(' ')
+  return prices
+    .map((price, index) => {
+      const x = prices.length === 1 ? width / 2 : (index / (prices.length - 1)) * width
+      const y = height - ((price - min) / range) * height
+      return `${x.toFixed(2)},${y.toFixed(2)}`
+    })
+    .join(' ')
 }
 
-// 计算0%参考线（昨收/首价）的Y坐标
-function getReferenceY(prices: number[]): number {
-  if (prices.length < 2) return 15
-  const min = Math.min(...prices)
-  const max = Math.max(...prices)
-  const range = max - min || 1
-  const h = 30
-  const padding = 2
-  const ref = prices[0]
-  return padding + (1 - (ref - min) / range) * (h - padding * 2)
+function resetSearchState() {
+  searchResults.value = []
+  showSearch.value = false
+}
+
+function closeContextMenu() {
+  contextMenu.value.visible = false
+}
+
+function handleOpenDetail(code: string) {
+  closeContextMenu()
+  emit('select', code)
+}
+
+function clampContextMenuPosition(x: number, y: number) {
+  const menuHeight = contextActions.value.length * MENU_ITEM_HEIGHT + 12
+  const maxX = Math.max(MENU_OFFSET, window.innerWidth - MENU_WIDTH - MENU_OFFSET)
+  const maxY = Math.max(MENU_OFFSET, window.innerHeight - menuHeight - MENU_OFFSET)
+
+  return {
+    x: Math.min(Math.max(MENU_OFFSET, x), maxX),
+    y: Math.min(Math.max(MENU_OFFSET, y), maxY)
+  }
+}
+
+function openContextMenu(event: MouseEvent, code: string, index: number) {
+  const position = clampContextMenuPosition(event.clientX, event.clientY)
+  contextMenu.value = {
+    visible: true,
+    x: position.x,
+    y: position.y,
+    code,
+    index
+  }
+}
+
+function handleContextAction(action: ContextActionKey) {
+  const { code, index } = contextMenu.value
+  if (!code || index < 0) {
+    return
+  }
+
+  switch (action) {
+    case 'move-up':
+      stockStore.moveStock(index, index - 1)
+      break
+    case 'move-down':
+      stockStore.moveStock(index, index + 1)
+      break
+    case 'move-top':
+      stockStore.moveStockToTop(code)
+      break
+    case 'move-bottom':
+      stockStore.moveStockToBottom(code)
+      break
+  }
+
+  closeContextMenu()
 }
 
 async function handleSearch() {
   if (searchTimer) clearTimeout(searchTimer)
   searchTimer = setTimeout(async () => {
-    if (!searchQuery.value.trim()) {
-      searchResults.value = []
+    const keyword = searchQuery.value.trim()
+    if (!keyword) {
+      resetSearchState()
       return
     }
-    const results = await searchStock(searchQuery.value.trim())
+    const results = await searchStock(keyword)
     searchResults.value = results
-    if (results.length > 0) {
-      showSearch.value = true
-    }
-  }, 300)
+    showSearch.value = results.length > 0
+  }, 220)
 }
 
-function handleSelect(code: string) {
-  // 清除blur定时器
-  if (blurTimer) {
-    clearTimeout(blurTimer)
-    blurTimer = null
-  }
-  stockStore.addStock(code)
+async function handleSelect(code: string) {
+  await stockStore.addStock(code)
   searchQuery.value = ''
-  searchResults.value = []
-  showSearch.value = false
+  resetSearchState()
+}
+
+function handleEnter() {
+  if (searchResults.value.length > 0) {
+    void handleSelect(searchResults.value[0].code)
+    return
+  }
+  const directCode = searchQuery.value.trim()
+  if (directCode) {
+    void handleSelect(directCode)
+  }
 }
 
 function handleBlur() {
   blurTimer = setTimeout(() => {
-    showSearch.value = false
-    searchResults.value = []
+    resetSearchState()
     blurTimer = null
-  }, 200)
+  }, 180)
 }
 
 async function handleRefresh() {
-  await stockStore.refreshStocks()
-  await stockStore.fetchAllSparklines()
-  indices.value = await fetchIndices()
+  closeContextMenu()
+  await stockStore.refreshAll()
 }
 
-async function loadIndices() {
-  indices.value = await fetchIndices()
+async function handleRemoveStock(code: string) {
+  closeContextMenu()
+  await stockStore.removeStock(code)
 }
 
-function handleItemClick(code: string) {
-  emit('select', code)
+function handleGlobalKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape') {
+    closeContextMenu()
+  }
 }
-
-let autoRefreshTimer: number | null = null
-let sparklineResizeObserver: ResizeObserver | null = null
 
 onMounted(async () => {
-  await loadIndices()
-  await stockStore.fetchAllSparklines()
-
-  // Measure sparkline container width for dynamic viewBox
-  function updateSparklineWidth() {
-    const el = document.querySelector('.stock-sparkline') as HTMLElement
-    if (el) {
-      sparklineWidth.value = Math.round(el.getBoundingClientRect().width)
-    }
-  }
-  updateSparklineWidth()
-  const listEl = document.querySelector('.stock-list') as HTMLElement
-  if (listEl) {
-    sparklineResizeObserver = new ResizeObserver(() => updateSparklineWidth())
-    sparklineResizeObserver.observe(listEl)
-  }
-
-  // Close context menu on global click
+  await stockStore.refreshAll()
+  window.addEventListener('keydown', handleGlobalKeydown)
+  window.addEventListener('resize', closeContextMenu)
   window.addEventListener('click', closeContextMenu)
-
-  // Auto-refresh indices and sparklines every 30s
-  autoRefreshTimer = window.setInterval(async () => {
-    await loadIndices()
-    await stockStore.fetchAllSparklines()
-  }, 30000)
 })
 
 onUnmounted(() => {
-  if (autoRefreshTimer) {
-    clearInterval(autoRefreshTimer)
-  }
-  if (sparklineResizeObserver) {
-    sparklineResizeObserver.disconnect()
-  }
+  if (searchTimer) clearTimeout(searchTimer)
+  if (blurTimer) clearTimeout(blurTimer)
+  window.removeEventListener('keydown', handleGlobalKeydown)
+  window.removeEventListener('resize', closeContextMenu)
   window.removeEventListener('click', closeContextMenu)
 })
 </script>
 
 <style scoped>
-.home-view {
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-}
-
-/* 大盘指数区域 */
-.indices-section {
-  display: flex;
-  justify-content: space-around;
-  padding: 0 16px 2px;
-  border-bottom: 1px solid var(--divider-color);
-  flex-shrink: 0;
-}
-
-.index-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-  flex: 1;
-}
-
-.index-name {
-  font-size: 11px;
-  color: var(--text-muted);
-}
-
-.index-price {
-  font-size: 16px;
-  font-weight: 600;
-}
-
-.index-price.up {
-  color: var(--success);
-}
-
-.index-price.down {
-  color: var(--danger);
-}
-
-.index-change-info {
-  font-size: 10px;
-}
-
-.index-change.up {
-  color: var(--success);
-}
-
-.index-change.down {
-  color: var(--danger);
-}
-
-/* Sparkline SVG */
-.sparkline-svg {
-  width: 100%;
-  height: 20px;
-  flex-shrink: 0;
-}
-
-.stock-sparkline {
-  flex: 1;
-  height: 24px;
-  margin: 0 8px;
-  min-width: 0;
-  align-self: center;
-}
-
-.stock-list {
-  flex: 1;
-  overflow-y: auto;
-  overflow-x: hidden;
-  padding: 0 8px;
-}
-
-.stock-list::-webkit-scrollbar {
-  display: none;
-}
-
-.stock-list {
-  -ms-overflow-style: none;
-  scrollbar-width: none;
-}
-
-.empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  height: 200px;
-  color: var(--text-muted);
-}
-
-.empty-state p {
-  margin: 0;
-}
-
-.empty-state .hint {
-  margin-top: 8px;
-  font-size: 12px;
-}
-
-.stock-item {
-  display: flex;
-  align-items: center;
-  padding: 12px 8px;
-  border-radius: var(--radius);
-  cursor: pointer;
-  transition: background 0.15s;
-}
-
-.stock-item:hover {
-  background: var(--card-bg-hover);
-}
-
-.stock-info {
-  flex: 0 0 auto;
-  min-width: 0;
-  margin-right: 8px;
-}
-
-.stock-name {
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--text-primary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.stock-code {
-  font-size: 12px;
-  color: var(--text-muted);
-  margin-top: 2px;
-}
-
-.stock-price {
-  text-align: right;
-  margin-left: auto;
-  flex-shrink: 0;
-}
-
-.price {
-  font-size: 15px;
-  font-weight: 500;
-  color: var(--text-primary);
-}
-
-.change {
-  font-size: 12px;
-  margin-top: 2px;
-}
-
-.change.up {
-  color: var(--success);
-}
-
-.change.down {
-  color: var(--danger);
-}
-
-.remove-btn {
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  border: none;
-  background: transparent;
-  color: var(--text-muted);
-  font-size: 14px;
-  cursor: pointer;
-  opacity: 0;
-  transition: all 0.15s;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.stock-item:hover .remove-btn {
-  opacity: 1;
-}
-
-.remove-btn:hover {
-  background: rgba(239, 68, 68, 0.2);
-  color: var(--danger);
-}
-
-/* Footer area */
-.footer-area {
-  padding: 8px 16px 12px;
-  flex-shrink: 0;
-}
-
-.footer-bar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.search-box {
-  flex: 1;
-  position: relative;
-}
-
-.search-icon {
-  position: absolute;
-  left: 12px;
-  top: 50%;
-  transform: translateY(-50%);
-  color: var(--text-muted);
-  pointer-events: none;
-}
-
-.search-box input {
-  width: 100%;
-  padding: 8px 12px 8px 36px;
-  border-radius: var(--radius);
-  border: 1px solid var(--border-color);
-  background: var(--input-bg);
-  color: var(--text-primary);
-  font-size: 13px;
-  outline: none;
-  transition: border-color 0.15s;
-}
-
-.search-box input::placeholder {
-  color: var(--text-muted);
-}
-
-.search-box input:focus {
-  border-color: var(--accent);
-}
-
-.search-results {
-  position: absolute;
-  bottom: 100%;
-  left: 0;
-  right: 0;
-  margin-bottom: 4px;
-  background: var(--window-bg);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius);
-  max-height: 160px;
-  overflow-y: auto;
-  z-index: 10;
-}
-
-.search-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 8px 12px;
-  cursor: pointer;
-  transition: background 0.15s;
-}
-
-.search-item:hover {
-  background: var(--card-bg-hover);
-}
-
-.search-name {
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--text-primary);
-}
-
-.search-code {
-  font-size: 12px;
-  color: var(--text-muted);
-}
-
-/* Refresh button */
-.refresh-btn {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  background: transparent;
-  border: none;
-  color: var(--text-muted);
-  font-size: 12px;
-  cursor: pointer;
-  padding: 4px 0;
-  transition: color 0.15s;
-}
-
-.refresh-btn:hover {
-  color: var(--text-primary);
-}
-
-.refresh-btn.spinning svg {
-  animation: spin 0.8s linear infinite;
-}
-
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-
-/* Context menu */
-.context-menu {
-  position: fixed;
-  min-width: 100px;
-  background: var(--window-bg);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  z-index: 1000;
-  padding: 4px 0;
-}
-
-.context-item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  font-size: 13px;
-  color: var(--text-primary);
-  cursor: pointer;
-  transition: background 0.1s;
-}
-
-.context-item:hover {
-  background: var(--card-bg-hover);
-}
-
-.context-divider {
-  height: 1px;
-  margin: 4px 8px;
-  background: var(--border-color);
-}
+.home-view{position:relative;flex:1;min-height:0;display:flex;flex-direction:column;padding:6px 0 0;gap:0}
+.bottom-bar{display:flex;align-items:center;gap:8px;padding:4px 10px 6px}
+.search-shell{position:relative;min-width:0}
+.search-shell input{max-width:125px;height:26px;padding:0 8px 0 28px;border:1px solid rgba(255,255,255,.08);border-radius:8px;outline:none;background:rgba(255,255,255,.03);color:var(--text-primary);font-size:12px;transition:border-color .18s ease,background .18s ease}
+.search-shell input::placeholder{color:var(--text-muted)}
+.search-shell input:focus{border-color:rgba(59,130,246,.4);background:rgba(255,255,255,.045)}
+.search-icon{position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--text-muted);pointer-events:none}
+.search-results{position:absolute;bottom:calc(100% + 8px);left:0;z-index:10;padding:6px;border:1px solid var(--border-color);border-radius:16px;background:var(--solid-bg);box-shadow:0 20px 48px rgba(0,0,0,.34);min-width:220px}
+.search-item{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 12px;border:none;border-radius:10px;background:transparent;color:var(--text-primary);cursor:pointer;white-space:nowrap;min-width:208px}
+.search-item:hover{background:rgba(255,255,255,.05)}
+.search-name{font-size:13px;font-weight:600;white-space:nowrap}.search-code{font-size:12px;color:var(--text-muted);white-space:nowrap}
+.bottom-actions{display:inline-flex;align-items:center;gap:6px;flex-shrink:0}
+.refresh-btn{width:26px;height:26px;display:inline-flex;align-items:center;justify-content:center;border:none;border-radius:8px;background:transparent;color:var(--text-muted);cursor:pointer;transition:color .15s ease,background .15s ease}
+.refresh-btn:hover{color:var(--text-primary);background:rgba(255,255,255,.05)}
+.update-time{font-size:11px;color:var(--text-muted)}
+.stock-list{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:6px;padding:6px 10px 0}
+.stock-card{position:relative;display:flex;align-items:center;gap:8px;width:100%;padding:6px 12px 6px 10px;border:1px solid transparent;border-radius:12px;background:rgba(255,255,255,.025);cursor:pointer;transition:transform .18s ease,background .18s ease,border-color .18s ease;min-height:44px;text-align:left;color:inherit}
+.stock-card:hover{transform:translateX(2px);background:rgba(255,255,255,.05)}
+.stock-card.selected{border-color:rgba(255,255,255,.08);background:rgba(255,255,255,.085);box-shadow:inset 0 1px 0 rgba(255,255,255,.03)}
+.stock-card.selected::before{content:'';position:absolute;inset:6px auto 6px 0;width:3px;border-radius:999px;background:linear-gradient(180deg,#5da8ff,#2d7cf6)}
+.stock-main{display:flex;align-items:center;gap:10px;min-width:0;flex:1;padding-left:4px}
+.stock-info{display:flex;flex-direction:column;gap:2px;min-width:0;flex-shrink:0}
+.stock-name{font-size:13px;font-weight:700;line-height:1.05;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.stock-code{font-size:11px;color:var(--text-muted);letter-spacing:.02em}
+.stock-sparkline-wrap{min-width:0;flex:1;height:18px;max-width:140px;overflow:hidden}
+.stock-sparkline{display:block;width:100%;height:100%}
+.stock-sparkline-line{fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;opacity:.92}
+.stock-sparkline-line.up{stroke:#ff7b7b}
+.stock-sparkline-line.down{stroke:#39cf84}
+.stock-side{margin-left:auto;display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0}
+.change-pill{display:inline-flex;align-items:center;justify-content:center;min-width:64px;padding:3px 8px;border-radius:999px;font-size:11px;font-weight:700;letter-spacing:.01em}
+.change-pill.up{color:#ff7474;background:rgba(239,68,68,.14)}.change-pill.down{color:#3ad283;background:rgba(34,197,94,.12)}
+.stock-price{font-size:13px;line-height:1;font-weight:500;letter-spacing:-.02em;color:var(--text-secondary)}
+.remove-btn{position:absolute;top:8px;right:8px;width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center;border:none;border-radius:8px;background:rgba(239,68,68,.12);color:#fca5a5;cursor:pointer;opacity:0;transition:opacity .15s ease,background .15s ease}
+.stock-card:hover .remove-btn{opacity:1}
+.remove-btn:hover{background:rgba(239,68,68,.22)}
+.context-menu{position:fixed;z-index:40;width:132px;padding:6px;border:1px solid var(--border-color);border-radius:14px;background:var(--solid-bg);box-shadow:0 18px 48px rgba(0,0,0,.34);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px)}
+.context-menu-item{width:100%;display:flex;align-items:center;height:34px;padding:0 10px;border:none;border-radius:10px;background:transparent;color:var(--text-primary);font-size:13px;text-align:left;cursor:pointer}
+.context-menu-item:hover:not(:disabled){background:rgba(255,255,255,.06)}
+.context-menu-item:disabled{color:var(--text-muted);cursor:not-allowed}
+.empty-state{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;color:var(--text-muted);text-align:center}
+.empty-state p{font-size:14px;font-weight:600;color:var(--text-secondary)}.empty-state span{font-size:12px}
 </style>

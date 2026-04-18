@@ -1,5 +1,17 @@
 import { invoke } from '@tauri-apps/api/core'
 
+export type ChartPeriod = 'day' | 'week' | 'month'
+
+export interface OrderLevel {
+  price: number
+  volume: number
+}
+
+export interface OrderBook {
+  bids: OrderLevel[]
+  asks: OrderLevel[]
+}
+
 export interface Stock {
   code: string
   name: string
@@ -15,14 +27,16 @@ export interface Stock {
   time: string
   totalMarketCap: number
   circulationMarketCap: number
+  orderBook?: OrderBook
 }
 
-export interface StockDetail extends Stock {
-  kline?: KlineData[]
-  minute?: MinuteData[]
+export interface MinutePoint {
+  time: string
+  price: number
+  volume: number
 }
 
-export interface KlineData {
+export interface KlinePoint {
   time: string
   open: number
   close: number
@@ -31,10 +45,9 @@ export interface KlineData {
   volume: number
 }
 
-export interface MinuteData {
-  time: string
-  price: number
-  volume: number
+export interface StockDetail extends Stock {
+  minute?: MinutePoint[]
+  kline?: KlinePoint[]
 }
 
 export interface SearchResult {
@@ -53,68 +66,65 @@ export interface IndexData {
   sparkline: number[]
 }
 
-// 通过Tauri后端获取股票数据
+async function invokeSafe<T>(command: string, args: Record<string, unknown> | undefined, fallback: T): Promise<T> {
+  try {
+    return await invoke<T>(command, args)
+  } catch (error) {
+    console.error(`Invoke ${command} error:`, error)
+    return fallback
+  }
+}
+
 export async function fetchStocks(codes: string[]): Promise<Stock[]> {
-  if (codes.length === 0) return []
-  try {
-    return await invoke<Stock[]>('fetch_stocks', { codes })
-  } catch (error) {
-    console.error('Fetch stocks error:', error)
+  if (codes.length === 0) {
     return []
   }
+
+  return invokeSafe('fetch_stocks', { codes }, [])
 }
 
-// 通过Tauri后端搜索股票
 export async function searchStock(keyword: string): Promise<SearchResult[]> {
-  if (!keyword.trim()) return []
-  try {
-    return await invoke<SearchResult[]>('search_stock', { keyword })
-  } catch (error) {
-    console.error('Search stock error:', error)
+  if (!keyword.trim()) {
     return []
   }
+
+  return invokeSafe('search_stock', { keyword }, [])
 }
 
-// 获取分时数据 (Rust后端)
-export async function fetchMinuteData(code: string): Promise<MinuteData[]> {
-  try {
-    return await invoke<MinuteData[]>('fetch_minute_data', { code })
-  } catch (e) {
-    console.warn('Fetch minute data error:', e)
-    return []
-  }
+export async function fetchMinuteData(code: string): Promise<MinutePoint[]> {
+  return invokeSafe('fetch_minute_data', { code }, [])
 }
 
-// 获取K线数据 (Rust后端)
-export async function fetchKlineData(code: string, type: string = 'day'): Promise<KlineData[]> {
-  try {
-    return await invoke<KlineData[]>('fetch_kline_data', { code, ktype: type })
-  } catch (e) {
-    console.warn('Fetch kline data error:', e)
-    return []
-  }
+function getKlineTimestamp(value: string): number {
+  const parsed = Date.parse(value.includes('T') ? value : `${value}T00:00:00`)
+  return Number.isFinite(parsed) ? parsed : 0
 }
 
-// 获取股票详情（包含分时数据）
+function normalizeKlinePoints(points: KlinePoint[]): KlinePoint[] {
+  return [...points].sort((left, right) => getKlineTimestamp(left.time) - getKlineTimestamp(right.time))
+}
+
+export async function fetchKlineData(code: string, period: ChartPeriod = 'day'): Promise<KlinePoint[]> {
+  const points = await invokeSafe('fetch_kline_data', { code, ktype: period }, [])
+  return normalizeKlinePoints(points)
+}
+
 export async function fetchStockDetail(code: string): Promise<StockDetail | null> {
-  try {
-    const stocks = await fetchStocks([code])
-    if (stocks.length === 0) return null
-    const stock = stocks[0]
-    const minute = await fetchMinuteData(code)
-    return { ...stock, minute }
-  } catch (error) {
-    console.error('Fetch stock detail error:', error)
+  const [stocks, minute] = await Promise.all([
+    fetchStocks([code]),
+    fetchMinuteData(code)
+  ])
+
+  if (stocks.length === 0) {
     return null
   }
+
+  return {
+    ...stocks[0],
+    minute
+  }
 }
 
-// 获取三大指数数据
 export async function fetchIndices(): Promise<IndexData[]> {
-  try {
-    return await invoke<IndexData[]>('fetch_indices')
-  } catch (error) {
-    console.error('Fetch indices error:', error)
-    return []
-  }
+  return invokeSafe('fetch_indices', undefined, [])
 }

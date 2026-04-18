@@ -53,11 +53,11 @@
 
       <div class="divider"></div>
 
-      <!-- 深色模式 -->
-      <div class="setting-item">
+      <!-- 主题选择 -->
+      <div class="setting-item-vertical">
         <div class="setting-info">
-          <span class="setting-label">深色模式</span>
-          <span class="setting-desc">切换界面至深色/浅色主题</span>
+          <span class="setting-label">主题颜色</span>
+          <span class="setting-desc">选择预设主题或自定义配色</span>
         </div>
         <div class="theme-buttons">
           <button
@@ -76,6 +76,7 @@
               <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
               <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
             </svg>
+            <span>浅色</span>
           </button>
           <button
             class="theme-btn"
@@ -85,8 +86,73 @@
             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
             </svg>
+            <span>深色</span>
+          </button>
+          <button
+            class="theme-btn custom-btn"
+            :class="{ active: settings.settings.theme === 'custom' }"
+            @click="setTheme('custom')"
+          >
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="13.5" cy="6.5" r="2.5"></circle>
+              <circle cx="17.5" cy="10.5" r="2.5" opacity="0.5"></circle>
+              <circle cx="8.5" cy="7.5" r="2.5" opacity="0.5"></circle>
+              <circle cx="6.5" cy="12.5" r="2.5"></circle>
+              <path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12c0 1.787.472 3.464 1.298 4.914"></path>
+            </svg>
+            <span>自定义</span>
           </button>
         </div>
+
+        <!-- 自定义配色面板 -->
+        <div class="custom-panel" v-show="settings.settings.theme === 'custom'">
+          <div class="color-row">
+            <div class="color-info">
+              <span class="color-label">背景颜色</span>
+              <span class="color-hex">{{ settings.settings.customBgColor }}</span>
+            </div>
+            <input
+              type="color"
+              class="color-picker"
+              :value="settings.settings.customBgColor"
+              @input="setBgColor($event)"
+            />
+          </div>
+          <div class="color-row">
+            <div class="color-info">
+              <span class="color-label">字体颜色</span>
+              <span class="color-hex">{{ settings.settings.customFontColor }}</span>
+            </div>
+            <input
+              type="color"
+              class="color-picker"
+              :value="settings.settings.customFontColor"
+              @input="setFontColor($event)"
+            />
+          </div>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <!-- 字体选择 -->
+      <div class="setting-item-vertical">
+        <div class="setting-info">
+          <span class="setting-label">字体样式</span>
+          <span class="setting-desc">选择界面使用的字体</span>
+        </div>
+        <div class="font-preview" :style="{ fontFamily: settings.settings.fontFamily }">
+          Aa 股票行情 Stock 123
+        </div>
+        <select
+          class="font-select"
+          :value="settings.settings.fontFamily"
+          @change="setFontFamily($event)"
+        >
+          <option v-for="font in fonts" :key="font.value" :value="font.value" :style="{ fontFamily: font.value }">
+            {{ font.label }}
+          </option>
+        </select>
       </div>
 
       <div class="divider"></div>
@@ -146,13 +212,15 @@
 
 <script setup lang="ts">
 import { invoke } from '@tauri-apps/api/core'
-import { useSettingsStore } from '../stores/settings'
+import { useSettingsStore, FONT_OPTIONS } from '../stores/settings'
 
 defineEmits<{
   close: []
 }>()
 
 const settings = useSettingsStore()
+
+const fonts = FONT_OPTIONS
 
 async function toggleAlwaysOnTop() {
   const newValue = !settings.settings.alwaysOnTop
@@ -178,13 +246,28 @@ function toggleMinimizeToTray() {
   settings.updateSettings('minimizeToTray', !settings.settings.minimizeToTray)
 }
 
-function setTheme(theme: 'dark' | 'light') {
+function setTheme(theme: 'dark' | 'light' | 'custom') {
   settings.updateSettings('theme', theme)
+}
+
+function setBgColor(value: string | Event) {
+  const color = typeof value === 'string' ? value : (value.target as HTMLInputElement).value
+  settings.updateSettings('customBgColor', color)
+}
+
+function setFontColor(value: string | Event) {
+  const color = typeof value === 'string' ? value : (value.target as HTMLInputElement).value
+  settings.updateSettings('customFontColor', color)
 }
 
 function setOpacity(event: Event) {
   const target = event.target as HTMLInputElement
   settings.updateSettings('backgroundOpacity', parseFloat(target.value))
+}
+
+function setFontFamily(event: Event) {
+  const target = event.target as HTMLSelectElement
+  settings.updateSettings('fontFamily', target.value)
 }
 
 function toggleShowIndices() {
@@ -338,29 +421,97 @@ input:checked + .slider:before {
 .theme-buttons {
   display: flex;
   gap: 8px;
+  margin-top: 4px;
 }
 
 .theme-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  gap: 6px;
+  padding: 6px 12px;
   border-radius: var(--radius-sm);
-  border: none;
+  border: 1px solid var(--border-color);
   background: var(--input-bg);
   color: var(--text-muted);
   cursor: pointer;
   transition: all 0.15s;
+  font-size: 12px;
+  font-weight: 500;
 }
 
 .theme-btn:hover {
   background: var(--card-bg-hover);
+  color: var(--text-primary);
 }
 
 .theme-btn.active {
   background: var(--accent);
   color: #ffffff;
+  border-color: var(--accent);
+}
+
+.theme-btn.active:hover {
+  color: #ffffff;
+}
+
+/* Custom color panel */
+.custom-panel {
+  margin-top: 12px;
+  padding: 12px;
+  background: var(--card-bg);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.color-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.color-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.color-label {
+  font-size: 12px;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.color-hex {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: 'SF Mono', 'Menlo', monospace;
+  text-transform: uppercase;
+}
+
+.color-picker {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 32px;
+  height: 24px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  cursor: pointer;
+  background: transparent;
+  padding: 0;
+}
+
+.color-picker::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.color-picker::-webkit-color-swatch {
+  border: none;
+  border-radius: 3px;
 }
 
 /* Opacity slider */
@@ -417,6 +568,52 @@ input:checked + .slider:before {
 
 .reset-btn:hover {
   background: var(--card-bg-hover);
+  border-color: var(--accent);
+}
+
+/* Font selector */
+.font-preview {
+  margin-top: 8px;
+  padding: 10px 12px;
+  background: var(--solid-bg);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-color);
+  font-size: 16px;
+  color: var(--text-primary);
+  line-height: 1.4;
+}
+
+.font-select {
+  margin-top: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  padding-right: 30px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-color);
+  background: var(--solid-bg);
+  color: var(--text-primary);
+  font-size: 13px;
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.15s;
+  -webkit-appearance: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+}
+
+.font-select option {
+  background: var(--solid-bg);
+  color: var(--text-primary);
+  padding: 6px 10px;
+}
+
+.font-select:hover {
+  border-color: var(--accent);
+}
+
+.font-select:focus {
   border-color: var(--accent);
 }
 </style>
