@@ -26,8 +26,8 @@
 <script setup lang="ts">
 import { defineAsyncComponent, computed, onMounted, ref, watch } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
-import { LogicalPosition, LogicalSize } from '@tauri-apps/api/dpi'
-import { getCurrentWindow } from '@tauri-apps/api/window'
+import { LogicalSize, PhysicalPosition } from '@tauri-apps/api/dpi'
+import { currentMonitor, getCurrentWindow } from '@tauri-apps/api/window'
 import TitleBar from './components/TitleBar.vue'
 import HomeView from './views/Home.vue'
 import { useSettingsStore } from './stores/settings'
@@ -55,43 +55,28 @@ function showStockDetail(code: string) {
 async function determineDetailPosition(): Promise<'left' | 'right'> {
   try {
     const appWindow = getCurrentWindow()
+    const scaleFactor = await appWindow.scaleFactor()
     const position = await appWindow.outerPosition()
-    const size = await appWindow.innerSize()
+    const size = await appWindow.outerSize()
     const windowLeftEdge = position.x
     const windowRightEdge = position.x + size.width
-    const monitors = await (appWindow as typeof appWindow & {
-      availableMonitors?: () => Promise<Array<{ position: { x: number; y: number }, size: { width: number; height: number } }>>
-    }).availableMonitors?.()
-    let monitorLeft = 0
-    let monitorRight = 1920
-
-    if (monitors?.length) {
-      for (const monitor of monitors) {
-        if (
-          position.x >= monitor.position.x &&
-          position.x < monitor.position.x + monitor.size.width &&
-          position.y >= monitor.position.y &&
-          position.y < monitor.position.y + monitor.size.height
-        ) {
-          monitorLeft = monitor.position.x
-          monitorRight = monitor.position.x + monitor.size.width
-          break
-        }
-      }
-    }
+    const monitor = await currentMonitor()
+    const monitorLeft = monitor?.workArea.position.x ?? 0
+    const monitorRight = monitor ? monitor.workArea.position.x + monitor.workArea.size.width : Number.POSITIVE_INFINITY
+    const requiredWidth = new LogicalSize(DETAIL_WIDTH, 0).toPhysical(scaleFactor).width
 
     const rightAvailable = monitorRight - windowRightEdge
     const leftAvailable = windowLeftEdge - monitorLeft
 
-    if (rightAvailable >= DETAIL_WIDTH) {
+    if (rightAvailable >= requiredWidth) {
       return 'right'
     }
 
-    if (leftAvailable >= DETAIL_WIDTH) {
+    if (leftAvailable >= requiredWidth) {
       return 'left'
     }
 
-    return 'right'
+    return rightAvailable >= leftAvailable ? 'right' : 'left'
   } catch {
     return 'right'
   }
@@ -130,16 +115,19 @@ async function syncWindowSize(nextHasDetail = hasDetail.value, targetDetailPosit
 
   try {
     await appWindow.setMinSize(new LogicalSize(COMPACT_SIZE.width, COMPACT_SIZE.height))
+    const scaleFactor = await appWindow.scaleFactor()
     const currentSize = await appWindow.innerSize()
+    const currentLogicalSize = currentSize.toLogical(scaleFactor)
     const currentPosition = await appWindow.outerPosition()
-    const widthDelta = targetWidth - currentSize.width
+    const targetPhysicalWidth = new LogicalSize(targetWidth, currentLogicalSize.height).toPhysical(scaleFactor).width
+    const widthDelta = targetPhysicalWidth - currentSize.width
     const shouldAnchorWidgetSide = (nextHasDetail && targetDetailPosition === 'left') || (!nextHasDetail && targetDetailPosition === 'left')
 
     if (shouldAnchorWidgetSide && widthDelta !== 0) {
-      await appWindow.setPosition(new LogicalPosition(currentPosition.x - widthDelta, currentPosition.y))
+      await appWindow.setPosition(new PhysicalPosition(currentPosition.x - widthDelta, currentPosition.y))
     }
 
-    await appWindow.setSize(new LogicalSize(targetWidth, currentSize.height))
+    await appWindow.setSize(new LogicalSize(targetWidth, currentLogicalSize.height))
   } catch (error) {
     console.error('Sync window size error:', error)
   }
