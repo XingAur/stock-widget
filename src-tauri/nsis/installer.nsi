@@ -487,7 +487,7 @@ Function .onInit
         StrCpy $INSTDIR "$PROGRAMFILES\${PRODUCTNAME}"
       ${EndIf}
     !else if "${INSTALLMODE}" == "currentUser"
-      ${If} ${FileExists} "D:\"
+      ${If} ${FileExists} "D:\*.*"
         StrCpy $INSTDIR "D:\${PRODUCTNAME}"
       ${Else}
         StrCpy $INSTDIR "$LOCALAPPDATA\${PRODUCTNAME}"

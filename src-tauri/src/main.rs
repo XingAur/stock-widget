@@ -912,6 +912,12 @@ fn main() {
             let menu = Menu::with_items(app, &[&restore, &quit])?;
 
             let tray = app.tray_by_id("main").expect("tray icon not found");
+            if let Some(icon) = app.default_window_icon().cloned() {
+                if let Some(window) = app.get_webview_window("main") {
+                    window.set_icon(icon.clone())?;
+                }
+                tray.set_icon(Some(icon))?;
+            }
             tray.set_menu(Some(menu))?;
             let _ = tray.set_show_menu_on_left_click(true);
             tray.on_menu_event(|app, event| match event.id.as_ref() {
