@@ -120,6 +120,7 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { searchStock } from '../api/stock'
 import { useSettingsStore } from '../stores/settings'
 import { useStockStore } from '../stores/stock'
+import { createSparklinePoints } from '../utils/chart'
 
 type ContextActionKey = 'move-up' | 'move-down' | 'move-top' | 'move-bottom'
 
@@ -172,24 +173,7 @@ function formatTime(date: Date): string {
 }
 
 function getSparklinePoints(code: string): string {
-  const prices = stockStore.getSparkline(code)
-  if (!prices || prices.length < 2) {
-    return ''
-  }
-
-  const width = 120
-  const height = 24
-  const min = Math.min(...prices)
-  const max = Math.max(...prices)
-  const range = max - min || 1
-
-  return prices
-    .map((price, index) => {
-      const x = prices.length === 1 ? width / 2 : (index / (prices.length - 1)) * width
-      const y = height - ((price - min) / range) * height
-      return `${x.toFixed(2)},${y.toFixed(2)}`
-    })
-    .join(' ')
+  return createSparklinePoints(stockStore.getSparkline(code))
 }
 
 function resetSearchState() {

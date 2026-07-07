@@ -223,21 +223,25 @@ const settings = useSettingsStore()
 const fonts = FONT_OPTIONS
 
 async function toggleAlwaysOnTop() {
+  const previousValue = settings.settings.alwaysOnTop
   const newValue = !settings.settings.alwaysOnTop
   settings.updateSettings('alwaysOnTop', newValue)
   try {
     await invoke('set_always_on_top', { enabled: newValue })
   } catch (e) {
+    settings.updateSettings('alwaysOnTop', previousValue)
     console.error('Set always on top error:', e)
   }
 }
 
 async function toggleAutoStart() {
+  const previousValue = settings.settings.autoStart
   const newValue = !settings.settings.autoStart
   settings.updateSettings('autoStart', newValue)
   try {
     await invoke('set_auto_start', { enabled: newValue })
   } catch (e) {
+    settings.updateSettings('autoStart', previousValue)
     console.error('Set auto start error:', e)
   }
 }

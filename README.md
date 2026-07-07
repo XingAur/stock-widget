@@ -81,6 +81,34 @@ npm run dev
 npm run tauri:build
 ```
 
+## 验证与维护
+
+前端纯逻辑使用 Vitest 覆盖，主要包括格式化与图表聚合逻辑：
+
+```bash
+npm run test
+```
+
+前端类型检查与生产构建：
+
+```bash
+npm run build
+```
+
+也可以一次运行前端测试与构建：
+
+```bash
+npm run check
+```
+
+Rust / Tauri 侧的解析逻辑测试与编译检查在 `src-tauri` 目录下运行：
+
+```bash
+cd src-tauri
+cargo test
+cargo check
+```
+
 ## 项目结构
 
 ```text
@@ -90,6 +118,7 @@ stock-widget/
 │  ├─ components/          # 通用 UI 组件
 │  ├─ stores/              # Pinia 状态管理
 │  ├─ styles/              # 全局样式
+│  ├─ utils/               # 格式化与图表纯逻辑
 │  ├─ views/               # 页面视图
 │  ├─ App.vue              # 应用主布局
 │  └─ main.ts              # 前端入口

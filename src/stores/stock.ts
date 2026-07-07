@@ -86,9 +86,7 @@ export const useStockStore = defineStore('stock', () => {
       return
     }
 
-    console.log('addStock: fetching data for', code)
     const data = await fetchStocks([code])
-    console.log('addStock: fetchStocks returned', data)
     if (data.length === 0) {
       console.warn('fetchStocks returned empty for', code)
       return
@@ -98,7 +96,6 @@ export const useStockStore = defineStore('stock', () => {
     const nextMap = new Map(stocks.value)
     nextMap.set(data[0].code, data[0])
     stocks.value = nextMap
-    console.log('Added stock:', code, 'stock count:', stocks.value.size, 'watchList:', watchList.value)
 
     void fetchSparkline(code)
   }

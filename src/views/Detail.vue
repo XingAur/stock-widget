@@ -362,6 +362,17 @@ import {
   type StockDetail
 } from '../api/stock'
 import { useSettingsStore } from '../stores/settings'
+import { aggregateKlines, createMovingAverage, getRange, parseChartDate } from '../utils/chart'
+import {
+  formatAmount,
+  formatMA,
+  formatMarketCap,
+  formatOrderBookVolume,
+  formatPrice,
+  formatSigned,
+  formatSignedPercent,
+  formatVolume
+} from '../utils/format'
 
 type TabKey = 'minute' | 'day' | 'week' | 'month' | 'quarter' | 'year'
 
@@ -666,53 +677,6 @@ const klineChartModel = computed<KlineChartModel | null>(() => {
   }
 })
 
-function formatSigned(value: number): string {
-  const sign = value >= 0 ? '+' : ''
-  return `${sign}${value.toFixed(2)}`
-}
-
-function formatSignedPercent(value: number): string {
-  const sign = value >= 0 ? '+' : ''
-  return `${sign}${value.toFixed(2)}%`
-}
-
-function formatVolume(value: number | undefined): string {
-  if (!value) return '--'
-  if (value >= 100000000) return `${(value / 100000000).toFixed(2)}<span class="stat-unit">亿手</span>`
-  if (value >= 10000) return `${(value / 10000).toFixed(2)}<span class="stat-unit">万手</span>`
-  return `${value.toFixed(0)}<span class="stat-unit">手</span>`
-}
-
-function formatAmount(value: number | undefined): string {
-  if (!value) return '--'
-  if (value >= 100000000) return `${(value / 100000000).toFixed(2)}<span class="stat-unit">亿</span>`
-  if (value >= 10000) return `${(value / 10000).toFixed(2)}<span class="stat-unit">万</span>`
-  return value.toFixed(0)
-}
-
-function formatMarketCap(value: number | undefined): string {
-  if (!value) return '--'
-  if (value >= 1) return `${value.toFixed(2)}<span class="stat-unit">亿</span>`
-  if (value >= 0.01) return `${(value * 10000).toFixed(2)}<span class="stat-unit">万</span>`
-  return value.toFixed(2)
-}
-
-function formatPrice(value: number): string {
-  if (!Number.isFinite(value)) return '--'
-  return value.toFixed(2)
-}
-
-function formatMA(value: number | undefined): string {
-  if (value === undefined || Number.isNaN(value) || !Number.isFinite(value)) return '--'
-  return value.toFixed(2)
-}
-
-function formatOrderBookVolume(value: number | undefined): string {
-  if (!value) return '--'
-  if (value >= 10000) return `${(value / 10000).toFixed(2)}万`
-  return value.toFixed(0)
-}
-
 function createOrderBookRows(levels: OrderLevel[], side: OrderBookSide): OrderBookDisplayRow[] {
   const labels = side === 'sell' ? ['卖5', '卖4', '卖3', '卖2', '卖1'] : ['买1', '买2', '买3', '买4', '买5']
   const orderedLevels = side === 'sell'
@@ -777,18 +741,6 @@ function setKlineViewport(tab: Exclude<TabKey, 'minute'>, pointsLength: number, 
 
 function syncMinuteChartPanelWidth() {
   minuteChartPanelWidth.value = minuteChartPanelRef.value?.clientWidth ?? 0
-}
-
-function getRange(values: number[]): [number, number] {
-  const min = Math.min(...values)
-  const max = Math.max(...values)
-  if (!Number.isFinite(min) || !Number.isFinite(max)) return [0, 1]
-  if (min === max) {
-    const offset = min === 0 ? 1 : Math.abs(min) * 0.02
-    return [min - offset, max + offset]
-  }
-  const padding = (max - min) * 0.08
-  return [min - padding, max + padding]
 }
 
 function getPlotWidth(viewWidth = CHART_WIDTH): number {
@@ -920,83 +872,6 @@ function createYTicks(min: number, max: number, steps = 4, _viewWidth = CHART_WI
     return {
       label: activeTab.value === 'minute' ? formatPrice(value) : formatYAxisLabel(value),
       y: getY(value, min, max)
-    }
-  })
-}
-
-function createMovingAverage(values: number[], period: number): number[] {
-  return values.map((_, index) => {
-    if (index < period - 1) return Number.NaN
-    let sum = 0
-    for (let cursor = index - period + 1; cursor <= index; cursor += 1) {
-      sum += values[cursor]
-    }
-    return sum / period
-  })
-}
-
-function parseChartDate(value: string): Date | null {
-  const normalized = value.includes('T') ? value : `${value}T00:00:00`
-  const parsed = new Date(normalized)
-  return Number.isNaN(parsed.getTime()) ? null : parsed
-}
-
-function getWeekBucket(date: Date): string {
-  const normalized = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()))
-  const weekday = normalized.getUTCDay() || 7
-  normalized.setUTCDate(normalized.getUTCDate() + 4 - weekday)
-  const yearStart = new Date(Date.UTC(normalized.getUTCFullYear(), 0, 1))
-  const week = Math.ceil((((normalized.getTime() - yearStart.getTime()) / 86400000) + 1) / 7)
-  return `${normalized.getUTCFullYear()}-W${week.toString().padStart(2, '0')}`
-}
-
-function getPeriodBucket(time: string, mode: 'week' | 'month' | 'quarter' | 'year'): string {
-  const date = parseChartDate(time)
-  if (!date) return time
-
-  const year = date.getFullYear()
-  const month = date.getMonth() + 1
-
-  switch (mode) {
-    case 'week':
-      return getWeekBucket(date)
-    case 'month':
-      return `${year}-${month.toString().padStart(2, '0')}`
-    case 'quarter':
-      return `${year}-Q${Math.floor((month - 1) / 3) + 1}`
-    case 'year':
-      return `${year}`
-    default:
-      return time
-  }
-}
-
-function aggregateKlines(points: KlinePoint[], mode: 'week' | 'month' | 'quarter' | 'year'): KlinePoint[] {
-  if (points.length === 0) return []
-
-  const buckets = new Map<string, KlinePoint[]>()
-
-  points.forEach((point) => {
-    const bucket = getPeriodBucket(point.time, mode)
-    const group = buckets.get(bucket)
-    if (group) {
-      group.push(point)
-    } else {
-      buckets.set(bucket, [point])
-    }
-  })
-
-  return Array.from(buckets.values()).map((group) => {
-    const first = group[0]
-    const last = group[group.length - 1]
-
-    return {
-      time: last.time,
-      open: first.open,
-      close: last.close,
-      high: Math.max(...group.map((point) => point.high)),
-      low: Math.min(...group.map((point) => point.low)),
-      volume: group.reduce((sum, point) => sum + point.volume, 0)
     }
   })
 }

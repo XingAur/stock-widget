@@ -185,7 +185,7 @@ fn parse_order_book(parts: &[&str]) -> Option<OrderBook> {
 }
 
 fn parse_stock_from_parts(parts: &[&str], code: &str) -> Option<Stock> {
-    if parts.len() < 33 {
+    if parts.len() < 46 {
         return None;
     }
 
@@ -518,6 +518,71 @@ async fn fetch_indices() -> AppResult<Vec<IndexData>> {
             sparkline,
         })
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn converts_plain_codes_to_tencent_codes() {
+        assert_eq!(to_tencent_code("600000"), "sh600000");
+        assert_eq!(to_tencent_code("000001"), "sz000001");
+        assert_eq!(to_tencent_code("sh000001"), "sh000001");
+    }
+
+    #[test]
+    fn rejects_short_stock_payloads() {
+        let parts = vec![""; 35];
+        assert!(parse_stock_from_parts(&parts, "sh600000").is_none());
+    }
+
+    #[test]
+    fn parses_valid_stock_payload_with_order_book() {
+        let mut parts = vec![""; 46];
+        parts[1] = "PF Bank";
+        parts[3] = "10.12";
+        parts[4] = "9.90";
+        parts[5] = "10.00";
+        parts[9] = "10.10";
+        parts[10] = "100";
+        parts[19] = "10.20";
+        parts[20] = "200";
+        parts[30] = "20260630150000";
+        parts[31] = "0.22";
+        parts[32] = "2.22";
+        parts[33] = "10.50";
+        parts[34] = "9.80";
+        parts[35] = "ignored/123456/7890.5";
+        parts[44] = "6500";
+        parts[45] = "3200";
+
+        let stock = parse_stock_from_parts(&parts, "sh600000").expect("valid payload should parse");
+
+        assert_eq!(stock.code, "600000");
+        assert_eq!(stock.name, "PF Bank");
+        assert_eq!(stock.price, 10.12);
+        assert_eq!(stock.volume, 123456);
+        assert_eq!(stock.amount, 7890.5);
+        assert_eq!(stock.total_market_cap, 6500.0);
+        assert_eq!(stock.circulation_market_cap, 3200.0);
+
+        let order_book = stock.order_book.expect("order book should parse");
+        assert_eq!(order_book.bids[0].price, 10.10);
+        assert_eq!(order_book.bids[0].volume, 100);
+        assert_eq!(order_book.asks[0].price, 10.20);
+        assert_eq!(order_book.asks[0].volume, 200);
+    }
+
+    #[test]
+    fn parse_tencent_lines_ignores_malformed_lines() {
+        let items = parse_tencent_lines::<String, _>(
+            "not a quote line\nv_sh600000_without_equals",
+            |code, payload| Some(format!("{code}:{payload}")),
+        );
+
+        assert!(items.is_empty());
+    }
 }
 
 fn main() {

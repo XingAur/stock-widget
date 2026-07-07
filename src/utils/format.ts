@@ -1,0 +1,46 @@
+export function formatSigned(value: number): string {
+  const sign = value >= 0 ? '+' : ''
+  return `${sign}${value.toFixed(2)}`
+}
+
+export function formatSignedPercent(value: number): string {
+  const sign = value >= 0 ? '+' : ''
+  return `${sign}${value.toFixed(2)}%`
+}
+
+export function formatVolume(value: number | undefined): string {
+  if (!value) return '--'
+  if (value >= 100000000) return `${(value / 100000000).toFixed(2)}<span class="stat-unit">亿手</span>`
+  if (value >= 10000) return `${(value / 10000).toFixed(2)}<span class="stat-unit">万手</span>`
+  return `${value.toFixed(0)}<span class="stat-unit">手</span>`
+}
+
+export function formatAmount(value: number | undefined): string {
+  if (!value) return '--'
+  if (value >= 100000000) return `${(value / 100000000).toFixed(2)}<span class="stat-unit">亿</span>`
+  if (value >= 10000) return `${(value / 10000).toFixed(2)}<span class="stat-unit">万</span>`
+  return value.toFixed(0)
+}
+
+export function formatMarketCap(value: number | undefined): string {
+  if (!value) return '--'
+  if (value >= 1) return `${value.toFixed(2)}<span class="stat-unit">亿</span>`
+  if (value >= 0.01) return `${(value * 10000).toFixed(2)}<span class="stat-unit">万</span>`
+  return value.toFixed(2)
+}
+
+export function formatPrice(value: number): string {
+  if (!Number.isFinite(value)) return '--'
+  return value.toFixed(2)
+}
+
+export function formatMA(value: number | undefined): string {
+  if (value === undefined || Number.isNaN(value) || !Number.isFinite(value)) return '--'
+  return value.toFixed(2)
+}
+
+export function formatOrderBookVolume(value: number | undefined): string {
+  if (!value) return '--'
+  if (value >= 10000) return `${(value / 10000).toFixed(2)}万`
+  return value.toFixed(0)
+}

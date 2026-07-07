@@ -163,6 +163,11 @@ watch(() => [...stockStore.watchList], (watchList) => {
 
 onMounted(async () => {
   settingsStore.load()
+  try {
+    await invoke('set_always_on_top', { enabled: settingsStore.settings.alwaysOnTop })
+  } catch (error) {
+    console.error('Apply always on top setting error:', error)
+  }
   await stockStore.init()
 })
 </script>
