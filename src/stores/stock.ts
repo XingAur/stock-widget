@@ -4,14 +4,17 @@ import {
   fetchFunds,
   fetchMinuteData,
   fetchStocks,
+  searchFunds,
   type AssetType,
   type FundQuote,
   type Stock
 } from '../api/stock'
+import { applyFundDisplayName, findExactFundSearchResult } from '../utils/funds'
 import { moveItem } from '../utils/list'
 
 const WATCHLIST_STORAGE_KEY = 'watchList'
 const FUND_WATCHLIST_STORAGE_KEY = 'fundWatchList'
+const FUND_NAMES_STORAGE_KEY = 'fundNames'
 const ACTIVE_ASSET_TYPE_STORAGE_KEY = 'activeAssetType'
 
 export interface SparklineData {
@@ -41,10 +44,33 @@ function readStoredAssetType(): AssetType {
   return saved === 'fund' ? 'fund' : 'stock'
 }
 
+function readStoredRecord(key: string): Record<string, string> {
+  const saved = localStorage.getItem(key)
+  if (!saved) {
+    return {}
+  }
+
+  try {
+    const parsed = JSON.parse(saved)
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return {}
+    }
+
+    return Object.fromEntries(
+      Object.entries(parsed)
+        .filter((entry): entry is [string, string] => typeof entry[0] === 'string' && typeof entry[1] === 'string')
+    )
+  } catch (error) {
+    console.error(`Load ${key} error:`, error)
+    return {}
+  }
+}
+
 export const useStockStore = defineStore('stock', () => {
   const activeAssetType = ref<AssetType>('stock')
   const watchList = ref<string[]>([])
   const fundWatchList = ref<string[]>([])
+  const fundNames = ref<Record<string, string>>({})
   const stocks = ref<Map<string, Stock>>(new Map())
   const funds = ref<Map<string, FundQuote>>(new Map())
   const sparklines = ref<Map<string, number[]>>(new Map())
@@ -64,6 +90,10 @@ export const useStockStore = defineStore('stock', () => {
     localStorage.setItem(FUND_WATCHLIST_STORAGE_KEY, JSON.stringify(nextWatchList))
   }, { deep: true })
 
+  watch(fundNames, (nextNames) => {
+    localStorage.setItem(FUND_NAMES_STORAGE_KEY, JSON.stringify(nextNames))
+  }, { deep: true })
+
   watch(activeAssetType, (nextAssetType) => {
     localStorage.setItem(ACTIVE_ASSET_TYPE_STORAGE_KEY, nextAssetType)
   })
@@ -71,6 +101,7 @@ export const useStockStore = defineStore('stock', () => {
   async function init() {
     watchList.value = readStoredList(WATCHLIST_STORAGE_KEY)
     fundWatchList.value = readStoredList(FUND_WATCHLIST_STORAGE_KEY)
+    fundNames.value = readStoredRecord(FUND_NAMES_STORAGE_KEY)
     activeAssetType.value = readStoredAssetType()
 
     await refreshAll()
@@ -123,7 +154,10 @@ export const useStockStore = defineStore('stock', () => {
       )
 
       data.forEach((fund) => {
-        nextFunds.set(fund.code, fund)
+        const cachedName = fundNames.value[fund.code]
+        const cachedFund = cachedName ? { ...fund, name: cachedName } : undefined
+        const resolvedFund = applyFundDisplayName(fund, undefined, nextFunds.get(fund.code) ?? cachedFund)
+        nextFunds.set(fund.code, resolvedFund)
       })
 
       funds.value = nextFunds
@@ -197,17 +231,28 @@ export const useStockStore = defineStore('stock', () => {
   }
 
   async function addFund(code: string) {
-    if (fundWatchList.value.includes(code)) {
+    const normalizedCode = code.trim()
+    if (fundWatchList.value.includes(normalizedCode)) {
       return
     }
 
-    const data = await fetchFunds([code])
+    const matchedFund = findExactFundSearchResult(await searchFunds(normalizedCode), normalizedCode)
+    if (!matchedFund) {
+      console.warn('searchFunds did not return a supported OTC fund for', normalizedCode)
+      return
+    }
+
+    const data = await fetchFunds([matchedFund.code])
     if (data.length === 0) {
-      console.warn('fetchFunds returned empty for', code)
+      console.warn('fetchFunds returned empty for', matchedFund.code)
       return
     }
 
-    const fund = data[0]
+    const fund = applyFundDisplayName(data[0], matchedFund)
+    fundNames.value = {
+      ...fundNames.value,
+      [fund.code]: fund.name
+    }
     fundWatchList.value = [...fundWatchList.value, fund.code]
     const nextMap = new Map(funds.value)
     nextMap.set(fund.code, fund)
@@ -237,6 +282,9 @@ export const useStockStore = defineStore('stock', () => {
     }
 
     fundWatchList.value.splice(index, 1)
+    const nextFundNames = { ...fundNames.value }
+    delete nextFundNames[code]
+    fundNames.value = nextFundNames
     const nextFunds = new Map(funds.value)
     nextFunds.delete(code)
     funds.value = nextFunds
@@ -322,6 +370,7 @@ export const useStockStore = defineStore('stock', () => {
     activeAssetType,
     watchList,
     fundWatchList,
+    fundNames,
     stocks,
     funds,
     sparklines,

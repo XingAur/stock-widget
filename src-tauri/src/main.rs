@@ -178,6 +178,62 @@ fn json_string(value: &Value, key: &str) -> String {
         .to_string()
 }
 
+fn is_six_digit_code(code: &str) -> bool {
+    code.len() == 6 && code.bytes().all(|byte| byte.is_ascii_digit())
+}
+
+fn is_category_700(value: Option<&Value>) -> bool {
+    match value {
+        Some(item) => item
+            .as_i64()
+            .or_else(|| item.as_str().and_then(|text| text.parse::<i64>().ok()))
+            == Some(700),
+        None => true,
+    }
+}
+
+fn is_buyable_fund(value: Option<&Value>) -> bool {
+    match value {
+        Some(item) => item
+            .as_i64()
+            .or_else(|| item.as_str().and_then(|text| text.parse::<i64>().ok()))
+            == Some(1),
+        None => true,
+    }
+}
+
+fn is_unsupported_exchange_traded_fund_name(name: &str) -> bool {
+    let upper_name = name.to_ascii_uppercase();
+    let is_etf = upper_name.contains("ETF");
+    let is_etf_link = upper_name.contains("ETF LINK") || name.contains("\u{8054}\u{63a5}");
+
+    upper_name.contains("LOF")
+        || name.contains("\u{573a}\u{5185}")
+        || name.contains("\u{5c01}\u{95ed}")
+        || (is_etf && !is_etf_link)
+}
+
+fn is_supported_fund_search_item(item: &Value) -> bool {
+    let code = json_string(item, "CODE");
+    if !is_six_digit_code(&code) || !is_category_700(item.get("CATEGORY")) {
+        return false;
+    }
+
+    let Some(base) = item.get("FundBaseInfo") else {
+        return false;
+    };
+    if !base.is_object() || !is_buyable_fund(base.get("ISBUY")) {
+        return false;
+    }
+
+    let name = json_string(item, "NAME");
+    let short_name = json_string(base, "SHORTNAME");
+
+    !name.is_empty()
+        && !is_unsupported_exchange_traded_fund_name(&name)
+        && !is_unsupported_exchange_traded_fund_name(&short_name)
+}
+
 fn percent_encode(value: &str) -> String {
     value
         .as_bytes()
@@ -210,7 +266,10 @@ fn parse_fund_quote_jsonp(text: &str) -> Option<FundQuote> {
     let code = json_string(&json, "fundcode");
     let name = json_string(&json, "name");
 
-    if code.is_empty() || name.is_empty() {
+    if !is_six_digit_code(&code)
+        || name.is_empty()
+        || is_unsupported_exchange_traded_fund_name(&name)
+    {
         return None;
     }
 
@@ -236,6 +295,10 @@ fn parse_fund_search_results(text: &str) -> Vec<FundSearchResult> {
     let mut results = Vec::new();
 
     for item in items {
+        if !is_supported_fund_search_item(item) {
+            continue;
+        }
+
         let code = json_string(item, "CODE");
         let name = json_string(item, "NAME");
         if code.is_empty() || name.is_empty() {
@@ -797,6 +860,42 @@ mod tests {
                 fund_type: "股票型".to_string(),
             }]
         );
+    }
+
+    #[test]
+    fn fund_search_results_only_keep_otc_open_funds() {
+        let results = parse_fund_search_results(
+            r#"{"ErrCode":0,"Datas":[
+                {"CODE":"014855","NAME":"Open Fund C","CATEGORY":700,"CATEGORYDESC":"Fund","FundBaseInfo":{"FTYPE":"Index","ISBUY":"1"}},
+                {"CODE":"510300","NAME":"CSI 300 ETF","CATEGORY":700,"CATEGORYDESC":"Fund","FundBaseInfo":{"FTYPE":"Index","ISBUY":""}},
+                {"CODE":"160641","NAME":"Bond LOF","CATEGORY":700,"CATEGORYDESC":"Fund","FundBaseInfo":{"FTYPE":"Bond","ISBUY":"1"}},
+                {"CODE":"12345","NAME":"Bad Code","CATEGORY":700,"CATEGORYDESC":"Fund","FundBaseInfo":{"FTYPE":"Mixed","ISBUY":"1"}},
+                {"CODE":"024424","NAME":"No Base","CATEGORY":700,"CATEGORYDESC":"Fund"},
+                {"CODE":"600000","NAME":"Stock","CATEGORY":11,"CATEGORYDESC":"Stock","FundBaseInfo":{"FTYPE":"Stock","ISBUY":"1"}}
+            ]}"#,
+        );
+
+        assert_eq!(
+            results,
+            vec![FundSearchResult {
+                code: "014855".to_string(),
+                name: "Open Fund C".to_string(),
+                fund_type: "Index".to_string(),
+            }]
+        );
+    }
+
+    #[test]
+    fn fund_quote_parser_rejects_exchange_traded_fund_names() {
+        assert!(parse_fund_quote_jsonp(
+            r#"jsonpgz({"fundcode":"510300","name":"CSI 300 ETF","jzrq":"2026-07-06","dwjz":"4.8311","gsz":"4.9000","gszzl":"1.43","gztime":"2026-07-07 15:00"});"#,
+        )
+        .is_none());
+
+        assert!(parse_fund_quote_jsonp(
+            r#"jsonpgz({"fundcode":"160641","name":"Bond LOF","jzrq":"2026-07-06","dwjz":"108.5896","gsz":"108.6000","gszzl":"0.01","gztime":"2026-07-07 15:00"});"#,
+        )
+        .is_none());
     }
 }
 
