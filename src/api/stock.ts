@@ -56,6 +56,24 @@ export interface SearchResult {
   market: string
 }
 
+export type AssetType = 'stock' | 'fund'
+
+export interface FundQuote {
+  code: string
+  name: string
+  nav?: number | null
+  navDate: string
+  estimateNav?: number | null
+  estimateChangePercent?: number | null
+  estimateTime: string
+}
+
+export interface FundSearchResult {
+  code: string
+  name: string
+  type: string
+}
+
 export interface IndexData {
   code: string
   name: string
@@ -89,6 +107,22 @@ export async function searchStock(keyword: string): Promise<SearchResult[]> {
   }
 
   return invokeSafe('search_stock', { keyword }, [])
+}
+
+export async function searchFunds(keyword: string): Promise<FundSearchResult[]> {
+  if (!keyword.trim()) {
+    return []
+  }
+
+  return invokeSafe('search_funds', { keyword }, [])
+}
+
+export async function fetchFunds(codes: string[]): Promise<FundQuote[]> {
+  if (codes.length === 0) {
+    return []
+  }
+
+  return invokeSafe('fetch_funds', { codes }, [])
 }
 
 export async function fetchMinuteData(code: string): Promise<MinutePoint[]> {

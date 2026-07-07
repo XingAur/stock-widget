@@ -2,6 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{
     menu::{Menu, MenuItem},
     AppHandle, Manager, WebviewWindow,
@@ -34,6 +35,26 @@ struct SearchResult {
     code: String,
     name: String,
     market: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+struct FundQuote {
+    code: String,
+    name: String,
+    nav: Option<f64>,
+    nav_date: String,
+    estimate_nav: Option<f64>,
+    estimate_change_percent: Option<f64>,
+    estimate_time: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq)]
+struct FundSearchResult {
+    code: String,
+    name: String,
+    #[serde(rename = "type")]
+    fund_type: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -82,28 +103,30 @@ struct IndexData {
 }
 
 #[tauri::command]
-fn close_window(window: WebviewWindow) {
-    let _ = window.hide();
+fn close_window(window: WebviewWindow) -> AppResult<()> {
+    window.hide().map_err(|error| error.to_string())
 }
 
 #[tauri::command]
-fn minimize_window(window: WebviewWindow) {
-    let _ = window.minimize();
+fn minimize_window(window: WebviewWindow) -> AppResult<()> {
+    window.minimize().map_err(|error| error.to_string())
 }
 
 #[tauri::command]
-fn minimize_to_tray(window: WebviewWindow) {
-    let _ = window.hide();
+fn minimize_to_tray(window: WebviewWindow) -> AppResult<()> {
+    window.hide().map_err(|error| error.to_string())
 }
 
 #[tauri::command]
-fn set_always_on_top(window: WebviewWindow, enabled: bool) {
-    let _ = window.set_always_on_top(enabled);
+fn set_always_on_top(window: WebviewWindow, enabled: bool) -> AppResult<()> {
+    window
+        .set_always_on_top(enabled)
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
-fn start_drag(window: WebviewWindow) {
-    let _ = window.start_dragging();
+fn start_drag(window: WebviewWindow) -> AppResult<()> {
+    window.start_dragging().map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -137,6 +160,105 @@ fn parse_f64(value: Option<&str>) -> f64 {
 
 fn parse_i64(value: Option<&str>) -> i64 {
     value.and_then(|item| item.parse::<i64>().ok()).unwrap_or(0)
+}
+
+fn parse_optional_json_f64(value: Option<&Value>) -> Option<f64> {
+    value.and_then(|item| {
+        item.as_f64()
+            .or_else(|| item.as_str().and_then(|text| text.parse::<f64>().ok()))
+    })
+}
+
+fn json_string(value: &Value, key: &str) -> String {
+    value
+        .get(key)
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .trim()
+        .to_string()
+}
+
+fn percent_encode(value: &str) -> String {
+    value
+        .as_bytes()
+        .iter()
+        .map(|byte| match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                (*byte as char).to_string()
+            }
+            _ => format!("%{byte:02X}"),
+        })
+        .collect()
+}
+
+fn extract_jsonp_payload(text: &str) -> Option<&str> {
+    let trimmed = text.trim();
+    let start = trimmed.find('(')?;
+    let end = trimmed.rfind(')')?;
+
+    (start < end).then_some(trimmed[start + 1..end].trim())
+}
+
+fn parse_json_or_jsonp(text: &str) -> Option<Value> {
+    serde_json::from_str::<Value>(text.trim())
+        .ok()
+        .or_else(|| extract_jsonp_payload(text).and_then(|payload| serde_json::from_str::<Value>(payload).ok()))
+}
+
+fn parse_fund_quote_jsonp(text: &str) -> Option<FundQuote> {
+    let json = parse_json_or_jsonp(text)?;
+    let code = json_string(&json, "fundcode");
+    let name = json_string(&json, "name");
+
+    if code.is_empty() || name.is_empty() {
+        return None;
+    }
+
+    Some(FundQuote {
+        code,
+        name,
+        nav: parse_optional_json_f64(json.get("dwjz")),
+        nav_date: json_string(&json, "jzrq"),
+        estimate_nav: parse_optional_json_f64(json.get("gsz")),
+        estimate_change_percent: parse_optional_json_f64(json.get("gszzl")),
+        estimate_time: json_string(&json, "gztime"),
+    })
+}
+
+fn parse_fund_search_results(text: &str) -> Vec<FundSearchResult> {
+    let Some(json) = parse_json_or_jsonp(text) else {
+        return Vec::new();
+    };
+    let Some(items) = json.get("Datas").and_then(Value::as_array) else {
+        return Vec::new();
+    };
+
+    let mut results = Vec::new();
+
+    for item in items {
+        let code = json_string(item, "CODE");
+        let name = json_string(item, "NAME");
+        if code.is_empty() || name.is_empty() {
+            continue;
+        }
+
+        let fund_type = item
+            .get("FundBaseInfo")
+            .and_then(|base| base.get("FTYPE"))
+            .and_then(Value::as_str)
+            .or_else(|| item.get("CATEGORYDESC").and_then(Value::as_str))
+            .unwrap_or("基金")
+            .to_string();
+
+        results.push(FundSearchResult {
+            code,
+            name,
+            fund_type,
+        });
+    }
+
+    results.truncate(10);
+    results
 }
 
 fn format_minute_time(value: &str) -> String {
@@ -407,6 +529,48 @@ async fn search_stock(keyword: String) -> AppResult<Vec<SearchResult>> {
 }
 
 #[tauri::command]
+async fn search_funds(keyword: String) -> AppResult<Vec<FundSearchResult>> {
+    let keyword = keyword.trim();
+    if keyword.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let url = format!(
+        "https://fundsuggest.eastmoney.com/FundSearch/api/FundSearchAPI.ashx?m=9&key={}",
+        percent_encode(keyword)
+    );
+    let text = fetch_text(&url, Some("https://fund.eastmoney.com/")).await?;
+
+    Ok(parse_fund_search_results(&text))
+}
+
+#[tauri::command]
+async fn fetch_funds(codes: Vec<String>) -> AppResult<Vec<FundQuote>> {
+    if codes.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_millis())
+        .unwrap_or_default();
+    let mut funds = Vec::new();
+
+    for code in codes.iter().map(|code| code.trim()).filter(|code| !code.is_empty()) {
+        let url = format!("https://fundgz.1234567.com.cn/js/{code}.js?rt={timestamp}");
+        let Ok(text) = fetch_text(&url, Some("https://fund.eastmoney.com/")).await else {
+            continue;
+        };
+
+        if let Some(fund) = parse_fund_quote_jsonp(&text) {
+            funds.push(fund);
+        }
+    }
+
+    Ok(funds)
+}
+
+#[tauri::command]
 async fn fetch_minute_data(code: String) -> AppResult<Vec<MinutePoint>> {
     let tencent_code = to_tencent_code(&code);
     let url = format!("https://ifzq.gtimg.cn/appstock/app/minute/query?code={tencent_code}");
@@ -583,6 +747,57 @@ mod tests {
 
         assert!(items.is_empty());
     }
+
+    #[test]
+    fn parses_fund_quote_jsonp() {
+        let quote = parse_fund_quote_jsonp(
+            r#"jsonpgz({"fundcode":"001186","name":"富国文体健康股票A","jzrq":"2026-07-06","dwjz":"2.4390","gsz":"2.4068","gszzl":"-1.32","gztime":"2026-07-07 15:00"});"#,
+        )
+        .expect("valid fund quote should parse");
+
+        assert_eq!(quote.code, "001186");
+        assert_eq!(quote.name, "富国文体健康股票A");
+        assert_eq!(quote.nav, Some(2.4390));
+        assert_eq!(quote.estimate_nav, Some(2.4068));
+        assert_eq!(quote.estimate_change_percent, Some(-1.32));
+        assert_eq!(quote.estimate_time, "2026-07-07 15:00");
+    }
+
+    #[test]
+    fn fund_quote_parser_keeps_safe_values_for_bad_numbers() {
+        let quote = parse_fund_quote_jsonp(
+            r#"jsonpgz({"fundcode":"001186","name":"Fund","jzrq":"","dwjz":"","gsz":"bad","gszzl":null,"gztime":""});"#,
+        )
+        .expect("fund quote with bad optional numbers should still parse");
+
+        assert_eq!(quote.nav, None);
+        assert_eq!(quote.estimate_nav, None);
+        assert_eq!(quote.estimate_change_percent, None);
+        assert_eq!(quote.nav_date, "");
+    }
+
+    #[test]
+    fn fund_quote_parser_rejects_empty_payloads() {
+        assert!(parse_fund_quote_jsonp("").is_none());
+        assert!(parse_fund_quote_jsonp("jsonpgz({});").is_none());
+        assert!(parse_fund_quote_jsonp("not-json").is_none());
+    }
+
+    #[test]
+    fn parses_fund_search_results() {
+        let results = parse_fund_search_results(
+            r#"{"ErrCode":0,"Datas":[{"CODE":"001186","NAME":"富国文体健康股票A","CATEGORYDESC":"基金","FundBaseInfo":{"FTYPE":"股票型"}},{"CODE":"","NAME":"bad"}]}"#,
+        );
+
+        assert_eq!(
+            results,
+            vec![FundSearchResult {
+                code: "001186".to_string(),
+                name: "富国文体健康股票A".to_string(),
+                fund_type: "股票型".to_string(),
+            }]
+        );
+    }
 }
 
 fn main() {
@@ -622,6 +837,8 @@ fn main() {
             set_auto_start,
             fetch_stocks,
             search_stock,
+            search_funds,
+            fetch_funds,
             fetch_minute_data,
             fetch_kline_data,
             fetch_indices,

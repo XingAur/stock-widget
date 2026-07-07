@@ -7,6 +7,7 @@
         <HomeView
           :selected-code="selectedCode"
           @select="showStockDetail"
+          @asset-type-change="handleAssetTypeChange"
         />
       </aside>
 
@@ -32,6 +33,7 @@ import TitleBar from './components/TitleBar.vue'
 import HomeView from './views/Home.vue'
 import { useSettingsStore } from './stores/settings'
 import { useStockStore } from './stores/stock'
+import type { AssetType } from './api/stock'
 
 const DetailView = defineAsyncComponent(() => import('./views/Detail.vue'))
 const SettingsView = defineAsyncComponent(() => import('./views/Settings.vue'))
@@ -50,6 +52,12 @@ const hasDetail = computed(() => Boolean(selectedCode.value))
 
 function showStockDetail(code: string) {
   void openDetail(code)
+}
+
+function handleAssetTypeChange(assetType: AssetType) {
+  if (assetType === 'fund' && hasDetail.value) {
+    void closeDetail()
+  }
 }
 
 async function determineDetailPosition(): Promise<'left' | 'right'> {

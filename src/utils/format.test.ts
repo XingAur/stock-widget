@@ -5,8 +5,11 @@ import {
   formatMarketCap,
   formatOrderBookVolume,
   formatPrice,
+  formatOptionalDate,
+  formatOptionalNumber,
   formatSigned,
   formatSignedPercent,
+  formatSignedOptionalPercent,
   formatVolume
 } from './format'
 
@@ -32,5 +35,15 @@ describe('format helpers', () => {
 
   it('formats order book volume in lots', () => {
     expect(formatOrderBookVolume(2300)).toBe('2300')
+  })
+
+  it('formats optional fund values safely', () => {
+    expect(formatOptionalNumber(1.23456, 4)).toBe('1.2346')
+    expect(formatOptionalNumber(undefined, 4)).toBe('--')
+    expect(formatOptionalNumber(Number.NaN, 4)).toBe('--')
+    expect(formatSignedOptionalPercent(2.345)).toBe('+2.35%')
+    expect(formatSignedOptionalPercent(undefined)).toBe('--')
+    expect(formatOptionalDate('2026-07-07')).toBe('2026-07-07')
+    expect(formatOptionalDate('')).toBe('--')
   })
 })

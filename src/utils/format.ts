@@ -3,6 +3,26 @@ export function formatSigned(value: number): string {
   return `${sign}${value.toFixed(2)}`
 }
 
+export function formatOptionalNumber(value: number | undefined | null, fractionDigits = 2): string {
+  if (value === undefined || value === null || !Number.isFinite(value)) {
+    return '--'
+  }
+
+  return value.toFixed(fractionDigits)
+}
+
+export function formatSignedOptionalPercent(value: number | undefined | null): string {
+  if (value === undefined || value === null || !Number.isFinite(value)) {
+    return '--'
+  }
+
+  return formatSignedPercent(value)
+}
+
+export function formatOptionalDate(value: string | undefined | null): string {
+  return value?.trim() || '--'
+}
+
 export function formatSignedPercent(value: number): string {
   const sign = value >= 0 ? '+' : ''
   return `${sign}${value.toFixed(2)}%`
