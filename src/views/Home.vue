@@ -110,14 +110,6 @@
       </template>
 
       <template v-else>
-        <div v-if="stockStore.fundList.length > 0" class="fund-list-header">
-          <span></span>
-          <div class="fund-list-sort">
-            <span>当日涨幅</span>
-            <small>{{ fundHeaderDate }}</small>
-          </div>
-        </div>
-
         <div
           v-for="(fund, index) in stockStore.fundList"
           :key="fund.code"
@@ -133,9 +125,9 @@
           data-drag-card="true"
           data-asset-type="fund"
           :data-index="index"
-          @click.stop="handleSelectFund(fund.code)"
-          @keydown.enter.prevent="handleSelectFund(fund.code)"
-          @keydown.space.prevent="handleSelectFund(fund.code)"
+          @click.stop="handleSelectFund"
+          @keydown.enter.prevent="handleSelectFund"
+          @keydown.space.prevent="handleSelectFund"
           @mouseenter="handleFundHover(fund.code)"
           @mouseleave="handleFundLeave(fund.code)"
           @pointerenter="handleDragEnter('fund', index)"
@@ -156,7 +148,6 @@
           <div class="fund-main-list">
             <div class="fund-title">{{ fund.name }}</div>
             <div class="fund-code-line">
-              <span class="fund-status">已更新</span>
               <span class="stock-code">{{ fund.code }}</span>
             </div>
           </div>
@@ -317,7 +308,6 @@ import {
   formatOptionalNumber,
   formatSignedOptionalPercent
 } from '../utils/format'
-import { formatFundHeaderDate } from '../utils/funds'
 import {
   calculateFundPositionMetrics,
   calculateStockPositionMetrics,
@@ -378,7 +368,6 @@ const listRef = ref<HTMLElement | null>(null)
 const searchQuery = ref('')
 const searchResults = ref<SearchItem[]>([])
 const showSearch = ref(false)
-const selectedFundCode = ref('')
 const hoveredStockCode = ref('')
 const hoveredFundCode = ref('')
 const dragState = ref<DragState | null>(null)
@@ -413,7 +402,6 @@ const activeListLength = computed(() =>
     ? stockStore.stockList.length
     : stockStore.fundList.length
 )
-const fundHeaderDate = computed(() => formatFundHeaderDate(stockStore.fundList))
 
 const emptyTitle = computed(() => stockStore.activeAssetType === 'stock' ? '暂无股票' : '暂无基金')
 const emptyHint = computed(() => stockStore.activeAssetType === 'stock' ? '从下方搜索框添加股票' : '从下方搜索框添加基金')
@@ -566,7 +554,7 @@ function isStockCardSelected(code: string): boolean {
 }
 
 function isFundCardSelected(code: string): boolean {
-  return code === selectedFundCode.value || code === hoveredFundCode.value
+  return code === hoveredFundCode.value
 }
 
 function hasStockPositionDetail(stock: Stock): boolean {
@@ -618,10 +606,6 @@ function openPositionDialog(assetType: AssetType, code: string) {
   const stockPosition = stockStore.stockPositions[code]
   const fundPosition = stockStore.fundPositions[code]
 
-  if (assetType === 'fund') {
-    selectedFundCode.value = code
-  }
-
   positionDialog.value = {
     visible: true,
     assetType,
@@ -658,7 +642,6 @@ function savePositionDialog() {
       return
     }
 
-    selectedFundCode.value = dialog.code
     stockStore.setFundPosition(dialog.code, { holdingAmount, profit })
   }
 
@@ -675,12 +658,11 @@ function clearPositionDialog() {
   closePositionDialog()
 }
 
-function handleSelectFund(code: string) {
+function handleSelectFund() {
   if (suppressNextCardClick.value || dragState.value?.active) {
     return
   }
 
-  selectedFundCode.value = code
   closeContextMenu()
 }
 
@@ -985,16 +967,12 @@ onUnmounted(() => {
 .stock-card:hover .remove-btn,.stock-card:focus-within .remove-btn,.stock-card.selected .remove-btn{opacity:1}
 .stock-card:hover .remove-btn,.stock-card:focus-within .remove-btn,.stock-card.selected .remove-btn{pointer-events:auto}
 .remove-btn:hover{background:rgba(239,68,68,.22)}
-.fund-list-header{display:flex;align-items:flex-end;justify-content:flex-end;padding:0 40px 0 35px;margin:-1px 0 -2px;color:var(--text-muted)}
-.fund-list-sort{display:flex;flex-direction:column;align-items:flex-end;gap:2px;min-width:72px;font-size:12px;font-weight:800;line-height:1;color:#99a4c2}
-.fund-list-sort small{font-size:10px;font-weight:700;color:rgba(153,164,194,.78)}
 .fund-card{align-items:center;min-height:58px;cursor:default}
 .fund-card:hover{transform:none}
 .fund-card.with-position{align-items:flex-start;min-height:86px}
 .fund-main-list{min-width:0;flex:1;display:flex;flex-direction:column;gap:6px;padding-top:1px}
 .fund-title{max-width:176px;font-size:13px;font-weight:800;line-height:1.12;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .fund-code-line{display:flex;align-items:center;gap:6px;min-width:0}
-.fund-status{display:inline-flex;align-items:center;height:16px;padding:0 4px;border:1px solid rgba(93,168,255,.55);border-radius:4px;color:#8fbdff;background:rgba(45,124,246,.10);font-size:10px;font-weight:700;line-height:1}
 .fund-quote-side{margin-left:auto;display:flex;flex-direction:column;align-items:flex-end;gap:5px;min-width:72px;flex-shrink:0}
 .fund-change-value{font-size:17px;font-weight:900;line-height:1;letter-spacing:0}
 .fund-change-value.up{color:#ff6868}.fund-change-value.down{color:#32ce7b}

@@ -17,11 +17,3 @@ export function applyFundDisplayName(
     name
   }
 }
-
-export function formatFundHeaderDate(funds: FundQuote[]): string {
-  const source = funds.find((fund) => fund.estimateTime || fund.navDate)
-  const dateText = source?.estimateTime || source?.navDate || ''
-  const match = dateText.match(/\d{4}-(\d{2})-(\d{2})/)
-
-  return match ? `${match[1]}-${match[2]}` : '--'
-}
