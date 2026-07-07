@@ -33,7 +33,8 @@
           :class="{
             selected: stock.code === props.selectedCode,
             dragging: isDragging('stock', stock.code),
-            'drag-over': isDragOver('stock', index)
+            'drag-over': isDragOver('stock', index),
+            'with-position': hasStockPositionDetail(stock)
           }"
           role="button"
           tabindex="0"
@@ -82,6 +83,16 @@
             <div class="stock-price">{{ stock.price.toFixed(2) }}</div>
           </div>
 
+          <div
+            v-if="hasStockPositionDetail(stock)"
+            class="position-strip"
+            :class="getPositionToneClass(getStockPositionMetrics(stock)?.profit)"
+          >
+            <span>成本 {{ formatPositionMoney(getStockPositionMetrics(stock)?.costAmount) }}</span>
+            <span>市值 {{ formatPositionMoney(getStockPositionMetrics(stock)?.currentValue) }}</span>
+            <strong>盈亏 {{ formatPositionMoney(getStockPositionMetrics(stock)?.profit) }} / {{ formatPositionPercent(getStockPositionMetrics(stock)?.profitPercent) }}</strong>
+          </div>
+
           <button
             class="remove-btn"
             type="button"
@@ -102,12 +113,19 @@
           :key="fund.code"
           class="stock-card fund-card"
           :class="{
+            selected: fund.code === selectedFundCode,
             dragging: isDragging('fund', fund.code),
-            'drag-over': isDragOver('fund', index)
+            'drag-over': isDragOver('fund', index),
+            'with-position': hasFundPositionDetail(fund)
           }"
+          role="button"
+          tabindex="0"
           data-drag-card="true"
           data-asset-type="fund"
           :data-index="index"
+          @click.stop="handleSelectFund(fund.code)"
+          @keydown.enter.prevent="handleSelectFund(fund.code)"
+          @keydown.space.prevent="handleSelectFund(fund.code)"
           @pointerenter="handleDragEnter('fund', index)"
           @contextmenu.prevent.stop="openContextMenu($event, 'fund', fund.code, index)"
         >
@@ -154,6 +172,16 @@
             >
               {{ formatSignedOptionalPercent(fund.estimateChangePercent) }}
             </div>
+          </div>
+
+          <div
+            v-if="hasFundPositionDetail(fund)"
+            class="position-strip"
+            :class="getPositionToneClass(getFundPositionMetrics(fund)?.profit)"
+          >
+            <span>持有 {{ formatPositionMoney(getFundPositionMetrics(fund)?.currentValue) }}</span>
+            <span>成本 {{ formatPositionMoney(getFundPositionMetrics(fund)?.costAmount) }}</span>
+            <strong>盈亏 {{ formatPositionMoney(getFundPositionMetrics(fund)?.profit) }} / {{ formatPositionPercent(getFundPositionMetrics(fund)?.profitPercent) }}</strong>
           </div>
 
           <button
@@ -213,6 +241,44 @@
       </div>
     </div>
 
+    <div v-if="positionDialog.visible" class="position-overlay" @click.self="closePositionDialog">
+      <form class="position-dialog" @submit.prevent="savePositionDialog" @click.stop>
+        <header class="position-dialog-header">
+          <h3>{{ positionDialog.assetType === 'stock' ? '录入股票持仓' : '录入基金持有' }}</h3>
+          <button class="position-close-btn" type="button" title="关闭" @click="closePositionDialog">×</button>
+        </header>
+
+        <div v-if="positionDialog.assetType === 'stock'" class="position-fields">
+          <label class="position-field">
+            <span>成本价</span>
+            <input v-model="positionDialog.stockCostPrice" type="number" min="0" step="0.001" inputmode="decimal" />
+          </label>
+          <label class="position-field">
+            <span>股数</span>
+            <input v-model="positionDialog.stockShares" type="number" min="0" step="1" inputmode="decimal" />
+          </label>
+        </div>
+
+        <div v-else class="position-fields">
+          <label class="position-field">
+            <span>持有金额</span>
+            <input v-model="positionDialog.fundHoldingAmount" type="number" min="0" step="0.01" inputmode="decimal" />
+          </label>
+          <label class="position-field">
+            <span>收益</span>
+            <input v-model="positionDialog.fundProfit" type="number" step="0.01" inputmode="decimal" />
+          </label>
+        </div>
+
+        <p v-if="positionDialog.error" class="position-error">{{ positionDialog.error }}</p>
+
+        <footer class="position-dialog-actions">
+          <button class="position-secondary-btn" type="button" @click="clearPositionDialog">清除</button>
+          <button class="position-primary-btn" type="submit">保存</button>
+        </footer>
+      </form>
+    </div>
+
     <div
       v-if="contextMenu.visible"
       class="context-menu"
@@ -239,8 +305,10 @@ import {
   searchFunds,
   searchStock,
   type AssetType,
+  type FundQuote,
   type FundSearchResult,
-  type SearchResult
+  type SearchResult,
+  type Stock
 } from '../api/stock'
 import { useSettingsStore } from '../stores/settings'
 import { useStockStore } from '../stores/stock'
@@ -250,8 +318,14 @@ import {
   formatOptionalNumber,
   formatSignedOptionalPercent
 } from '../utils/format'
+import {
+  calculateFundPositionMetrics,
+  calculateStockPositionMetrics,
+  getProfitTone,
+  type PositionMetrics
+} from '../utils/positions'
 
-type ContextActionKey = 'move-up' | 'move-down' | 'move-top' | 'move-bottom'
+type ContextActionKey = 'edit-position' | 'move-up' | 'move-down' | 'move-top' | 'move-bottom'
 type SearchItem = SearchResult | FundSearchResult
 
 interface ContextMenuState {
@@ -274,6 +348,17 @@ interface DragState {
   active: boolean
 }
 
+interface PositionDialogState {
+  visible: boolean
+  assetType: AssetType
+  code: string
+  stockCostPrice: string
+  stockShares: string
+  fundHoldingAmount: string
+  fundProfit: string
+  error: string
+}
+
 const MENU_WIDTH = 132
 const MENU_ITEM_HEIGHT = 34
 const MENU_OFFSET = 8
@@ -293,6 +378,7 @@ const listRef = ref<HTMLElement | null>(null)
 const searchQuery = ref('')
 const searchResults = ref<SearchItem[]>([])
 const showSearch = ref(false)
+const selectedFundCode = ref('')
 const dragState = ref<DragState | null>(null)
 const suppressNextCardClick = ref(false)
 const contextMenu = ref<ContextMenuState>({
@@ -302,6 +388,16 @@ const contextMenu = ref<ContextMenuState>({
   code: '',
   index: -1,
   assetType: 'stock'
+})
+const positionDialog = ref<PositionDialogState>({
+  visible: false,
+  assetType: 'stock',
+  code: '',
+  stockCostPrice: '',
+  stockShares: '',
+  fundHoldingAmount: '',
+  fundProfit: '',
+  error: ''
 })
 
 let searchTimer: ReturnType<typeof setTimeout> | null = null
@@ -327,6 +423,11 @@ const contextListLength = computed(() =>
 )
 
 const contextActions = computed(() => [
+  {
+    key: 'edit-position' as const,
+    label: contextMenu.value.assetType === 'stock' ? '录入持仓' : '录入持有',
+    disabled: contextMenu.value.index === -1
+  },
   { key: 'move-up' as const, label: '上移', disabled: contextMenu.value.index <= 0 },
   { key: 'move-down' as const, label: '下移', disabled: contextMenu.value.index === -1 || contextMenu.value.index >= contextListLength.value - 1 },
   { key: 'move-top' as const, label: '置顶', disabled: contextMenu.value.index <= 0 },
@@ -406,6 +507,12 @@ function handleContextAction(action: ContextActionKey) {
     return
   }
 
+  if (action === 'edit-position') {
+    openPositionDialog(assetType, code)
+    closeContextMenu()
+    return
+  }
+
   if (assetType === 'stock') {
     switch (action) {
       case 'move-up':
@@ -438,6 +545,109 @@ function handleContextAction(action: ContextActionKey) {
     }
   }
 
+  closeContextMenu()
+}
+
+function getStockPositionMetrics(stock: Stock): PositionMetrics | null {
+  return calculateStockPositionMetrics(stockStore.stockPositions[stock.code], stock.price)
+}
+
+function getFundPositionMetrics(fund: FundQuote): PositionMetrics | null {
+  return calculateFundPositionMetrics(stockStore.fundPositions[fund.code])
+}
+
+function hasStockPositionDetail(stock: Stock): boolean {
+  return stock.code === props.selectedCode && Boolean(getStockPositionMetrics(stock))
+}
+
+function hasFundPositionDetail(fund: FundQuote): boolean {
+  return fund.code === selectedFundCode.value && Boolean(getFundPositionMetrics(fund))
+}
+
+function formatPositionMoney(value: number | undefined): string {
+  return formatOptionalNumber(value, 2)
+}
+
+function formatPositionPercent(value: number | undefined): string {
+  return formatSignedOptionalPercent(value)
+}
+
+function getPositionToneClass(value: number | undefined): string {
+  return `position-${getProfitTone(value ?? 0)}`
+}
+
+function parsePositionNumber(value: string): number | null {
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+function openPositionDialog(assetType: AssetType, code: string) {
+  const stockPosition = stockStore.stockPositions[code]
+  const fundPosition = stockStore.fundPositions[code]
+
+  if (assetType === 'fund') {
+    selectedFundCode.value = code
+  }
+
+  positionDialog.value = {
+    visible: true,
+    assetType,
+    code,
+    stockCostPrice: stockPosition ? String(stockPosition.costPrice) : '',
+    stockShares: stockPosition ? String(stockPosition.shares) : '',
+    fundHoldingAmount: fundPosition ? String(fundPosition.holdingAmount) : '',
+    fundProfit: fundPosition ? String(fundPosition.profit) : '',
+    error: ''
+  }
+}
+
+function closePositionDialog() {
+  positionDialog.value.visible = false
+}
+
+function savePositionDialog() {
+  const dialog = positionDialog.value
+
+  if (dialog.assetType === 'stock') {
+    const costPrice = parsePositionNumber(dialog.stockCostPrice)
+    const shares = parsePositionNumber(dialog.stockShares)
+    if (!costPrice || !shares || costPrice <= 0 || shares <= 0) {
+      positionDialog.value = { ...dialog, error: '请输入有效的成本价和股数' }
+      return
+    }
+
+    stockStore.setStockPosition(dialog.code, { costPrice, shares })
+  } else {
+    const holdingAmount = parsePositionNumber(dialog.fundHoldingAmount)
+    const profit = parsePositionNumber(dialog.fundProfit)
+    if (!holdingAmount || profit === null || holdingAmount <= 0 || holdingAmount - profit <= 0) {
+      positionDialog.value = { ...dialog, error: '请输入有效的持有金额和收益' }
+      return
+    }
+
+    selectedFundCode.value = dialog.code
+    stockStore.setFundPosition(dialog.code, { holdingAmount, profit })
+  }
+
+  closePositionDialog()
+}
+
+function clearPositionDialog() {
+  if (positionDialog.value.assetType === 'stock') {
+    stockStore.clearStockPosition(positionDialog.value.code)
+  } else {
+    stockStore.clearFundPosition(positionDialog.value.code)
+  }
+
+  closePositionDialog()
+}
+
+function handleSelectFund(code: string) {
+  if (suppressNextCardClick.value || dragState.value?.active) {
+    return
+  }
+
+  selectedFundCode.value = code
   closeContextMenu()
 }
 
@@ -711,6 +921,7 @@ onUnmounted(() => {
 .stock-card:hover{transform:translateX(2px);background:rgba(255,255,255,.05)}
 .stock-card:focus-visible{border-color:rgba(93,168,255,.55)}
 .stock-card:hover,.stock-card:focus-within,.stock-card.selected{padding-right:34px}
+.stock-card.with-position{flex-wrap:wrap;align-items:flex-start;min-height:72px}
 .stock-card.selected{border-color:rgba(255,255,255,.08);background:rgba(255,255,255,.085);box-shadow:inset 0 1px 0 rgba(255,255,255,.03)}
 .stock-card.selected::before{content:'';position:absolute;inset:6px auto 6px 0;width:3px;border-radius:999px;background:linear-gradient(180deg,#5da8ff,#2d7cf6)}
 .stock-card.dragging{opacity:.55;transform:scale(.99);cursor:grabbing}
@@ -732,6 +943,11 @@ onUnmounted(() => {
 .change-pill{display:inline-flex;align-items:center;justify-content:center;min-width:64px;padding:3px 8px;border-radius:999px;font-size:11px;font-weight:700;letter-spacing:0}
 .change-pill.up{color:#ff7474;background:rgba(239,68,68,.14)}.change-pill.down{color:#3ad283;background:rgba(34,197,94,.12)}
 .stock-price{font-size:13px;line-height:1;font-weight:500;letter-spacing:0;color:var(--text-secondary)}
+.position-strip{flex:1 0 calc(100% - 29px);margin-left:29px;margin-top:2px;display:grid;grid-template-columns:1fr 1fr;gap:3px 8px;padding:6px 8px;border-radius:8px;background:rgba(255,255,255,.035);font-size:10px;line-height:1.2;color:var(--text-muted)}
+.position-strip strong{grid-column:1 / -1;font-size:11px;font-weight:800;color:var(--text-secondary)}
+.position-strip.position-profit strong{color:#ff7474}
+.position-strip.position-loss strong{color:#3ad283}
+.position-strip.position-flat strong{color:var(--text-muted)}
 .remove-btn{position:absolute;top:8px;right:8px;width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center;border:none;border-radius:6px;background:rgba(239,68,68,.12);color:#fca5a5;cursor:pointer;opacity:0;pointer-events:none;transition:opacity .15s ease,background .15s ease}
 .stock-card:hover .remove-btn,.stock-card:focus-within .remove-btn,.stock-card.selected .remove-btn{opacity:1}
 .stock-card:hover .remove-btn,.stock-card:focus-within .remove-btn,.stock-card.selected .remove-btn{pointer-events:auto}
@@ -746,6 +962,23 @@ onUnmounted(() => {
 .fund-row strong{font-size:12px;color:var(--text-secondary);font-weight:700}
 .fund-row.muted{font-size:10px;color:rgba(255,255,255,.42)}
 .fund-side{padding-top:2px}
+.position-overlay{position:absolute;inset:0;z-index:45;display:flex;align-items:center;justify-content:center;padding:16px;background:rgba(0,0,0,.44);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+.position-dialog{width:min(250px,100%);padding:14px;border:1px solid var(--border-color);border-radius:12px;background:var(--solid-bg);box-shadow:0 18px 48px rgba(0,0,0,.35);display:flex;flex-direction:column;gap:12px}
+.position-dialog-header{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.position-dialog-header h3{margin:0;font-size:14px;line-height:1.2;color:var(--text-primary)}
+.position-close-btn{width:24px;height:24px;border:none;border-radius:6px;background:transparent;color:var(--text-muted);cursor:pointer;font-size:18px;line-height:1}
+.position-close-btn:hover{background:rgba(255,255,255,.06);color:var(--text-primary)}
+.position-fields{display:flex;flex-direction:column;gap:9px}
+.position-field{display:flex;flex-direction:column;gap:5px;font-size:12px;color:var(--text-muted)}
+.position-field input{height:30px;padding:0 9px;border:1px solid rgba(255,255,255,.10);border-radius:8px;background:rgba(255,255,255,.04);color:var(--text-primary);font-size:13px;outline:none}
+.position-field input:focus{border-color:rgba(59,130,246,.45);background:rgba(255,255,255,.06)}
+.position-error{margin:0;color:#fca5a5;font-size:12px}
+.position-dialog-actions{display:flex;justify-content:flex-end;gap:8px}
+.position-secondary-btn,.position-primary-btn{height:30px;padding:0 12px;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer}
+.position-secondary-btn{background:rgba(255,255,255,.06);color:var(--text-secondary)}
+.position-primary-btn{background:rgba(45,124,246,.82);color:#fff}
+.position-secondary-btn:hover{background:rgba(255,255,255,.10);color:var(--text-primary)}
+.position-primary-btn:hover{background:rgba(45,124,246,.94)}
 .context-menu{position:fixed;z-index:40;width:132px;padding:6px;border:1px solid var(--border-color);border-radius:12px;background:var(--solid-bg);box-shadow:0 18px 48px rgba(0,0,0,.34);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px)}
 .context-menu-item{width:100%;display:flex;align-items:center;height:34px;padding:0 10px;border:none;border-radius:8px;background:transparent;color:var(--text-primary);font-size:13px;text-align:left;cursor:pointer}
 .context-menu-item:hover:not(:disabled){background:rgba(255,255,255,.06)}

@@ -11,10 +11,13 @@ import {
 } from '../api/stock'
 import { applyFundDisplayName, findExactFundSearchResult } from '../utils/funds'
 import { moveItem } from '../utils/list'
+import type { FundPosition, StockPosition } from '../utils/positions'
 
 const WATCHLIST_STORAGE_KEY = 'watchList'
 const FUND_WATCHLIST_STORAGE_KEY = 'fundWatchList'
 const FUND_NAMES_STORAGE_KEY = 'fundNames'
+const STOCK_POSITIONS_STORAGE_KEY = 'stockPositions'
+const FUND_POSITIONS_STORAGE_KEY = 'fundPositions'
 const ACTIVE_ASSET_TYPE_STORAGE_KEY = 'activeAssetType'
 
 export interface SparklineData {
@@ -66,11 +69,55 @@ function readStoredRecord(key: string): Record<string, string> {
   }
 }
 
+function readStoredNumberRecord<T>(key: string, isValid: (value: unknown) => value is T): Record<string, T> {
+  const saved = localStorage.getItem(key)
+  if (!saved) {
+    return {}
+  }
+
+  try {
+    const parsed = JSON.parse(saved)
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return {}
+    }
+
+    return Object.fromEntries(
+      Object.entries(parsed)
+        .filter((entry): entry is [string, T] => typeof entry[0] === 'string' && isValid(entry[1]))
+    )
+  } catch (error) {
+    console.error(`Load ${key} error:`, error)
+    return {}
+  }
+}
+
+function isStockPosition(value: unknown): value is StockPosition {
+  return Boolean(
+    value
+    && typeof value === 'object'
+    && !Array.isArray(value)
+    && Number.isFinite((value as StockPosition).costPrice)
+    && Number.isFinite((value as StockPosition).shares)
+  )
+}
+
+function isFundPosition(value: unknown): value is FundPosition {
+  return Boolean(
+    value
+    && typeof value === 'object'
+    && !Array.isArray(value)
+    && Number.isFinite((value as FundPosition).holdingAmount)
+    && Number.isFinite((value as FundPosition).profit)
+  )
+}
+
 export const useStockStore = defineStore('stock', () => {
   const activeAssetType = ref<AssetType>('stock')
   const watchList = ref<string[]>([])
   const fundWatchList = ref<string[]>([])
   const fundNames = ref<Record<string, string>>({})
+  const stockPositions = ref<Record<string, StockPosition>>({})
+  const fundPositions = ref<Record<string, FundPosition>>({})
   const stocks = ref<Map<string, Stock>>(new Map())
   const funds = ref<Map<string, FundQuote>>(new Map())
   const sparklines = ref<Map<string, number[]>>(new Map())
@@ -94,6 +141,14 @@ export const useStockStore = defineStore('stock', () => {
     localStorage.setItem(FUND_NAMES_STORAGE_KEY, JSON.stringify(nextNames))
   }, { deep: true })
 
+  watch(stockPositions, (nextPositions) => {
+    localStorage.setItem(STOCK_POSITIONS_STORAGE_KEY, JSON.stringify(nextPositions))
+  }, { deep: true })
+
+  watch(fundPositions, (nextPositions) => {
+    localStorage.setItem(FUND_POSITIONS_STORAGE_KEY, JSON.stringify(nextPositions))
+  }, { deep: true })
+
   watch(activeAssetType, (nextAssetType) => {
     localStorage.setItem(ACTIVE_ASSET_TYPE_STORAGE_KEY, nextAssetType)
   })
@@ -102,6 +157,8 @@ export const useStockStore = defineStore('stock', () => {
     watchList.value = readStoredList(WATCHLIST_STORAGE_KEY)
     fundWatchList.value = readStoredList(FUND_WATCHLIST_STORAGE_KEY)
     fundNames.value = readStoredRecord(FUND_NAMES_STORAGE_KEY)
+    stockPositions.value = readStoredNumberRecord(STOCK_POSITIONS_STORAGE_KEY, isStockPosition)
+    fundPositions.value = readStoredNumberRecord(FUND_POSITIONS_STORAGE_KEY, isFundPosition)
     activeAssetType.value = readStoredAssetType()
 
     await refreshAll()
@@ -266,6 +323,9 @@ export const useStockStore = defineStore('stock', () => {
     }
 
     watchList.value.splice(index, 1)
+    const nextStockPositions = { ...stockPositions.value }
+    delete nextStockPositions[code]
+    stockPositions.value = nextStockPositions
     const nextStocks = new Map(stocks.value)
     nextStocks.delete(code)
     stocks.value = nextStocks
@@ -285,6 +345,9 @@ export const useStockStore = defineStore('stock', () => {
     const nextFundNames = { ...fundNames.value }
     delete nextFundNames[code]
     fundNames.value = nextFundNames
+    const nextFundPositions = { ...fundPositions.value }
+    delete nextFundPositions[code]
+    fundPositions.value = nextFundPositions
     const nextFunds = new Map(funds.value)
     nextFunds.delete(code)
     funds.value = nextFunds
@@ -336,6 +399,32 @@ export const useStockStore = defineStore('stock', () => {
     moveFundByCode(code, fundWatchList.value.length - 1)
   }
 
+  function setStockPosition(code: string, position: StockPosition) {
+    stockPositions.value = {
+      ...stockPositions.value,
+      [code]: position
+    }
+  }
+
+  function clearStockPosition(code: string) {
+    const nextPositions = { ...stockPositions.value }
+    delete nextPositions[code]
+    stockPositions.value = nextPositions
+  }
+
+  function setFundPosition(code: string, position: FundPosition) {
+    fundPositions.value = {
+      ...fundPositions.value,
+      [code]: position
+    }
+  }
+
+  function clearFundPosition(code: string) {
+    const nextPositions = { ...fundPositions.value }
+    delete nextPositions[code]
+    fundPositions.value = nextPositions
+  }
+
   async function fetchSparkline(code: string) {
     const minuteData = await fetchMinuteData(code)
     if (minuteData.length === 0) {
@@ -371,6 +460,8 @@ export const useStockStore = defineStore('stock', () => {
     watchList,
     fundWatchList,
     fundNames,
+    stockPositions,
+    fundPositions,
     stocks,
     funds,
     sparklines,
@@ -389,6 +480,10 @@ export const useStockStore = defineStore('stock', () => {
     addFund,
     removeStock,
     removeFund,
+    setStockPosition,
+    clearStockPosition,
+    setFundPosition,
+    clearFundPosition,
     getStock,
     getFund,
     getSparkline,
