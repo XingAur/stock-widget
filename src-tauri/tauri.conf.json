@@ -49,9 +49,13 @@
       "digestAlgorithm": "sha256",
       "timestampUrl": "",
       "nsis": {
+        "template": "nsis/installer.nsi",
         "installerIcon": "icons/icon.ico",
         "installerHooks": "nsis/hooks.nsh",
-        "languages": ["SimpChinese"]
+        "languages": ["SimpChinese"],
+        "customLanguageFiles": {
+          "SimpChinese": "nsis/SimpChinese.nsh"
+        }
       }
     }
   }
