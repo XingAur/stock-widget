@@ -18,7 +18,9 @@
           <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
         </svg>
       </button>
-      <span class="app-title">A+ Assistant</span>
+      <button class="app-title" type="button" title="切换股票/基金" @click.stop="$emit('toggleAssetType')">
+        {{ title }}
+      </button>
     </div>
   </header>
 </template>
@@ -26,10 +28,15 @@
 <script setup lang="ts">
 import { invoke } from '@tauri-apps/api/core'
 
+defineProps<{
+  title: string
+}>()
+
 defineEmits<{
   close: []
   minimize: []
   settings: []
+  toggleAssetType: []
 }>()
 
 async function startDrag(event: MouseEvent) {
@@ -109,9 +116,20 @@ async function startDrag(event: MouseEvent) {
 
 .app-title {
   margin-left: 10px;
+  padding: 2px 4px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.04em;
   color: var(--text-secondary);
+  cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.app-title:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.05);
 }
 </style>

@@ -1,6 +1,6 @@
 <template>
   <div class="home-view" @click="closeContextMenu">
-    <div class="asset-tabs" @click.stop>
+    <div v-if="false" class="asset-tabs" @click.stop>
       <button
         class="asset-tab"
         :class="{ active: stockStore.activeAssetType === 'stock' }"
@@ -688,7 +688,7 @@ onUnmounted(() => {
 
 <style scoped>
 .home-view{position:relative;flex:1;min-height:0;display:flex;flex-direction:column;padding:6px 0 0;gap:0}
-.asset-tabs{display:flex;align-items:center;gap:2px;margin:0 10px 2px;padding:3px;border:1px solid rgba(255,255,255,.08);border-radius:8px;background:rgba(255,255,255,.035)}
+.asset-tabs{display:none;align-items:center;gap:2px;margin:0 10px 2px;padding:3px;border:1px solid rgba(255,255,255,.08);border-radius:8px;background:rgba(255,255,255,.035)}
 .asset-tab{flex:1;height:24px;border:none;border-radius:6px;background:transparent;color:var(--text-muted);font-size:12px;font-weight:700;cursor:pointer;transition:background .15s ease,color .15s ease}
 .asset-tab:hover{color:var(--text-primary);background:rgba(255,255,255,.045)}
 .asset-tab.active{color:#f8fbff;background:rgba(45,124,246,.72);box-shadow:inset 0 1px 0 rgba(255,255,255,.16)}
@@ -707,9 +707,10 @@ onUnmounted(() => {
 .refresh-btn:hover{color:var(--text-primary);background:rgba(255,255,255,.05)}
 .update-time{font-size:11px;color:var(--text-muted)}
 .stock-list{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:6px;padding:6px 10px 0}
-.stock-card{position:relative;display:flex;align-items:center;gap:7px;width:100%;padding:6px 34px 6px 6px;border:1px solid transparent;border-radius:8px;background:rgba(255,255,255,.025);cursor:pointer;transition:transform .18s ease,background .18s ease,border-color .18s ease,opacity .18s ease;min-height:44px;text-align:left;color:inherit;outline:none}
+.stock-card{position:relative;display:flex;align-items:center;gap:7px;width:100%;padding:6px 10px 6px 6px;border:1px solid transparent;border-radius:8px;background:rgba(255,255,255,.025);cursor:pointer;transition:transform .18s ease,background .18s ease,border-color .18s ease,opacity .18s ease,padding .18s ease;min-height:44px;text-align:left;color:inherit;outline:none}
 .stock-card:hover{transform:translateX(2px);background:rgba(255,255,255,.05)}
 .stock-card:focus-visible{border-color:rgba(93,168,255,.55)}
+.stock-card:hover,.stock-card:focus-within,.stock-card.selected{padding-right:34px}
 .stock-card.selected{border-color:rgba(255,255,255,.08);background:rgba(255,255,255,.085);box-shadow:inset 0 1px 0 rgba(255,255,255,.03)}
 .stock-card.selected::before{content:'';position:absolute;inset:6px auto 6px 0;width:3px;border-radius:999px;background:linear-gradient(180deg,#5da8ff,#2d7cf6)}
 .stock-card.dragging{opacity:.55;transform:scale(.99);cursor:grabbing}
@@ -731,8 +732,9 @@ onUnmounted(() => {
 .change-pill{display:inline-flex;align-items:center;justify-content:center;min-width:64px;padding:3px 8px;border-radius:999px;font-size:11px;font-weight:700;letter-spacing:0}
 .change-pill.up{color:#ff7474;background:rgba(239,68,68,.14)}.change-pill.down{color:#3ad283;background:rgba(34,197,94,.12)}
 .stock-price{font-size:13px;line-height:1;font-weight:500;letter-spacing:0;color:var(--text-secondary)}
-.remove-btn{position:absolute;top:8px;right:8px;width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center;border:none;border-radius:6px;background:rgba(239,68,68,.12);color:#fca5a5;cursor:pointer;opacity:0;transition:opacity .15s ease,background .15s ease}
-.stock-card:hover .remove-btn,.stock-card:focus-within .remove-btn{opacity:1}
+.remove-btn{position:absolute;top:8px;right:8px;width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center;border:none;border-radius:6px;background:rgba(239,68,68,.12);color:#fca5a5;cursor:pointer;opacity:0;pointer-events:none;transition:opacity .15s ease,background .15s ease}
+.stock-card:hover .remove-btn,.stock-card:focus-within .remove-btn,.stock-card.selected .remove-btn{opacity:1}
+.stock-card:hover .remove-btn,.stock-card:focus-within .remove-btn,.stock-card.selected .remove-btn{pointer-events:auto}
 .remove-btn:hover{background:rgba(239,68,68,.22)}
 .fund-card{align-items:flex-start;min-height:78px;cursor:default}
 .fund-card:hover{transform:none}
