@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { FundQuote, FundSearchResult } from '../api/stock'
-import { applyFundDisplayName, findExactFundSearchResult } from './funds'
+import { applyFundDisplayName, findExactFundSearchResult, formatFundHeaderDate } from './funds'
 
 const quote: FundQuote = {
   code: '014855',
@@ -31,5 +31,15 @@ describe('fund helpers', () => {
   it('keeps existing display name during refresh when no search result is present', () => {
     expect(applyFundDisplayName(quote, undefined, { ...quote, name: 'Existing Name' }).name)
       .toBe('Existing Name')
+  })
+
+  it('formats the fund list header date from estimate time or nav date', () => {
+    expect(formatFundHeaderDate([
+      { ...quote, estimateTime: '2026-07-07 15:00', navDate: '2026-07-06' }
+    ])).toBe('07-07')
+    expect(formatFundHeaderDate([
+      { ...quote, estimateTime: '', navDate: '2026-07-06' }
+    ])).toBe('07-06')
+    expect(formatFundHeaderDate([])).toBe('--')
   })
 })

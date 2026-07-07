@@ -31,7 +31,7 @@
           :key="stock.code"
           class="stock-card"
           :class="{
-            selected: stock.code === props.selectedCode,
+            selected: isStockCardSelected(stock.code),
             dragging: isDragging('stock', stock.code),
             'drag-over': isDragOver('stock', index),
             'with-position': hasStockPositionDetail(stock)
@@ -45,6 +45,8 @@
           @click.stop="handleOpenDetail(stock.code)"
           @keydown.enter.prevent="handleOpenDetail(stock.code)"
           @keydown.space.prevent="handleOpenDetail(stock.code)"
+          @mouseenter="handleStockHover(stock.code)"
+          @mouseleave="handleStockLeave(stock.code)"
           @pointerenter="handleDragEnter('stock', index)"
           @contextmenu.prevent.stop="openContextMenu($event, 'stock', stock.code, index)"
         >
@@ -108,12 +110,20 @@
       </template>
 
       <template v-else>
+        <div v-if="stockStore.fundList.length > 0" class="fund-list-header">
+          <span></span>
+          <div class="fund-list-sort">
+            <span>当日涨幅</span>
+            <small>{{ fundHeaderDate }}</small>
+          </div>
+        </div>
+
         <div
           v-for="(fund, index) in stockStore.fundList"
           :key="fund.code"
           class="stock-card fund-card"
           :class="{
-            selected: fund.code === selectedFundCode,
+            selected: isFundCardSelected(fund.code),
             dragging: isDragging('fund', fund.code),
             'drag-over': isDragOver('fund', index),
             'with-position': hasFundPositionDetail(fund)
@@ -126,6 +136,8 @@
           @click.stop="handleSelectFund(fund.code)"
           @keydown.enter.prevent="handleSelectFund(fund.code)"
           @keydown.space.prevent="handleSelectFund(fund.code)"
+          @mouseenter="handleFundHover(fund.code)"
+          @mouseleave="handleFundLeave(fund.code)"
           @pointerenter="handleDragEnter('fund', index)"
           @contextmenu.prevent.stop="openContextMenu($event, 'fund', fund.code, index)"
         >
@@ -141,30 +153,17 @@
             <span></span>
           </button>
 
-          <div class="stock-main fund-main">
-            <div class="stock-info fund-info">
-              <div class="stock-name">{{ fund.name }}</div>
-              <div class="stock-code">{{ fund.code }}</div>
-            </div>
-            <div class="fund-meta">
-              <div class="fund-row">
-                <span>估算</span>
-                <strong>{{ formatOptionalNumber(fund.estimateNav, 4) }}</strong>
-              </div>
-              <div class="fund-row">
-                <span>单位净值</span>
-                <strong>{{ formatOptionalNumber(fund.nav, 4) }}</strong>
-              </div>
-              <div class="fund-row muted">
-                <span>{{ formatOptionalDate(fund.navDate) }}</span>
-                <span>{{ formatOptionalDate(fund.estimateTime) }}</span>
-              </div>
+          <div class="fund-main-list">
+            <div class="fund-title">{{ fund.name }}</div>
+            <div class="fund-code-line">
+              <span class="fund-status">已更新</span>
+              <span class="stock-code">{{ fund.code }}</span>
             </div>
           </div>
 
-          <div class="stock-side fund-side">
+          <div class="fund-quote-side">
             <div
-              class="change-pill"
+              class="fund-change-value"
               :class="{
                 up: (fund.estimateChangePercent ?? 0) >= 0,
                 down: (fund.estimateChangePercent ?? 0) < 0
@@ -172,6 +171,7 @@
             >
               {{ formatSignedOptionalPercent(fund.estimateChangePercent) }}
             </div>
+            <div class="fund-estimate-value">{{ formatOptionalNumber(fund.estimateNav, 4) }}</div>
           </div>
 
           <div
@@ -314,10 +314,10 @@ import { useSettingsStore } from '../stores/settings'
 import { useStockStore } from '../stores/stock'
 import { createSparklinePoints } from '../utils/chart'
 import {
-  formatOptionalDate,
   formatOptionalNumber,
   formatSignedOptionalPercent
 } from '../utils/format'
+import { formatFundHeaderDate } from '../utils/funds'
 import {
   calculateFundPositionMetrics,
   calculateStockPositionMetrics,
@@ -379,6 +379,8 @@ const searchQuery = ref('')
 const searchResults = ref<SearchItem[]>([])
 const showSearch = ref(false)
 const selectedFundCode = ref('')
+const hoveredStockCode = ref('')
+const hoveredFundCode = ref('')
 const dragState = ref<DragState | null>(null)
 const suppressNextCardClick = ref(false)
 const contextMenu = ref<ContextMenuState>({
@@ -411,6 +413,7 @@ const activeListLength = computed(() =>
     ? stockStore.stockList.length
     : stockStore.fundList.length
 )
+const fundHeaderDate = computed(() => formatFundHeaderDate(stockStore.fundList))
 
 const emptyTitle = computed(() => stockStore.activeAssetType === 'stock' ? '暂无股票' : '暂无基金')
 const emptyHint = computed(() => stockStore.activeAssetType === 'stock' ? '从下方搜索框添加股票' : '从下方搜索框添加基金')
@@ -464,6 +467,8 @@ function switchAssetType(assetType: AssetType) {
   closeContextMenu()
   cancelDrag()
   resetSearchState()
+  hoveredStockCode.value = ''
+  hoveredFundCode.value = ''
   searchQuery.value = ''
   stockStore.setActiveAssetType(assetType)
   emit('assetTypeChange', assetType)
@@ -556,12 +561,40 @@ function getFundPositionMetrics(fund: FundQuote): PositionMetrics | null {
   return calculateFundPositionMetrics(stockStore.fundPositions[fund.code])
 }
 
+function isStockCardSelected(code: string): boolean {
+  return code === props.selectedCode || code === hoveredStockCode.value
+}
+
+function isFundCardSelected(code: string): boolean {
+  return code === selectedFundCode.value || code === hoveredFundCode.value
+}
+
 function hasStockPositionDetail(stock: Stock): boolean {
-  return stock.code === props.selectedCode && Boolean(getStockPositionMetrics(stock))
+  return isStockCardSelected(stock.code) && Boolean(getStockPositionMetrics(stock))
 }
 
 function hasFundPositionDetail(fund: FundQuote): boolean {
-  return fund.code === selectedFundCode.value && Boolean(getFundPositionMetrics(fund))
+  return isFundCardSelected(fund.code) && Boolean(getFundPositionMetrics(fund))
+}
+
+function handleStockHover(code: string) {
+  hoveredStockCode.value = code
+}
+
+function handleStockLeave(code: string) {
+  if (hoveredStockCode.value === code) {
+    hoveredStockCode.value = ''
+  }
+}
+
+function handleFundHover(code: string) {
+  hoveredFundCode.value = code
+}
+
+function handleFundLeave(code: string) {
+  if (hoveredFundCode.value === code) {
+    hoveredFundCode.value = ''
+  }
 }
 
 function formatPositionMoney(value: number | undefined): string {
@@ -952,16 +985,20 @@ onUnmounted(() => {
 .stock-card:hover .remove-btn,.stock-card:focus-within .remove-btn,.stock-card.selected .remove-btn{opacity:1}
 .stock-card:hover .remove-btn,.stock-card:focus-within .remove-btn,.stock-card.selected .remove-btn{pointer-events:auto}
 .remove-btn:hover{background:rgba(239,68,68,.22)}
-.fund-card{align-items:flex-start;min-height:78px;cursor:default}
+.fund-list-header{display:flex;align-items:flex-end;justify-content:flex-end;padding:0 40px 0 35px;margin:-1px 0 -2px;color:var(--text-muted)}
+.fund-list-sort{display:flex;flex-direction:column;align-items:flex-end;gap:2px;min-width:72px;font-size:12px;font-weight:800;line-height:1;color:#99a4c2}
+.fund-list-sort small{font-size:10px;font-weight:700;color:rgba(153,164,194,.78)}
+.fund-card{align-items:center;min-height:58px;cursor:default}
 .fund-card:hover{transform:none}
-.fund-main{align-items:flex-start;flex-direction:column;gap:7px;padding-top:1px}
-.fund-info{width:100%;padding-right:4px}
-.fund-info .stock-name{max-width:168px}
-.fund-meta{width:100%;display:flex;flex-direction:column;gap:3px}
-.fund-row{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:11px;color:var(--text-muted)}
-.fund-row strong{font-size:12px;color:var(--text-secondary);font-weight:700}
-.fund-row.muted{font-size:10px;color:rgba(255,255,255,.42)}
-.fund-side{padding-top:2px}
+.fund-card.with-position{align-items:flex-start;min-height:86px}
+.fund-main-list{min-width:0;flex:1;display:flex;flex-direction:column;gap:6px;padding-top:1px}
+.fund-title{max-width:176px;font-size:13px;font-weight:800;line-height:1.12;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fund-code-line{display:flex;align-items:center;gap:6px;min-width:0}
+.fund-status{display:inline-flex;align-items:center;height:16px;padding:0 4px;border:1px solid rgba(93,168,255,.55);border-radius:4px;color:#8fbdff;background:rgba(45,124,246,.10);font-size:10px;font-weight:700;line-height:1}
+.fund-quote-side{margin-left:auto;display:flex;flex-direction:column;align-items:flex-end;gap:5px;min-width:72px;flex-shrink:0}
+.fund-change-value{font-size:17px;font-weight:900;line-height:1;letter-spacing:0}
+.fund-change-value.up{color:#ff6868}.fund-change-value.down{color:#32ce7b}
+.fund-estimate-value{font-size:12px;font-weight:700;line-height:1;color:#8f99bb}
 .position-overlay{position:absolute;inset:0;z-index:45;display:flex;align-items:center;justify-content:center;padding:16px;background:rgba(0,0,0,.44);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
 .position-dialog{width:min(250px,100%);padding:14px;border:1px solid var(--border-color);border-radius:12px;background:var(--solid-bg);box-shadow:0 18px 48px rgba(0,0,0,.35);display:flex;flex-direction:column;gap:12px}
 .position-dialog-header{display:flex;align-items:center;justify-content:space-between;gap:10px}
