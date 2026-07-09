@@ -179,12 +179,17 @@ export const useStockStore = defineStore('stock', () => {
     stockLoading.value = true
     try {
       const data = await fetchStocks(watchList.value)
-      const nextStocks = new Map<string, Stock>()
+      const currentCodes = new Set(watchList.value)
+      const nextStocks = new Map(
+        [...stocks.value.entries()].filter(([code]) => currentCodes.has(code))
+      )
       data.forEach((stock) => {
         nextStocks.set(stock.code, stock)
       })
       stocks.value = nextStocks
-      lastUpdate.value = new Date()
+      if (data.length > 0) {
+        lastUpdate.value = new Date()
+      }
     } catch (error) {
       console.error('Refresh stocks error:', error)
     } finally {

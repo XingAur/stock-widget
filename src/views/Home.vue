@@ -25,6 +25,25 @@
         <span>{{ emptyHint }}</span>
       </div>
 
+      <div v-if="showAccountSummary" class="fund-account-summary">
+        <div class="fund-account-card">
+          <span>账户资金</span>
+          <strong>{{ formatAccountSummaryMoney(activeAccountSummary?.accountAssets) }}</strong>
+        </div>
+        <div class="fund-account-card">
+          <span>当日预计收益</span>
+          <strong :class="getPositionToneClass(activeAccountSummary?.estimatedDailyProfit ?? 0)">
+            {{ formatAccountSummaryMoney(activeAccountSummary?.estimatedDailyProfit, true) }}
+          </strong>
+        </div>
+        <div class="fund-account-card">
+          <span>账户总收益</span>
+          <strong :class="getPositionToneClass(activeAccountSummary?.totalProfit ?? 0)">
+            {{ formatAccountSummaryMoney(activeAccountSummary?.totalProfit, true) }}
+          </strong>
+        </div>
+      </div>
+
       <template v-if="stockStore.activeAssetType === 'stock'">
         <div
           v-for="(stock, index) in stockStore.stockList"
@@ -307,10 +326,14 @@ import {
   getSignedChangeTone
 } from '../utils/format'
 import {
+  calculateFundAccountSummary,
   calculateFundPositionMetrics,
+  calculateStockAccountSummary,
   calculateStockPositionMetrics,
   getProfitTone,
-  type PositionMetrics
+  type FundAccountSummary,
+  type PositionMetrics,
+  type StockAccountSummary
 } from '../utils/positions'
 
 type ContextActionKey = 'edit-position' | 'move-up' | 'move-down' | 'move-top' | 'move-bottom'
@@ -404,6 +427,16 @@ const activeListLength = computed(() =>
 const emptyTitle = computed(() => stockStore.activeAssetType === 'stock' ? '暂无股票' : '暂无基金')
 const emptyHint = computed(() => stockStore.activeAssetType === 'stock' ? '从下方搜索框添加股票' : '从下方搜索框添加基金')
 const searchPlaceholder = computed(() => stockStore.activeAssetType === 'stock' ? '搜索股票名称或代码' : '搜索基金名称或代码')
+const stockAccountSummary = computed<StockAccountSummary | null>(() =>
+  calculateStockAccountSummary(stockStore.stockPositions, stockStore.stockList)
+)
+const fundAccountSummary = computed<FundAccountSummary | null>(() =>
+  calculateFundAccountSummary(stockStore.fundPositions, stockStore.fundList)
+)
+const activeAccountSummary = computed<StockAccountSummary | FundAccountSummary | null>(() =>
+  stockStore.activeAssetType === 'stock' ? stockAccountSummary.value : fundAccountSummary.value
+)
+const showAccountSummary = computed(() => Boolean(activeAccountSummary.value))
 
 const contextListLength = computed(() =>
   contextMenu.value.assetType === 'stock'
@@ -585,6 +618,23 @@ function handleFundLeave(code: string) {
 
 function formatPositionMoney(value: number | undefined): string {
   return formatOptionalNumber(value, 2)
+}
+
+function formatAccountSummaryMoney(value: number | null | undefined, signed = false): string {
+  if (value === undefined || value === null || !Number.isFinite(value)) {
+    return '--'
+  }
+
+  const amount = Math.abs(value).toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  })
+  if (!signed) {
+    return `¥${amount}`
+  }
+
+  const sign = value > 0 ? '+' : value < 0 ? '-' : ''
+  return `${sign}¥${amount}`
 }
 
 function formatPositionPercent(value: number | undefined): string {
@@ -930,6 +980,13 @@ onUnmounted(() => {
 .refresh-btn:hover{color:var(--text-primary);background:rgba(255,255,255,.05)}
 .update-time{font-size:11px;color:var(--text-muted)}
 .stock-list{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:6px;padding:6px 10px 0}
+.fund-account-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-bottom:2px}
+.fund-account-card{min-width:0;padding:8px 7px;border:1px solid rgba(255,255,255,.07);border-radius:8px;background:rgba(255,255,255,.04);box-shadow:inset 0 1px 0 rgba(255,255,255,.035)}
+.fund-account-card span{display:block;margin-bottom:5px;font-size:10px;line-height:1;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fund-account-card strong{display:block;min-width:0;font-size:12px;line-height:1.05;font-weight:900;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:0}
+.fund-account-card strong.position-profit{color:#ff7474}
+.fund-account-card strong.position-loss{color:#3ad283}
+.fund-account-card strong.position-flat{color:var(--text-secondary)}
 .stock-card{position:relative;display:flex;align-items:center;gap:7px;width:100%;padding:6px 10px 6px 6px;border:1px solid transparent;border-radius:8px;background:rgba(255,255,255,.025);cursor:pointer;transition:transform .18s ease,background .18s ease,border-color .18s ease,opacity .18s ease,padding .18s ease;min-height:44px;text-align:left;color:inherit;outline:none}
 .stock-card:hover{transform:translateX(2px);background:rgba(255,255,255,.05)}
 .stock-card:focus-visible{border-color:rgba(93,168,255,.55)}
