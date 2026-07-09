@@ -27,6 +27,8 @@ export interface Stock {
   time: string
   totalMarketCap: number
   circulationMarketCap: number
+  turnoverRate: number
+  volumeRatio: number
   orderBook?: OrderBook
 }
 
