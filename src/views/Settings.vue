@@ -18,7 +18,7 @@
           <span class="setting-desc">始终显示在其他窗口上方</span>
         </div>
         <label class="switch">
-          <input type="checkbox" :checked="settings.settings.alwaysOnTop" @change="toggleAlwaysOnTop">
+          <input type="checkbox" :checked="settings.settings.alwaysOnTop" :disabled="pendingKeys.alwaysOnTop" @change="toggleAlwaysOnTop">
           <span class="slider"></span>
         </label>
       </div>
@@ -32,7 +32,7 @@
           <span class="setting-desc">开机时自动启动小组件</span>
         </div>
         <label class="switch">
-          <input type="checkbox" :checked="settings.settings.autoStart" @change="toggleAutoStart">
+          <input type="checkbox" :checked="settings.settings.autoStart" :disabled="pendingKeys.autoStart" @change="toggleAutoStart">
           <span class="slider"></span>
         </label>
       </div>
@@ -205,14 +205,20 @@
     </div>
 
     <footer class="settings-footer">
-      <button class="reset-btn" @click="settings.reset">恢复默认</button>
+      <button class="reset-btn" :disabled="pendingKeys.reset" @click="handleReset">恢复默认</button>
     </footer>
   </div>
 </template>
 
 <script setup lang="ts">
+import { ref } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { useSettingsStore, FONT_OPTIONS } from '../stores/settings'
+import {
+  resetSettingsWithEffects,
+  toggleAlwaysOnTopWithEffect,
+  toggleAutoStartWithEffect
+} from '../utils/settingsActions'
 
 defineEmits<{
   close: []
@@ -221,24 +227,38 @@ defineEmits<{
 const settings = useSettingsStore()
 
 const fonts = FONT_OPTIONS
+const pendingKeys = ref<Partial<Record<'alwaysOnTop' | 'autoStart' | 'reset', boolean>>>({})
+
+function setPending(key: 'alwaysOnTop' | 'autoStart' | 'reset', value: boolean) {
+  pendingKeys.value = {
+    ...pendingKeys.value,
+    [key]: value
+  }
+}
 
 async function toggleAlwaysOnTop() {
-  const newValue = !settings.settings.alwaysOnTop
-  settings.updateSettings('alwaysOnTop', newValue)
+  if (pendingKeys.value.alwaysOnTop) return
+
+  setPending('alwaysOnTop', true)
   try {
-    await invoke('set_always_on_top', { enabled: newValue })
+    await toggleAlwaysOnTopWithEffect(settings, invoke)
   } catch (e) {
     console.error('Set always on top error:', e)
+  } finally {
+    setPending('alwaysOnTop', false)
   }
 }
 
 async function toggleAutoStart() {
-  const newValue = !settings.settings.autoStart
-  settings.updateSettings('autoStart', newValue)
+  if (pendingKeys.value.autoStart) return
+
+  setPending('autoStart', true)
   try {
-    await invoke('set_auto_start', { enabled: newValue })
+    await toggleAutoStartWithEffect(settings, invoke)
   } catch (e) {
     console.error('Set auto start error:', e)
+  } finally {
+    setPending('autoStart', false)
   }
 }
 
@@ -276,6 +296,19 @@ function toggleShowIndices() {
 
 function toggleShowSparklines() {
   settings.updateSettings('showSparklines', !settings.settings.showSparklines)
+}
+
+async function handleReset() {
+  if (pendingKeys.value.reset) return
+
+  setPending('reset', true)
+  try {
+    await resetSettingsWithEffects(settings, invoke)
+  } catch (e) {
+    console.error('Reset settings error:', e)
+  } finally {
+    setPending('reset', false)
+  }
 }
 </script>
 
@@ -415,6 +448,11 @@ input:checked + .slider {
 input:checked + .slider:before {
   transform: translateX(20px);
   background: #ffffff;
+}
+
+.switch input:disabled + .slider {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 /* Theme buttons */
@@ -569,6 +607,11 @@ input:checked + .slider:before {
 .reset-btn:hover {
   background: var(--card-bg-hover);
   border-color: var(--accent);
+}
+
+.reset-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 /* Font selector */

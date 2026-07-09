@@ -8,8 +8,8 @@
   --text-primary: #ffffff;
   --text-secondary: rgba(255, 255, 255, 0.72);
   --text-muted: rgba(255, 255, 255, 0.42);
-  --success: #ef4444;
-  --danger: #22c55e;
+  --success: #22c55e;
+  --danger: #ef4444;
   --accent: #1d9bf0;
   --input-bg: rgba(255, 255, 255, 0.05);
   --solid-bg: rgba(13, 17, 22, 0.96);
@@ -27,8 +27,8 @@
   --text-primary: #111827;
   --text-secondary: rgba(0, 0, 0, 0.7);
   --text-muted: rgba(0, 0, 0, 0.5);
-  --success: #ef4444;
-  --danger: #22c55e;
+  --success: #22c55e;
+  --danger: #ef4444;
   --accent: #2563eb;
   --input-bg: rgba(0, 0, 0, 0.05);
   --solid-bg: rgba(255, 255, 255, 0.95);
@@ -48,6 +48,19 @@
 [data-theme="light"] .detail-view .index-change.down,
 [data-theme="light"] .detail-view .price-pill.down {
   color: #22c55e !important;
+}
+
+[data-theme="light"] .detail-view .orderbook-row.sell .orderbook-price {
+  color: #ef4444 !important;
+}
+
+[data-theme="light"] .detail-view .orderbook-row.buy .orderbook-price {
+  color: #22c55e !important;
+}
+
+[data-theme="light"] .detail-view .orderbook-level,
+[data-theme="light"] .detail-view .orderbook-volume {
+  color: #4b5563 !important;
 }
 
 [data-theme="light"] .detail-view .grid-line {

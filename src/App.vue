@@ -1,6 +1,12 @@
 <template>
   <div class="app-shell">
-    <TitleBar @close="handleClose" @minimize="handleMinimize" @settings="showSettings = true" />
+    <TitleBar
+      :title="assetTitle"
+      @close="handleClose"
+      @minimize="handleMinimize"
+      @settings="showSettings = true"
+      @toggle-asset-type="toggleAssetType"
+    />
 
     <main class="workspace" :class="{ 'detail-left': hasDetail && detailPosition === 'left', 'detail-right': hasDetail && detailPosition === 'right' }">
       <aside class="sidebar">
@@ -32,6 +38,8 @@ import TitleBar from './components/TitleBar.vue'
 import HomeView from './views/Home.vue'
 import { useSettingsStore } from './stores/settings'
 import { useStockStore } from './stores/stock'
+import type { AssetType } from './api/stock'
+import { getAssetTitle, getNextAssetType } from './utils/assets'
 
 const DetailView = defineAsyncComponent(() => import('./views/Detail.vue'))
 const SettingsView = defineAsyncComponent(() => import('./views/Settings.vue'))
@@ -47,9 +55,22 @@ const selectedCode = ref('')
 const detailPosition = ref<'left' | 'right'>('right')
 const showSettings = ref(false)
 const hasDetail = computed(() => Boolean(selectedCode.value))
+const assetTitle = computed(() => getAssetTitle(stockStore.activeAssetType))
 
 function showStockDetail(code: string) {
   void openDetail(code)
+}
+
+function handleAssetTypeChange(assetType: AssetType) {
+  if (assetType === 'fund' && hasDetail.value) {
+    void closeDetail()
+  }
+}
+
+function toggleAssetType() {
+  const nextAssetType = getNextAssetType(stockStore.activeAssetType)
+  stockStore.setActiveAssetType(nextAssetType)
+  handleAssetTypeChange(nextAssetType)
 }
 
 async function determineDetailPosition(): Promise<'left' | 'right'> {
@@ -163,6 +184,11 @@ watch(() => [...stockStore.watchList], (watchList) => {
 
 onMounted(async () => {
   settingsStore.load()
+  try {
+    await invoke('set_always_on_top', { enabled: settingsStore.settings.alwaysOnTop })
+  } catch (error) {
+    console.error('Apply always on top setting error:', error)
+  }
   await stockStore.init()
 })
 </script>
