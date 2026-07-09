@@ -9,9 +9,9 @@ describe('global light theme styles', () => {
     expect(globalCss).toContain('--danger: #ef4444')
   })
 
-  it('keeps order book buy and sell prices colored in light mode', () => {
-    expect(globalCss).toContain('[data-theme="light"] .detail-view .orderbook-row.sell .orderbook-price')
-    expect(globalCss).toContain('[data-theme="light"] .detail-view .orderbook-row.buy .orderbook-price')
+  it('keeps order book prices colored by price tone in light mode', () => {
+    expect(globalCss).toContain('[data-theme="light"] .detail-view .orderbook-row.up .orderbook-price')
+    expect(globalCss).toContain('[data-theme="light"] .detail-view .orderbook-row.down .orderbook-price')
     expect(globalCss).toContain('color: #ef4444 !important')
     expect(globalCss).toContain('color: #22c55e !important')
   })
