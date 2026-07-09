@@ -19,6 +19,14 @@ export function formatSignedOptionalPercent(value: number | undefined | null): s
   return formatSignedPercent(value)
 }
 
+export function getSignedChangeTone(value: number | undefined | null): '' | 'up' | 'down' {
+  if (value === undefined || value === null || !Number.isFinite(value)) {
+    return ''
+  }
+
+  return value >= 0 ? 'up' : 'down'
+}
+
 export function formatOptionalDate(value: string | undefined | null): string {
   return value?.trim() || '--'
 }

@@ -155,10 +155,7 @@
           <div class="fund-quote-side">
             <div
               class="fund-change-value"
-              :class="{
-                up: (fund.estimateChangePercent ?? 0) >= 0,
-                down: (fund.estimateChangePercent ?? 0) < 0
-              }"
+              :class="getSignedChangeTone(fund.estimateChangePercent)"
             >
               {{ formatSignedOptionalPercent(fund.estimateChangePercent) }}
             </div>
@@ -306,7 +303,8 @@ import { useStockStore } from '../stores/stock'
 import { createSparklinePoints } from '../utils/chart'
 import {
   formatOptionalNumber,
-  formatSignedOptionalPercent
+  formatSignedOptionalPercent,
+  getSignedChangeTone
 } from '../utils/format'
 import {
   calculateFundPositionMetrics,

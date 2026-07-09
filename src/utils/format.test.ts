@@ -8,6 +8,7 @@ import {
   formatOptionalDate,
   formatOptionalNumber,
   formatSigned,
+  getSignedChangeTone,
   formatSignedPercent,
   formatSignedOptionalPercent,
   formatVolume
@@ -45,5 +46,14 @@ describe('format helpers', () => {
     expect(formatSignedOptionalPercent(undefined)).toBe('--')
     expect(formatOptionalDate('2026-07-07')).toBe('2026-07-07')
     expect(formatOptionalDate('')).toBe('--')
+  })
+
+  it('keeps missing change values visually neutral', () => {
+    expect(getSignedChangeTone(1.2)).toBe('up')
+    expect(getSignedChangeTone(-1.2)).toBe('down')
+    expect(getSignedChangeTone(0)).toBe('up')
+    expect(getSignedChangeTone(undefined)).toBe('')
+    expect(getSignedChangeTone(null)).toBe('')
+    expect(getSignedChangeTone(Number.NaN)).toBe('')
   })
 })

@@ -27,7 +27,7 @@ export const FONT_OPTIONS = [
   { label: '等宽字体', value: '"Cascadia Code", "JetBrains Mono", "SF Mono", Consolas, monospace' }
 ]
 
-const DEFAULT_SETTINGS: Settings = {
+export const DEFAULT_SETTINGS: Settings = {
   alwaysOnTop: false,
   autoStart: false,
   minimizeToTray: true,
@@ -38,6 +38,52 @@ const DEFAULT_SETTINGS: Settings = {
   fontFamily: FONT_OPTIONS[0].value,
   showIndices: true,
   showSparklines: true
+}
+
+const THEME_MODES: ThemeMode[] = ['dark', 'light', 'custom']
+const HEX_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value))
+}
+
+function sanitizeBoolean(value: unknown, fallback: boolean) {
+  return typeof value === 'boolean' ? value : fallback
+}
+
+function sanitizeOpacity(value: unknown) {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 1
+    ? value
+    : DEFAULT_SETTINGS.backgroundOpacity
+}
+
+function sanitizeTheme(value: unknown) {
+  return THEME_MODES.includes(value as ThemeMode) ? value as ThemeMode : DEFAULT_SETTINGS.theme
+}
+
+function sanitizeHexColor(value: unknown, fallback: string) {
+  return typeof value === 'string' && HEX_COLOR_PATTERN.test(value) ? value : fallback
+}
+
+function sanitizeFontFamily(value: unknown) {
+  return typeof value === 'string' && value.trim().length > 0 ? value : DEFAULT_SETTINGS.fontFamily
+}
+
+export function sanitizeSettings(value: unknown): Settings {
+  const stored = isRecord(value) ? value : {}
+
+  return {
+    alwaysOnTop: sanitizeBoolean(stored.alwaysOnTop, DEFAULT_SETTINGS.alwaysOnTop),
+    autoStart: sanitizeBoolean(stored.autoStart, DEFAULT_SETTINGS.autoStart),
+    minimizeToTray: sanitizeBoolean(stored.minimizeToTray, DEFAULT_SETTINGS.minimizeToTray),
+    backgroundOpacity: sanitizeOpacity(stored.backgroundOpacity),
+    theme: sanitizeTheme(stored.theme),
+    customBgColor: sanitizeHexColor(stored.customBgColor, DEFAULT_SETTINGS.customBgColor),
+    customFontColor: sanitizeHexColor(stored.customFontColor, DEFAULT_SETTINGS.customFontColor),
+    fontFamily: sanitizeFontFamily(stored.fontFamily),
+    showIndices: sanitizeBoolean(stored.showIndices, DEFAULT_SETTINGS.showIndices),
+    showSparklines: sanitizeBoolean(stored.showSparklines, DEFAULT_SETTINGS.showSparklines)
+  }
 }
 
 export const useSettingsStore = defineStore('settings', () => {
@@ -58,7 +104,7 @@ export const useSettingsStore = defineStore('settings', () => {
     if (saved) {
       try {
         const parsed = JSON.parse(saved)
-        settings.value = { ...DEFAULT_SETTINGS, ...parsed }
+        settings.value = sanitizeSettings(parsed)
       } catch (error) {
         console.error('Load settings error:', error)
         settings.value = { ...DEFAULT_SETTINGS }
