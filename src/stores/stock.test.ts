@@ -38,7 +38,7 @@ function createLocalStorage(): Storage {
 function createStock(overrides: Partial<Stock> = {}): Stock {
   return {
     code: '000001',
-    name: '平安银行',
+    name: '骞冲畨閾惰',
     price: 12,
     change: 0.2,
     changePercent: 1.69,
@@ -51,6 +51,8 @@ function createStock(overrides: Partial<Stock> = {}): Stock {
     time: '20260709150000',
     totalMarketCap: 100000000,
     circulationMarketCap: 90000000,
+    turnoverRate: 1.23,
+    volumeRatio: 0.88,
     ...overrides
   }
 }
