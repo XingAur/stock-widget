@@ -27,6 +27,8 @@ struct Stock {
     time: String,
     total_market_cap: f64,
     circulation_market_cap: f64,
+    turnover_rate: f64,
+    volume_ratio: f64,
     order_book: Option<OrderBook>,
 }
 
@@ -404,8 +406,10 @@ fn parse_stock_from_parts(parts: &[&str], code: &str) -> Option<Stock> {
         )
     };
 
-    let total_market_cap = parse_f64(parts.get(44).copied());
-    let circulation_market_cap = parse_f64(parts.get(45).copied());
+    let turnover_rate = parse_f64(parts.get(38).copied());
+    let circulation_market_cap = parse_f64(parts.get(44).copied());
+    let total_market_cap = parse_f64(parts.get(45).copied());
+    let volume_ratio = parse_f64(parts.get(49).copied());
 
     Some(Stock {
         code: code.replace("sh", "").replace("sz", ""),
@@ -422,6 +426,8 @@ fn parse_stock_from_parts(parts: &[&str], code: &str) -> Option<Stock> {
         time,
         total_market_cap,
         circulation_market_cap,
+        turnover_rate,
+        volume_ratio,
         order_book: parse_order_book(parts),
     })
 }
@@ -766,7 +772,7 @@ mod tests {
 
     #[test]
     fn parses_valid_stock_payload_with_order_book() {
-        let mut parts = vec![""; 46];
+        let mut parts = vec![""; 50];
         parts[1] = "PF Bank";
         parts[3] = "10.12";
         parts[4] = "9.90";
@@ -781,8 +787,10 @@ mod tests {
         parts[33] = "10.50";
         parts[34] = "9.80";
         parts[35] = "ignored/123456/7890.5";
+        parts[38] = "1.23";
         parts[44] = "6500";
         parts[45] = "3200";
+        parts[49] = "0.88";
 
         let stock = parse_stock_from_parts(&parts, "sh600000").expect("valid payload should parse");
 
@@ -791,8 +799,10 @@ mod tests {
         assert_eq!(stock.price, 10.12);
         assert_eq!(stock.volume, 123456);
         assert_eq!(stock.amount, 7890.5);
-        assert_eq!(stock.total_market_cap, 6500.0);
-        assert_eq!(stock.circulation_market_cap, 3200.0);
+        assert_eq!(stock.total_market_cap, 3200.0);
+        assert_eq!(stock.circulation_market_cap, 6500.0);
+        assert_eq!(stock.turnover_rate, 1.23);
+        assert_eq!(stock.volume_ratio, 0.88);
 
         let order_book = stock.order_book.expect("order book should parse");
         assert_eq!(order_book.bids[0].price, 10.10);
