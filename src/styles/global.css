@@ -50,17 +50,27 @@
   color: #22c55e !important;
 }
 
-[data-theme="light"] .detail-view .orderbook-row.sell .orderbook-price {
+[data-theme="light"] .detail-view .orderbook-row.up .orderbook-price {
   color: #ef4444 !important;
 }
 
-[data-theme="light"] .detail-view .orderbook-row.buy .orderbook-price {
+[data-theme="light"] .detail-view .orderbook-row.down .orderbook-price {
   color: #22c55e !important;
 }
 
 [data-theme="light"] .detail-view .orderbook-level,
-[data-theme="light"] .detail-view .orderbook-volume {
+[data-theme="light"] .detail-view .orderbook-volume,
+[data-theme="light"] .detail-view .orderbook-large-price,
+[data-theme="light"] .detail-view .orderbook-large-volume {
   color: #4b5563 !important;
+}
+
+[data-theme="light"] .detail-view .orderbook-large-top .orderbook-large-label {
+  color: #22c55e !important;
+}
+
+[data-theme="light"] .detail-view .orderbook-large-bottom .orderbook-large-label {
+  color: #ef4444 !important;
 }
 
 [data-theme="light"] .detail-view .grid-line {
@@ -85,10 +95,10 @@
 [data-theme="light"] .detail-view .ma30-line { stroke: #c27a2c !important; }
 [data-theme="light"] .detail-view .chart-line-latest { stroke: #1d9bf0 !important; }
 [data-theme="light"] .detail-view .chart-line-avg { stroke: #c2880a !important; }
-[data-theme="light"] .detail-view .k-candle-wick.up { stroke: #22c55e !important; }
-[data-theme="light"] .detail-view .k-candle-body.up { fill: #22c55e !important; }
-[data-theme="light"] .detail-view .k-candle-wick.down { stroke: #ef4444 !important; }
-[data-theme="light"] .detail-view .k-candle-body.down { fill: #ef4444 !important; }
+[data-theme="light"] .detail-view .k-candle-wick.up { stroke: #ef4444 !important; }
+[data-theme="light"] .detail-view .k-candle-body.up { fill: #ef4444 !important; }
+[data-theme="light"] .detail-view .k-candle-wick.down { stroke: #22c55e !important; }
+[data-theme="light"] .detail-view .k-candle-body.down { fill: #22c55e !important; }
 [data-theme="light"] .detail-view .chart-tooltip { color: #111827 !important; }
 [data-theme="light"] .detail-view .chart-tooltip-title { color: #111827 !important; }
 [data-theme="light"] .detail-view .chart-tooltip-row { color: #374151 !important; }
