@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
   aggregateKlines,
+  createMinuteChartGeometry,
   createMovingAverage,
   createSparklinePoints,
+  getRobustVolumeCeiling,
   getPeriodBucket,
   getRange
 } from './chart'
@@ -32,5 +34,24 @@ describe('chart helpers', () => {
   it('expands flat ranges and creates sparkline points', () => {
     expect(getRange([5, 5])).toEqual([4.9, 5.1])
     expect(createSparklinePoints([1, 2, 3], 120, 24)).toBe('0.00,24.00 60.00,12.00 120.00,0.00')
+  })
+
+  it('creates responsive minute-chart geometry from the available height', () => {
+    expect(createMinuteChartGeometry(520)).toEqual({
+      viewHeight: 520,
+      priceBottom: 347,
+      volumeTop: 369,
+      volumeBottom: 494,
+      xAxisY: 502,
+      hoverTimeBoxY: 500,
+      hoverTimeTextY: 513
+    })
+    expect(createMinuteChartGeometry(200).viewHeight).toBe(320)
+  })
+
+  it('limits isolated volume spikes without changing ordinary values', () => {
+    expect(getRobustVolumeCeiling([])).toBe(1)
+    expect(getRobustVolumeCeiling([10, 20, 30, 40])).toBe(30)
+    expect(getRobustVolumeCeiling([10, 12, 14, 16, 18, 20, 1000])).toBe(20)
   })
 })

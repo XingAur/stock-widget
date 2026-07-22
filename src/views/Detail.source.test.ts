@@ -15,8 +15,13 @@ describe('detail order book source', () => {
     expect(detailVue).toContain('orderBookBalance')
     expect(detailVue).toContain('minute-volume-bar')
     expect(detailVue).toContain('volumeBars')
-    expect(detailVue).toContain('const MINUTE_PRICE_BOTTOM = 196')
-    expect(detailVue).toContain('const MINUTE_VOLUME_TOP = 218')
+    expect(detailVue).toContain('createMinuteChartGeometry')
+    expect(detailVue).toContain('getRobustVolumeCeiling')
+    expect(detailVue).toContain('minuteChartPanelHeight')
+    expect(detailVue).toContain(':viewBox="`0 0 ${minuteChartModel.viewWidth} ${minuteChartModel.geometry.viewHeight}`"')
+    expect(detailVue).toContain('.chart-card{flex:1;min-height:400px')
+    expect(detailVue).toContain('.stock-header,.stats-grid{flex-shrink:0}')
+    expect(detailVue).toContain('grid-template-rows:repeat(5,minmax(24px,1fr))')
   })
 
   it('does not render unsupported large-order placeholders', () => {

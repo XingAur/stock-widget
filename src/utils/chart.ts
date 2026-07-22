@@ -9,6 +9,43 @@ export interface KlineLikePoint {
 
 export type AggregatePeriod = 'week' | 'month' | 'quarter' | 'year'
 
+export interface MinuteChartGeometry {
+  viewHeight: number
+  priceBottom: number
+  volumeTop: number
+  volumeBottom: number
+  xAxisY: number
+  hoverTimeBoxY: number
+  hoverTimeTextY: number
+}
+
+export function createMinuteChartGeometry(availableHeight: number): MinuteChartGeometry {
+  const viewHeight = Math.max(320, Math.round(availableHeight || 320))
+  const volumeBottom = viewHeight - 26
+  const volumeBandHeight = Math.min(150, Math.max(76, Math.round(viewHeight * 0.24)))
+  const volumeTop = volumeBottom - volumeBandHeight
+
+  return {
+    viewHeight,
+    priceBottom: volumeTop - 22,
+    volumeTop,
+    volumeBottom,
+    xAxisY: viewHeight - 18,
+    hoverTimeBoxY: viewHeight - 20,
+    hoverTimeTextY: viewHeight - 7
+  }
+}
+
+export function getRobustVolumeCeiling(volumes: readonly number[]): number {
+  const positive = volumes
+    .filter((volume) => Number.isFinite(volume) && volume > 0)
+    .sort((left, right) => left - right)
+  if (positive.length === 0) return 1
+
+  const percentileIndex = Math.floor((positive.length - 1) * 0.97)
+  return Math.max(1, positive[percentileIndex])
+}
+
 export function parseChartDate(value: string): Date | null {
   const normalized = value.includes('T') ? value : `${value}T00:00:00`
   const parsed = new Date(normalized)

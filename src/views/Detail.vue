@@ -75,7 +75,7 @@
               <div ref="minuteChartPanelRef" class="minute-chart-panel">
                 <svg
                   class="chart-svg minute-chart-svg"
-                  :viewBox="`0 0 ${minuteChartModel.viewWidth} 320`"
+                  :viewBox="`0 0 ${minuteChartModel.viewWidth} ${minuteChartModel.geometry.viewHeight}`"
                   preserveAspectRatio="none"
                   @mousemove="handleMinuteHover"
                   @mouseleave="clearChartHover"
@@ -103,14 +103,14 @@
                     class="minute-volume-divider"
                     :x1="CHART_PADDING.left"
                     :x2="minuteChartModel.viewWidth - CHART_PADDING.right"
-                    :y1="MINUTE_VOLUME_TOP - 10"
-                    :y2="MINUTE_VOLUME_TOP - 10"
+                    :y1="minuteChartModel.geometry.volumeTop - 10"
+                    :y2="minuteChartModel.geometry.volumeTop - 10"
                   />
-                  <text class="minute-volume-title" :x="CHART_PADDING.left" :y="MINUTE_VOLUME_TOP + 9">分时量</text>
+                  <text class="minute-volume-title" :x="CHART_PADDING.left" :y="minuteChartModel.geometry.volumeTop + 9">分时量</text>
                   <text
                     class="minute-volume-value"
                     :x="minuteChartModel.viewWidth - CHART_PADDING.right"
-                    :y="MINUTE_VOLUME_TOP + 9"
+                    :y="minuteChartModel.geometry.volumeTop + 9"
                     text-anchor="end"
                   >{{ formatOrderBookVolume(minuteChartModel.latestVolume) }}</text>
                   <rect
@@ -126,7 +126,7 @@
                   <polyline class="chart-line chart-line-latest" :points="minuteChartModel.latestPath" />
                   <polyline class="chart-line chart-line-avg" :points="minuteChartModel.avgPath" />
                   <template v-if="minuteHover">
-                    <line class="hover-line" :x1="minuteHover.x" :x2="minuteHover.x" :y1="CHART_PADDING.top" :y2="MINUTE_VOLUME_BOTTOM" />
+                    <line class="hover-line" :x1="minuteHover.x" :x2="minuteHover.x" :y1="CHART_PADDING.top" :y2="minuteChartModel.geometry.volumeBottom" />
                     <line class="hover-line" :x1="CHART_PADDING.left" :x2="minuteChartModel.viewWidth - CHART_PADDING.right" :y1="minuteHover.latestY" :y2="minuteHover.latestY" />
                     <circle class="hover-point latest" :cx="minuteHover.x" :cy="minuteHover.latestY" r="3.4" />
                     <circle class="hover-point avg" :cx="minuteHover.x" :cy="minuteHover.avgY" r="2.8" />
@@ -137,7 +137,7 @@
                     <rect
                       class="hover-time-bg"
                       :x="clamp(minuteHover.x - 24, CHART_PADDING.left, minuteChartModel.viewWidth - CHART_PADDING.right - 48)"
-                      y="304"
+                      :y="minuteChartModel.geometry.hoverTimeBoxY"
                       width="48"
                       height="18"
                       rx="4"
@@ -145,7 +145,7 @@
                     <text
                       class="hover-label-text"
                       :x="clamp(minuteHover.x, CHART_PADDING.left + 24, minuteChartModel.viewWidth - CHART_PADDING.right - 24)"
-                      y="317"
+                      :y="minuteChartModel.geometry.hoverTimeTextY"
                       text-anchor="middle"
                     >
                       {{ minuteHover.time }}
@@ -156,7 +156,7 @@
                     :key="`${tick.label}-x`"
                     :class="['axis-label', minuteAxisLabelClass]"
                     :x="tick.x"
-                    :y="302"
+                    :y="minuteChartModel.geometry.xAxisY"
                     text-anchor="middle"
                   >
                     {{ tick.label }}
@@ -399,7 +399,15 @@ import {
   type StockDetail
 } from '../api/stock'
 import { useSettingsStore } from '../stores/settings'
-import { aggregateKlines, createMovingAverage, getRange, parseChartDate } from '../utils/chart'
+import {
+  aggregateKlines,
+  createMinuteChartGeometry,
+  createMovingAverage,
+  getRange,
+  getRobustVolumeCeiling,
+  parseChartDate,
+  type MinuteChartGeometry
+} from '../utils/chart'
 import {
   formatAmount,
   formatMA,
@@ -431,6 +439,7 @@ interface YTick {
 
 interface MinuteChartModel {
   viewWidth: number
+  geometry: MinuteChartGeometry
   points: MinutePoint[]
   avgPrices: number[]
   minPrice: number
@@ -544,9 +553,6 @@ interface KlinePanState {
 const CHART_WIDTH = 720
 const CHART_HEIGHT = 320
 const CHART_PADDING = { top: 18, right: 24, bottom: 44, left: 64 }
-const MINUTE_PRICE_BOTTOM = 196
-const MINUTE_VOLUME_TOP = 218
-const MINUTE_VOLUME_BOTTOM = 294
 const MIN_VISIBLE_KLINE_POINTS = 12
 
 const tabs: TabItem[] = [
@@ -576,6 +582,7 @@ const klineHover = ref<KlineHoverState | null>(null)
 const klinePanState = ref<KlinePanState | null>(null)
 const minuteChartPanelRef = ref<HTMLElement | null>(null)
 const minuteChartPanelWidth = ref(0)
+const minuteChartPanelHeight = ref(0)
 
 let refreshTimer: number | null = null
 let minuteChartResizeObserver: ResizeObserver | null = null
@@ -693,17 +700,20 @@ const minuteChartModel = computed<MinuteChartModel | null>(() => {
 
   const [minPrice, maxPrice] = getRange([...points.map((point) => point.price), ...avgPrices])
   const viewWidth = minuteChartViewWidth.value
-  const maxVolume = Math.max(1, ...points.map((point) => point.volume))
+  const geometry = createMinuteChartGeometry(minuteChartPanelHeight.value)
+  const volumeCeiling = getRobustVolumeCeiling(points.map((point) => point.volume))
   const barStep = getPlotWidth(viewWidth) / Math.max(points.length - 1, 1)
   const barWidth = clamp(barStep * 0.72, 1, 5)
-  const volumeHeight = MINUTE_VOLUME_BOTTOM - MINUTE_VOLUME_TOP - 14
+  const volumeHeight = geometry.volumeBottom - geometry.volumeTop - 14
   const volumeBars = points.map((point, index): MinuteVolumeBar => {
     const previousPrice = index === 0 ? detail.value?.prevClose ?? point.price : points[index - 1].price
-    const height = point.volume <= 0 ? 0 : Math.max(1, point.volume / maxVolume * volumeHeight)
+    const height = point.volume <= 0
+      ? 0
+      : Math.max(1, Math.min(point.volume / volumeCeiling, 1) * volumeHeight)
     return {
       key: `${point.time}-${index}`,
       x: getX(index, points.length, viewWidth) - barWidth / 2,
-      y: MINUTE_VOLUME_BOTTOM - height,
+      y: geometry.volumeBottom - height,
       width: barWidth,
       height,
       tone: point.price > previousPrice ? 'up' : point.price < previousPrice ? 'down' : 'flat'
@@ -712,16 +722,17 @@ const minuteChartModel = computed<MinuteChartModel | null>(() => {
 
   return {
     viewWidth,
+    geometry,
     points,
     avgPrices,
     minPrice,
     maxPrice,
     latestPrice: points[points.length - 1].price,
     avgPrice: avgPrices[avgPrices.length - 1],
-    latestPath: createMinutePolyline(points.map((point) => point.price), minPrice, maxPrice, viewWidth),
-    avgPath: createMinutePolyline(avgPrices, minPrice, maxPrice, viewWidth),
-    areaPath: createMinuteAreaPath(points.map((point) => point.price), minPrice, maxPrice, viewWidth),
-    yTicks: createMinuteYTicks(minPrice, maxPrice, minuteYTickCount.value),
+    latestPath: createMinutePolyline(points.map((point) => point.price), minPrice, maxPrice, viewWidth, geometry),
+    avgPath: createMinutePolyline(avgPrices, minPrice, maxPrice, viewWidth, geometry),
+    areaPath: createMinuteAreaPath(points.map((point) => point.price), minPrice, maxPrice, viewWidth, geometry),
+    yTicks: createMinuteYTicks(minPrice, maxPrice, minuteYTickCount.value, geometry),
     xTicks: createXTicks(points.map((point) => point.time), minuteXTickCount.value, viewWidth),
     latestVolume: [...points].reverse().find((point) => point.volume > 0)?.volume ?? 0,
     volumeBars
@@ -844,8 +855,9 @@ function setKlineViewport(tab: Exclude<TabKey, 'minute'>, pointsLength: number, 
   klineViewports.value = nextViewports
 }
 
-function syncMinuteChartPanelWidth() {
+function syncMinuteChartPanelSize() {
   minuteChartPanelWidth.value = minuteChartPanelRef.value?.clientWidth ?? 0
+  minuteChartPanelHeight.value = minuteChartPanelRef.value?.clientHeight ?? 0
 }
 
 function getPlotWidth(viewWidth = CHART_WIDTH): number {
@@ -865,9 +877,9 @@ function getY(value: number, min: number, max: number): number {
   return CHART_PADDING.top + (1 - (value - min) / (max - min)) * getPlotHeight()
 }
 
-function getMinuteY(value: number, min: number, max: number): number {
+function getMinuteY(value: number, min: number, max: number, geometry: MinuteChartGeometry): number {
   return CHART_PADDING.top
-    + (1 - (value - min) / (max - min)) * (MINUTE_PRICE_BOTTOM - CHART_PADDING.top)
+    + (1 - (value - min) / (max - min)) * (geometry.priceBottom - CHART_PADDING.top)
 }
 
 function getCandleBodyWidth(total: number): number {
@@ -913,17 +925,29 @@ function createPolyline(values: number[], min: number, max: number, viewWidth = 
     .join(' ')
 }
 
-function createMinutePolyline(values: number[], min: number, max: number, viewWidth: number): string {
+function createMinutePolyline(
+  values: number[],
+  min: number,
+  max: number,
+  viewWidth: number,
+  geometry: MinuteChartGeometry
+): string {
   return values
     .map((value, index) => {
       if (Number.isNaN(value)) return null
-      return `${getX(index, values.length, viewWidth).toFixed(2)},${getMinuteY(value, min, max).toFixed(2)}`
+      return `${getX(index, values.length, viewWidth).toFixed(2)},${getMinuteY(value, min, max, geometry).toFixed(2)}`
     })
     .filter((item): item is string => Boolean(item))
     .join(' ')
 }
 
-function createMinuteAreaPath(values: number[], min: number, max: number, viewWidth: number): string {
+function createMinuteAreaPath(
+  values: number[],
+  min: number,
+  max: number,
+  viewWidth: number,
+  geometry: MinuteChartGeometry
+): string {
   const visibleValues = values
     .map((value, index) => Number.isNaN(value) ? null : ({ index, value }))
     .filter((item): item is { index: number; value: number } => Boolean(item))
@@ -932,9 +956,9 @@ function createMinuteAreaPath(values: number[], min: number, max: number, viewWi
   const startX = getX(visibleValues[0].index, values.length, viewWidth)
   const endX = getX(visibleValues[visibleValues.length - 1].index, values.length, viewWidth)
   const path = visibleValues
-    .map((item, index) => `${index === 0 ? 'M' : 'L'}${getX(item.index, values.length, viewWidth).toFixed(2)} ${getMinuteY(item.value, min, max).toFixed(2)}`)
+    .map((item, index) => `${index === 0 ? 'M' : 'L'}${getX(item.index, values.length, viewWidth).toFixed(2)} ${getMinuteY(item.value, min, max, geometry).toFixed(2)}`)
     .join(' ')
-  return `${path} L${endX.toFixed(2)} ${MINUTE_PRICE_BOTTOM} L${startX.toFixed(2)} ${MINUTE_PRICE_BOTTOM} Z`
+  return `${path} L${endX.toFixed(2)} ${geometry.priceBottom} L${startX.toFixed(2)} ${geometry.priceBottom} Z`
 }
 
 function formatXAxisLabel(value: string): string {
@@ -993,13 +1017,18 @@ function createYTicks(min: number, max: number, steps = 4, _viewWidth = CHART_WI
   })
 }
 
-function createMinuteYTicks(min: number, max: number, steps = 4): YTick[] {
+function createMinuteYTicks(
+  min: number,
+  max: number,
+  steps: number,
+  geometry: MinuteChartGeometry
+): YTick[] {
   return Array.from({ length: steps }, (_, index) => {
     const ratio = index / (steps - 1)
     const value = max - (max - min) * ratio
     return {
       label: formatPrice(value),
-      y: getMinuteY(value, min, max)
+      y: getMinuteY(value, min, max, geometry)
     }
   })
 }
@@ -1021,9 +1050,17 @@ function getHoverIndex(event: MouseEvent, total: number, viewWidth = CHART_WIDTH
   }
 }
 
-function getTooltipPosition(rect: DOMRect, pointX: number, pointY: number, width: number, height: number, viewWidth = CHART_WIDTH) {
+function getTooltipPosition(
+  rect: DOMRect,
+  pointX: number,
+  pointY: number,
+  width: number,
+  height: number,
+  viewWidth = CHART_WIDTH,
+  viewHeight = CHART_HEIGHT
+) {
   const pixelX = (pointX / viewWidth) * rect.width
-  const pixelY = (pointY / CHART_HEIGHT) * rect.height
+  const pixelY = (pointY / viewHeight) * rect.height
 
   return {
     left: clamp(pixelX + 12, 12, Math.max(12, rect.width - width - 12)),
@@ -1124,9 +1161,18 @@ function handleMinuteHover(event: MouseEvent) {
 
   const point = minuteChartModel.value.points[hover.index]
   const avgPrice = minuteChartModel.value.avgPrices[hover.index]
-  const latestY = getMinuteY(point.price, minuteChartModel.value.minPrice, minuteChartModel.value.maxPrice)
-  const avgY = getMinuteY(avgPrice, minuteChartModel.value.minPrice, minuteChartModel.value.maxPrice)
-  const tooltip = getTooltipPosition(hover.rect, hover.pointX, latestY, 142, 108, minuteChartModel.value.viewWidth)
+  const geometry = minuteChartModel.value.geometry
+  const latestY = getMinuteY(point.price, minuteChartModel.value.minPrice, minuteChartModel.value.maxPrice, geometry)
+  const avgY = getMinuteY(avgPrice, minuteChartModel.value.minPrice, minuteChartModel.value.maxPrice, geometry)
+  const tooltip = getTooltipPosition(
+    hover.rect,
+    hover.pointX,
+    latestY,
+    142,
+    108,
+    minuteChartModel.value.viewWidth,
+    geometry.viewHeight
+  )
 
   minuteHover.value = {
     x: hover.pointX,
@@ -1280,15 +1326,20 @@ watch(() => settingsStore.settings.showIndices, () => {
   void loadIndices()
 })
 
+watch(minuteChartPanelRef, (panel) => {
+  minuteChartResizeObserver?.disconnect()
+  if (typeof ResizeObserver !== 'undefined' && panel) {
+    minuteChartResizeObserver ??= new ResizeObserver(() => {
+      syncMinuteChartPanelSize()
+    })
+    minuteChartResizeObserver.observe(panel)
+  }
+  syncMinuteChartPanelSize()
+}, { flush: 'post' })
+
 onMounted(async () => {
   await loadAll()
-  syncMinuteChartPanelWidth()
-  if (typeof ResizeObserver !== 'undefined' && minuteChartPanelRef.value) {
-    minuteChartResizeObserver = new ResizeObserver(() => {
-      syncMinuteChartPanelWidth()
-    })
-    minuteChartResizeObserver.observe(minuteChartPanelRef.value)
-  }
+  syncMinuteChartPanelSize()
   refreshTimer = window.setInterval(() => {
     void loadAll()
   }, 30000)
@@ -1314,6 +1365,7 @@ onUnmounted(() => {
 .index-change.down{color:#33c26f}
 .detail-body{flex:1;min-height:0;display:flex;flex-direction:column;overflow-y:auto;overflow-x:hidden;padding-right:4px;scrollbar-width:none;-ms-overflow-style:none}
 .stock-header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding:16px 0 10px}
+.stock-header,.stats-grid{flex-shrink:0}
 .stock-title{display:flex;align-items:baseline;gap:8px;min-width:0;flex-wrap:wrap}
 .stock-title h2{margin:0;font-size:20px;line-height:1.08;font-weight:800;color:#fff}
 .stock-subtitle{margin-top:0;font-size:13px;line-height:1.08;color:rgba(255,255,255,.68);white-space:nowrap}
@@ -1328,7 +1380,7 @@ onUnmounted(() => {
 .stat-label{font-size:12px;color:var(--text-muted)}
 .stat-value{font-size:16px;font-weight:700;color:var(--text-primary)}
 :deep(.stat-unit){font-size:12px;font-weight:400;color:var(--text-muted)}
-.chart-card{flex:none;min-height:0;display:flex;flex-direction:column;padding-top:8px}
+.chart-card{flex:1;min-height:400px;display:flex;flex-direction:column;padding-top:8px}
 .tab-bar{display:flex;align-items:center;gap:28px;padding-bottom:10px;border-bottom:1px solid rgba(255,255,255,.08)}
 .tab-btn{position:relative;padding:0;border:none;background:transparent;color:rgba(255,255,255,.72);font-size:14px;font-weight:700;cursor:pointer}
 .tab-btn.active{color:#2d9cff}
@@ -1344,15 +1396,15 @@ onUnmounted(() => {
 .legend-dot.dot-ma30{background:#ffa04a}
 .chart-area{flex:1;min-height:320px;position:relative}
 .minute-layout{display:flex;align-items:stretch;gap:16px;min-height:320px;height:100%}
-.minute-chart-panel{position:relative;flex:1;min-width:0;min-height:320px}
-.orderbook-panel{width:160px;flex:0 0 160px;padding:12px 0 0 14px;border-left:1px solid rgba(255,255,255,.08);display:flex;flex-direction:column;justify-content:flex-start;gap:10px}
+.minute-chart-panel{position:relative;flex:1;min-width:0;min-height:320px;height:100%}
+.orderbook-panel{width:160px;flex:0 0 160px;min-height:0;padding:12px 0 0 14px;border-left:1px solid rgba(255,255,255,.08);display:flex;flex-direction:column;gap:8px}
 .orderbook-row{position:relative;isolation:isolate;display:grid;grid-template-columns:28px 1fr auto;align-items:center;column-gap:10px;overflow:hidden}
 .orderbook-row>span,.orderbook-row>strong{position:relative;z-index:1}
-.orderbook-depth{position:absolute;z-index:0;top:3px;right:0;height:18px;opacity:.48;pointer-events:none}
+.orderbook-depth{position:absolute;z-index:0;top:50%;right:0;height:18px;transform:translateY(-50%);opacity:.48;pointer-events:none}
 .orderbook-depth.sell{background:rgba(34,197,94,.62)}
 .orderbook-depth.buy{background:rgba(239,68,68,.58)}
 .orderbook-volume{text-align:right}
-.orderbook-section{display:flex;flex-direction:column;gap:4px}
+.orderbook-section{flex:1;min-height:0;display:grid;grid-template-rows:repeat(5,minmax(24px,1fr));gap:4px}
 .orderbook-row{min-height:24px;font-size:12px}
 .orderbook-level{color:rgba(243,246,255,.72)}
 .orderbook-price{font-weight:700;text-align:left}
@@ -1360,7 +1412,7 @@ onUnmounted(() => {
 .orderbook-row.up .orderbook-price{color:#ff7474}
 .orderbook-row.down .orderbook-price{color:#3ad283}
 .orderbook-row.flat .orderbook-price{color:var(--text-primary)}
-.orderbook-divider{display:flex;height:3px;overflow:hidden;margin:1px 0;background:rgba(255,255,255,.08)}
+.orderbook-divider{display:flex;flex:0 0 3px;height:3px;overflow:hidden;margin:1px 0;background:rgba(255,255,255,.08)}
 .orderbook-divider i{display:block;height:100%}
 .orderbook-divider .buy{background:#ef4444}
 .orderbook-divider .sell{background:#22c55e}
