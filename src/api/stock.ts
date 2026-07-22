@@ -65,6 +65,7 @@ export interface FundQuote {
   name: string
   nav?: number | null
   navDate: string
+  changePercent?: number | null
   estimateNav?: number | null
   estimateChangePercent?: number | null
   estimateTime: string
@@ -74,6 +75,43 @@ export interface FundSearchResult {
   code: string
   name: string
   type: string
+}
+
+export interface FundNavPoint {
+  date: string
+  nav: number
+  accumulatedNav: number
+  changePercent?: number | null
+}
+
+export interface FundRank {
+  current: number
+  total: number
+}
+
+export interface FundProfile {
+  code: string
+  fundType: string
+  riskLevel: string
+  oneYearReturn?: number | null
+  rank?: FundRank | null
+}
+
+export interface FundIndustry {
+  name: string
+  percent: number
+}
+
+export interface FundHolding {
+  code: string
+  name: string
+  percent: number
+}
+
+export interface FundAllocation {
+  reportDate: string
+  industries: FundIndustry[]
+  holdings: FundHolding[]
 }
 
 export interface IndexData {
@@ -125,6 +163,23 @@ export async function fetchFunds(codes: string[]): Promise<FundQuote[]> {
   }
 
   return invokeSafe('fetch_funds', { codes }, [])
+}
+
+export async function fetchFundHistory(code: string): Promise<FundNavPoint[]> {
+  return invoke<FundNavPoint[]>('fetch_fund_history', { code })
+}
+
+export async function fetchFundProfile(code: string): Promise<FundProfile> {
+  return invoke<FundProfile>('fetch_fund_profile', { code })
+}
+
+export async function fetchFundAllocation(code: string): Promise<FundAllocation> {
+  return invoke<FundAllocation>('fetch_fund_allocation', { code })
+}
+
+export async function fetchIndexHistory(code = 'sh000300'): Promise<KlinePoint[]> {
+  const points = await invoke<KlinePoint[]>('fetch_index_history', { code })
+  return normalizeKlinePoints(points)
 }
 
 export async function fetchMinuteData(code: string): Promise<MinutePoint[]> {

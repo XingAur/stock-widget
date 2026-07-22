@@ -43,3 +43,7 @@ lerna-debug.log*
 .turbo/
 .cache/
 .parcel-cache/
+
+# Local agent planning and preview artifacts
+.superpowers/
+docs/superpowers/

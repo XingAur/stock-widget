@@ -7,6 +7,7 @@ const quote: FundQuote = {
   name: 'garbled-name',
   nav: 3.8307,
   navDate: '2026-07-06',
+  changePercent: 0.8,
   estimateNav: 3.8843,
   estimateChangePercent: 1.4,
   estimateTime: '2026-07-07 15:00'

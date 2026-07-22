@@ -10,6 +10,17 @@ import {
   type Stock
 } from '../api/stock'
 import { applyFundDisplayName, findExactFundSearchResult } from '../utils/funds'
+import {
+  addFundTransaction,
+  createEmptyFundLedger,
+  createLedgerFromLegacyPosition,
+  rebuildFundSnapshots,
+  removeFundTransaction,
+  replaceFundTransaction,
+  type FundLedger,
+  type FundNavPointLike,
+  type FundTransactionInput
+} from '../utils/fundLedger'
 import { moveItem } from '../utils/list'
 import type { FundPosition, StockPosition } from '../utils/positions'
 
@@ -18,6 +29,7 @@ const FUND_WATCHLIST_STORAGE_KEY = 'fundWatchList'
 const FUND_NAMES_STORAGE_KEY = 'fundNames'
 const STOCK_POSITIONS_STORAGE_KEY = 'stockPositions'
 const FUND_POSITIONS_STORAGE_KEY = 'fundPositions'
+const FUND_LEDGERS_STORAGE_KEY = 'fundLedgers'
 const ACTIVE_ASSET_TYPE_STORAGE_KEY = 'activeAssetType'
 
 export interface SparklineData {
@@ -111,6 +123,26 @@ function isFundPosition(value: unknown): value is FundPosition {
   )
 }
 
+function isFundLedger(value: unknown): value is FundLedger {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return false
+  }
+
+  const ledger = value as FundLedger
+  const baseline = ledger.baseline
+  return ledger.schemaVersion === 1
+    && typeof ledger.code === 'string'
+    && Boolean(baseline && typeof baseline === 'object')
+    && typeof baseline.date === 'string'
+    && Number.isFinite(baseline.nav)
+    && Number.isFinite(baseline.holdingAmount)
+    && Number.isFinite(baseline.holdingProfit)
+    && Number.isFinite(baseline.shares)
+    && Number.isFinite(baseline.costAmount)
+    && Array.isArray(ledger.transactions)
+    && Array.isArray(ledger.snapshots)
+}
+
 export const useStockStore = defineStore('stock', () => {
   const activeAssetType = ref<AssetType>('stock')
   const watchList = ref<string[]>([])
@@ -118,6 +150,7 @@ export const useStockStore = defineStore('stock', () => {
   const fundNames = ref<Record<string, string>>({})
   const stockPositions = ref<Record<string, StockPosition>>({})
   const fundPositions = ref<Record<string, FundPosition>>({})
+  const fundLedgers = ref<Record<string, FundLedger>>({})
   const stocks = ref<Map<string, Stock>>(new Map())
   const funds = ref<Map<string, FundQuote>>(new Map())
   const sparklines = ref<Map<string, number[]>>(new Map())
@@ -149,17 +182,26 @@ export const useStockStore = defineStore('stock', () => {
     localStorage.setItem(FUND_POSITIONS_STORAGE_KEY, JSON.stringify(nextPositions))
   }, { deep: true })
 
+  watch(fundLedgers, (nextLedgers) => {
+    localStorage.setItem(FUND_LEDGERS_STORAGE_KEY, JSON.stringify(nextLedgers))
+  }, { deep: true })
+
   watch(activeAssetType, (nextAssetType) => {
     localStorage.setItem(ACTIVE_ASSET_TYPE_STORAGE_KEY, nextAssetType)
   })
 
-  async function init() {
+  function loadStoredState() {
     watchList.value = readStoredList(WATCHLIST_STORAGE_KEY)
     fundWatchList.value = readStoredList(FUND_WATCHLIST_STORAGE_KEY)
     fundNames.value = readStoredRecord(FUND_NAMES_STORAGE_KEY)
     stockPositions.value = readStoredNumberRecord(STOCK_POSITIONS_STORAGE_KEY, isStockPosition)
     fundPositions.value = readStoredNumberRecord(FUND_POSITIONS_STORAGE_KEY, isFundPosition)
+    fundLedgers.value = readStoredNumberRecord(FUND_LEDGERS_STORAGE_KEY, isFundLedger)
     activeAssetType.value = readStoredAssetType()
+  }
+
+  async function init() {
+    loadStoredState()
 
     await refreshAll()
     startAutoRefresh()
@@ -353,6 +395,7 @@ export const useStockStore = defineStore('stock', () => {
     const nextFundPositions = { ...fundPositions.value }
     delete nextFundPositions[code]
     fundPositions.value = nextFundPositions
+    clearFundLedger(code)
     const nextFunds = new Map(funds.value)
     nextFunds.delete(code)
     funds.value = nextFunds
@@ -430,6 +473,91 @@ export const useStockStore = defineStore('stock', () => {
     fundPositions.value = nextPositions
   }
 
+  function ensureFundLedger(code: string, date: string, nav: number, allowEmpty = false): FundLedger | null {
+    const existing = fundLedgers.value[code]
+    if (existing) {
+      return existing
+    }
+
+    const legacyPosition = fundPositions.value[code]
+    if (!legacyPosition && !allowEmpty) return null
+
+    const ledger = legacyPosition
+      ? createLedgerFromLegacyPosition(code, legacyPosition, date, nav)
+      : createEmptyFundLedger(code, date, nav)
+    fundLedgers.value = {
+      ...fundLedgers.value,
+      [code]: ledger
+    }
+    return ledger
+  }
+
+  function applyFundTransaction(code: string, input: FundTransactionInput) {
+    const ledger = fundLedgers.value[code]
+    if (!ledger) {
+      throw new Error('请先建立基金持仓账本')
+    }
+
+    const nextLedger = addFundTransaction(ledger, input)
+    fundLedgers.value = {
+      ...fundLedgers.value,
+      [code]: rebuildFundSnapshots(
+        nextLedger,
+        ledger.snapshots.map((snapshot) => ({ date: snapshot.date, nav: snapshot.officialNav }))
+      )
+    }
+  }
+
+  function editFundTransaction(code: string, id: string, input: FundTransactionInput) {
+    const ledger = fundLedgers.value[code]
+    if (!ledger) {
+      throw new Error('请先建立基金持仓账本')
+    }
+
+    const nextLedger = replaceFundTransaction(ledger, id, input)
+    fundLedgers.value = {
+      ...fundLedgers.value,
+      [code]: rebuildFundSnapshots(
+        nextLedger,
+        ledger.snapshots.map((snapshot) => ({ date: snapshot.date, nav: snapshot.officialNav }))
+      )
+    }
+  }
+
+  function deleteFundTransaction(code: string, id: string) {
+    const ledger = fundLedgers.value[code]
+    if (!ledger) {
+      throw new Error('请先建立基金持仓账本')
+    }
+
+    const nextLedger = removeFundTransaction(ledger, id)
+    fundLedgers.value = {
+      ...fundLedgers.value,
+      [code]: rebuildFundSnapshots(
+        nextLedger,
+        ledger.snapshots.map((snapshot) => ({ date: snapshot.date, nav: snapshot.officialNav }))
+      )
+    }
+  }
+
+  function rebuildFundLedgerSnapshots(code: string, history: readonly FundNavPointLike[]) {
+    const ledger = fundLedgers.value[code]
+    if (!ledger) {
+      return
+    }
+
+    fundLedgers.value = {
+      ...fundLedgers.value,
+      [code]: rebuildFundSnapshots(ledger, history)
+    }
+  }
+
+  function clearFundLedger(code: string) {
+    const nextLedgers = { ...fundLedgers.value }
+    delete nextLedgers[code]
+    fundLedgers.value = nextLedgers
+  }
+
   async function fetchSparkline(code: string) {
     const minuteData = await fetchMinuteData(code)
     if (minuteData.length === 0) {
@@ -467,6 +595,7 @@ export const useStockStore = defineStore('stock', () => {
     fundNames,
     stockPositions,
     fundPositions,
+    fundLedgers,
     stocks,
     funds,
     sparklines,
@@ -477,6 +606,7 @@ export const useStockStore = defineStore('stock', () => {
     stockList,
     fundList,
     init,
+    loadStoredState,
     refreshStocks,
     refreshFunds,
     refreshAll,
@@ -489,6 +619,12 @@ export const useStockStore = defineStore('stock', () => {
     clearStockPosition,
     setFundPosition,
     clearFundPosition,
+    ensureFundLedger,
+    applyFundTransaction,
+    editFundTransaction,
+    deleteFundTransaction,
+    rebuildFundLedgerSnapshots,
+    clearFundLedger,
     getStock,
     getFund,
     getSparkline,

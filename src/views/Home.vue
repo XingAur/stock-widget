@@ -144,9 +144,9 @@
           data-drag-card="true"
           data-asset-type="fund"
           :data-index="index"
-          @click.stop="handleSelectFund"
-          @keydown.enter.prevent="handleSelectFund"
-          @keydown.space.prevent="handleSelectFund"
+          @click.stop="handleSelectFund(fund.code)"
+          @keydown.enter.prevent="handleSelectFund(fund.code)"
+          @keydown.space.prevent="handleSelectFund(fund.code)"
           @mouseenter="handleFundHover(fund.code)"
           @mouseleave="handleFundLeave(fund.code)"
           @pointerenter="handleDragEnter('fund', index)"
@@ -174,11 +174,15 @@
           <div class="fund-quote-side">
             <div
               class="fund-change-value"
-              :class="getSignedChangeTone(fund.estimateChangePercent)"
+              :class="getSignedChangeTone(getFundDisplayQuote(fund).changePercent)"
             >
-              {{ formatSignedOptionalPercent(fund.estimateChangePercent) }}
+              {{ formatSignedOptionalPercent(getFundDisplayQuote(fund).changePercent) }}
             </div>
-            <div class="fund-estimate-value">{{ formatOptionalNumber(fund.estimateNav, 4) }}</div>
+            <div class="fund-estimate-value">{{ formatOptionalNumber(getFundDisplayQuote(fund).nav, 4) }}</div>
+            <div
+              class="fund-quote-meta"
+              :class="{ estimate: getFundDisplayQuote(fund).source === 'estimate' }"
+            >{{ getFundQuoteMeta(fund) }}</div>
           </div>
 
           <div
@@ -320,6 +324,7 @@ import {
 import { useSettingsStore } from '../stores/settings'
 import { useStockStore } from '../stores/stock'
 import { createSparklinePoints } from '../utils/chart'
+import { resolveFundDisplayQuote, type FundDisplayQuote } from '../utils/fundQuote'
 import {
   formatOptionalNumber,
   formatSignedOptionalPercent,
@@ -378,7 +383,7 @@ const EDGE_SCROLL_ZONE = 28
 
 const props = defineProps<{ selectedCode: string }>()
 const emit = defineEmits<{
-  select: [code: string]
+  selectDetail: [selection: { assetType: AssetType; code: string }]
   assetTypeChange: [assetType: AssetType]
 }>()
 
@@ -430,8 +435,15 @@ const searchPlaceholder = computed(() => stockStore.activeAssetType === 'stock' 
 const stockAccountSummary = computed<StockAccountSummary | null>(() =>
   calculateStockAccountSummary(stockStore.stockPositions, stockStore.stockList)
 )
+const fundAccountQuotes = computed(() => stockStore.fundList.map((fund) => {
+  const display = resolveFundDisplayQuote(fund)
+  return {
+    code: fund.code,
+    estimateChangePercent: display.source === 'estimate' ? display.changePercent : null
+  }
+}))
 const fundAccountSummary = computed<FundAccountSummary | null>(() =>
-  calculateFundAccountSummary(stockStore.fundPositions, stockStore.fundList)
+  calculateFundAccountSummary(stockStore.fundPositions, fundAccountQuotes.value)
 )
 const activeAccountSummary = computed<StockAccountSummary | FundAccountSummary | null>(() =>
   stockStore.activeAssetType === 'stock' ? stockAccountSummary.value : fundAccountSummary.value
@@ -499,7 +511,7 @@ function handleOpenDetail(code: string) {
   }
 
   closeContextMenu()
-  emit('select', code)
+  emit('selectDetail', { assetType: 'stock', code })
 }
 
 function clampContextMenuPosition(x: number, y: number) {
@@ -580,12 +592,27 @@ function getFundPositionMetrics(fund: FundQuote): PositionMetrics | null {
   return calculateFundPositionMetrics(stockStore.fundPositions[fund.code])
 }
 
+function getFundDisplayQuote(fund: FundQuote): FundDisplayQuote {
+  return resolveFundDisplayQuote(fund)
+}
+
+function getFundQuoteMeta(fund: FundQuote): string {
+  const display = getFundDisplayQuote(fund)
+  if (display.source === 'estimate') {
+    const time = display.time.match(/(?:\s|T)(\d{2}:\d{2})/)?.[1] ?? ''
+    return `持仓估算${time ? ` ${time}` : ''}`
+  }
+
+  const date = display.time.length >= 10 ? display.time.slice(5, 10) : display.time
+  return `已确认净值${date ? ` ${date}` : ''}`
+}
+
 function isStockCardSelected(code: string): boolean {
   return code === props.selectedCode || code === hoveredStockCode.value
 }
 
 function isFundCardSelected(code: string): boolean {
-  return code === hoveredFundCode.value
+  return code === props.selectedCode || code === hoveredFundCode.value
 }
 
 function hasStockPositionDetail(stock: Stock): boolean {
@@ -706,12 +733,13 @@ function clearPositionDialog() {
   closePositionDialog()
 }
 
-function handleSelectFund() {
+function handleSelectFund(code: string) {
   if (suppressNextCardClick.value || dragState.value?.active) {
     return
   }
 
   closeContextMenu()
+  emit('selectDetail', { assetType: 'fund', code })
 }
 
 function setSuppressNextCardClick() {
@@ -1022,7 +1050,7 @@ onUnmounted(() => {
 .stock-card:hover .remove-btn,.stock-card:focus-within .remove-btn,.stock-card.selected .remove-btn{opacity:1}
 .stock-card:hover .remove-btn,.stock-card:focus-within .remove-btn,.stock-card.selected .remove-btn{pointer-events:auto}
 .remove-btn:hover{background:rgba(239,68,68,.22)}
-.fund-card{align-items:center;min-height:58px;cursor:default}
+.fund-card{align-items:center;min-height:58px;cursor:pointer}
 .fund-card:hover{transform:none}
 .fund-card.with-position{align-items:flex-start;min-height:86px}
 .fund-main-list{min-width:0;flex:1;display:flex;flex-direction:column;gap:6px;padding-top:1px}
@@ -1032,7 +1060,9 @@ onUnmounted(() => {
 .fund-change-value{font-size:17px;font-weight:900;line-height:1;letter-spacing:0}
 .fund-change-value.up{color:#ff6868}.fund-change-value.down{color:#32ce7b}
 .fund-estimate-value{font-size:12px;font-weight:700;line-height:1;color:#8f99bb}
-.position-overlay{position:absolute;inset:0;z-index:45;display:flex;align-items:center;justify-content:center;padding:16px;background:rgba(0,0,0,.44);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+.fund-quote-meta{font-size:8px;font-weight:650;line-height:1;color:var(--text-muted);white-space:nowrap}
+.fund-quote-meta.estimate{color:#f0a35b}
+.position-overlay{position:absolute;inset:0;z-index:45;display:flex;align-items:center;justify-content:center;padding:16px;background:rgba(0,0,0,.44)}
 .position-dialog{width:min(250px,100%);padding:14px;border:1px solid var(--border-color);border-radius:12px;background:var(--solid-bg);box-shadow:0 18px 48px rgba(0,0,0,.35);display:flex;flex-direction:column;gap:12px}
 .position-dialog-header{display:flex;align-items:center;justify-content:space-between;gap:10px}
 .position-dialog-header h3{margin:0;font-size:14px;line-height:1.2;color:var(--text-primary)}

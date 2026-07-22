@@ -12,12 +12,21 @@
       <aside class="sidebar">
         <HomeView
           :selected-code="selectedCode"
-          @select="showStockDetail"
+          @select-detail="showDetail"
         />
       </aside>
 
       <section v-if="hasDetail" class="detail-panel" :class="{ 'panel-left': detailPosition === 'left', 'panel-right': detailPosition === 'right' }">
-        <DetailView :code="selectedCode" @close="closeDetail" />
+        <DetailView
+          v-if="selectedDetail?.assetType === 'stock'"
+          :code="selectedCode"
+          @close="closeDetail"
+        />
+        <FundDetailView
+          v-else-if="selectedDetail?.assetType === 'fund'"
+          :code="selectedCode"
+          @close="closeDetail"
+        />
       </section>
     </main>
 
@@ -42,6 +51,7 @@ import type { AssetType } from './api/stock'
 import { getAssetTitle, getNextAssetType } from './utils/assets'
 
 const DetailView = defineAsyncComponent(() => import('./views/Detail.vue'))
+const FundDetailView = defineAsyncComponent(() => import('./views/FundDetail.vue'))
 const SettingsView = defineAsyncComponent(() => import('./views/Settings.vue'))
 
 const stockStore = useStockStore()
@@ -51,18 +61,24 @@ const COMPACT_SIZE = { width: 280, height: 480 }
 const EXPANDED_SIZE = { width: 900, height: 480 }
 const DETAIL_WIDTH = 620
 
-const selectedCode = ref('')
+interface DetailSelection {
+  assetType: AssetType
+  code: string
+}
+
+const selectedDetail = ref<DetailSelection | null>(null)
+const selectedCode = computed(() => selectedDetail.value?.code ?? '')
 const detailPosition = ref<'left' | 'right'>('right')
 const showSettings = ref(false)
-const hasDetail = computed(() => Boolean(selectedCode.value))
+const hasDetail = computed(() => Boolean(selectedDetail.value))
 const assetTitle = computed(() => getAssetTitle(stockStore.activeAssetType))
 
-function showStockDetail(code: string) {
-  void openDetail(code)
+function showDetail(selection: DetailSelection) {
+  void openDetail(selection)
 }
 
 function handleAssetTypeChange(assetType: AssetType) {
-  if (assetType === 'fund' && hasDetail.value) {
+  if (selectedDetail.value && selectedDetail.value.assetType !== assetType) {
     void closeDetail()
   }
 }
@@ -103,30 +119,33 @@ async function determineDetailPosition(): Promise<'left' | 'right'> {
   }
 }
 
-async function openDetail(code: string) {
-  if (!code) {
+async function openDetail(selection: DetailSelection) {
+  if (!selection.code) {
     return
   }
 
-  if (selectedCode.value === code) {
+  if (
+    selectedDetail.value?.assetType === selection.assetType
+    && selectedDetail.value.code === selection.code
+  ) {
     await closeDetail()
     return
   }
 
   if (hasDetail.value) {
-    selectedCode.value = code
+    selectedDetail.value = selection
     return
   }
 
   const nextDetailPosition = await determineDetailPosition()
   detailPosition.value = nextDetailPosition
-  selectedCode.value = code
+  selectedDetail.value = selection
   await syncWindowSize(true, nextDetailPosition)
 }
 
 async function closeDetail() {
   const closingPosition = detailPosition.value
-  selectedCode.value = ''
+  selectedDetail.value = null
   await syncWindowSize(false, closingPosition)
 }
 
@@ -173,12 +192,22 @@ async function handleMinimize() {
 }
 
 watch(() => [...stockStore.watchList], (watchList) => {
-  if (!selectedCode.value) {
+  if (selectedDetail.value?.assetType !== 'stock') {
     return
   }
 
   if (!watchList.includes(selectedCode.value)) {
-    selectedCode.value = ''
+    void closeDetail()
+  }
+})
+
+watch(() => [...stockStore.fundWatchList], (fundWatchList) => {
+  if (selectedDetail.value?.assetType !== 'fund') {
+    return
+  }
+
+  if (!fundWatchList.includes(selectedCode.value)) {
+    void closeDetail()
   }
 })
 
@@ -247,8 +276,6 @@ onMounted(async () => {
   justify-content: center;
   padding: 24px;
   background: rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
   z-index: 100;
 }
 
