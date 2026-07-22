@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   formatAmount,
+  formatCompactMoney,
   formatMA,
   formatMarketCap,
   formatOrderBookVolume,
@@ -55,5 +56,12 @@ describe('format helpers', () => {
     expect(getSignedChangeTone(undefined)).toBe('')
     expect(getSignedChangeTone(null)).toBe('')
     expect(getSignedChangeTone(Number.NaN)).toBe('')
+  })
+
+  it('compacts account money without losing its sign', () => {
+    expect(formatCompactMoney(4542)).toBe('¥4,542.00')
+    expect(formatCompactMoney(37002)).toBe('¥3.70万')
+    expect(formatCompactMoney(182930, true)).toBe('+¥18.29万')
+    expect(formatCompactMoney(-182930, true)).toBe('-¥18.29万')
   })
 })

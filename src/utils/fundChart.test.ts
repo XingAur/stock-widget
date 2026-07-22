@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { FundDailySnapshot } from './fundLedger'
 import {
+  calculateFundRangeReturn,
   createIncomeSeries,
   createLinePath,
   createPerformanceSeries,
@@ -9,6 +10,20 @@ import {
 } from './fundChart'
 
 describe('fund performance chart model', () => {
+  it('calculates the trailing one-year return from official NAV history', () => {
+    expect(calculateFundRangeReturn([
+      { date: '2025-07-22', nav: 1.2668 },
+      { date: '2026-01-19', nav: 2.4 },
+      { date: '2026-07-22', nav: 3.5368 }
+    ], '1y')).toBe(179.19)
+  })
+
+  it('returns null when a range does not contain two valid NAV points', () => {
+    expect(calculateFundRangeReturn([
+      { date: '2026-07-22', nav: 3.5368 }
+    ], '1y')).toBeNull()
+  })
+
   it('normalizes fund and benchmark values from their first common date', () => {
     const model = createPerformanceSeries(
       [

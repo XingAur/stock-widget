@@ -58,6 +58,10 @@
   color: #22c55e !important;
 }
 
+[data-theme="light"] .detail-view .orderbook-row.flat .orderbook-price {
+  color: #111827 !important;
+}
+
 [data-theme="light"] .detail-view .orderbook-level,
 [data-theme="light"] .detail-view .orderbook-volume,
 [data-theme="light"] .detail-view .orderbook-large-price,
@@ -79,6 +83,15 @@
 
 [data-theme="light"] .detail-view .axis-label {
   fill: rgba(0, 0, 0, 0.42) !important;
+}
+
+[data-theme="light"] .detail-view .minute-volume-title,
+[data-theme="light"] .detail-view .minute-volume-value {
+  fill: #4b5563 !important;
+}
+
+[data-theme="light"] .detail-view .minute-volume-divider {
+  stroke: rgba(0, 0, 0, 0.1) !important;
 }
 
 [data-theme="light"] .detail-view .hover-line {

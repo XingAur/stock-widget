@@ -1,14 +1,14 @@
 <template>
-  <section class="position-dialog" role="dialog" :aria-label="dialogTitle">
+  <section class="position-dialog" role="dialog" aria-modal="true" :aria-label="dialogTitle">
     <header class="dialog-head">
       <div>
         <span class="eyebrow">POSITION LEDGER</span>
         <h2>{{ dialogTitle }}</h2>
       </div>
-      <button type="button" title="关闭" @click="emit('close')">×</button>
+      <button type="button" aria-label="关闭持仓录入" title="关闭" @click="emit('close')"><X :size="15" aria-hidden="true" /></button>
     </header>
 
-    <div class="simulation-notice"><i>!</i> 仅记录模拟持仓，请先在真实交易平台完成操作</div>
+    <div class="simulation-notice"><CircleAlert :size="13" aria-hidden="true" /> 仅记录模拟持仓，请先在真实交易平台完成操作</div>
 
     <div class="fund-strip">
       <div><strong>{{ fundName }}</strong><small>{{ code }}</small></div>
@@ -78,6 +78,7 @@
 
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
+import { CircleAlert, X } from 'lucide-vue-next'
 import type { FundNavPoint } from '../../api/stock'
 import type { FundTransaction, FundTransactionInput } from '../../utils/fundLedger'
 import {
@@ -207,42 +208,41 @@ watch(() => form.tradeDate, matchNavForDate, { immediate: true })
 <style scoped>
 .position-dialog { width: min(440px, calc(100% - 30px)); max-height: calc(100% - 24px); overflow-y: auto; border: 1px solid var(--border-color); border-radius: 16px; color: var(--text-primary); background: var(--solid-bg); box-shadow: 0 24px 80px rgba(0, 0, 0, .48); }
 .dialog-head { display: flex; align-items: center; justify-content: space-between; padding: 13px 16px 10px; }
-.eyebrow { display: block; color: #6f94f8; font-size: 7px; font-weight: 800; letter-spacing: .15em; }
+.eyebrow { display: block; color: #6f94f8; font-size: 10px; font-weight: 800; letter-spacing: 0; }
 .dialog-head h2 { margin-top: 2px; font-size: 16px; }
 .dialog-head button { width: 25px; height: 25px; border: 0; border-radius: 7px; color: var(--text-muted); background: var(--card-bg); cursor: pointer; }
-.simulation-notice { padding: 6px 16px; color: #e9a25d; background: rgba(245, 158, 11, .08); font-size: 9px; }
-.simulation-notice i { display: inline-grid; width: 13px; height: 13px; place-items: center; margin-right: 3px; border: 1px solid currentColor; border-radius: 50%; font-style: normal; font-size: 8px; }
+.simulation-notice { display: flex; align-items: center; gap: 4px; padding: 6px 16px; color: #e9a25d; background: rgba(245, 158, 11, .08); font-size: 10px; }
 .fund-strip { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; border-bottom: 1px solid var(--divider-color); }
 .fund-strip > div:first-child { min-width: 0; }
 .fund-strip strong, .fund-strip small, .fund-strip span { display: block; }
 .fund-strip > div:first-child strong { overflow: hidden; max-width: 280px; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
-.fund-strip small, .fund-strip span { margin-top: 2px; color: var(--text-muted); font-size: 8px; }
+.fund-strip small, .fund-strip span { margin-top: 2px; color: var(--text-muted); font-size: 10px; }
 .fund-strip > div:last-child { text-align: right; }
 .fund-strip > div:last-child strong { margin-top: 2px; font-size: 12px; }
 form { padding: 11px 16px 14px; }
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 9px 11px; }
 label { display: block; min-width: 0; }
 label.wide { grid-column: 1 / -1; }
-label > span, .nav-match > span { display: flex; justify-content: space-between; margin-bottom: 4px; color: var(--text-secondary); font-size: 9px; }
-label > span small { color: var(--text-muted); font-size: 8px; }
+label > span, .nav-match > span { display: flex; justify-content: space-between; margin-bottom: 4px; color: var(--text-secondary); font-size: 10px; }
+label > span small { color: var(--text-muted); font-size: 10px; }
 input { width: 100%; height: 31px; padding: 0 9px; border: 1px solid var(--border-color); outline: none; border-radius: 7px; color: var(--text-primary); background: var(--input-bg); font: inherit; font-size: 11px; user-select: text; }
 input:focus { border-color: rgba(111, 148, 248, .6); box-shadow: 0 0 0 2px rgba(91, 140, 255, .1); }
 .money-input { position: relative; }
 .money-input b { position: absolute; top: 4px; left: 9px; color: #8fb0ff; font-size: 18px; }
 .money-input input { height: 39px; padding-left: 32px; font-size: 17px; font-weight: 650; }
 .quick-shares { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 6px; }
-.quick-shares button { height: 23px; border: 1px solid var(--border-color); border-radius: 7px; color: var(--text-muted); background: transparent; font: inherit; font-size: 9px; cursor: pointer; }
+.quick-shares button { height: 25px; border: 1px solid var(--border-color); border-radius: 7px; color: var(--text-muted); background: transparent; font: inherit; font-size: 10px; cursor: pointer; }
 .quick-shares button:hover { color: #8fb0ff; border-color: rgba(111, 148, 248, .5); }
 .nav-match { align-self: end; height: 31px; padding: 4px 8px; border-radius: 7px; background: var(--card-bg); }
-.nav-match span { margin: 0; color: var(--text-muted); font-size: 7px; }
-.nav-match strong { display: block; overflow: hidden; margin-top: 2px; color: var(--text-secondary); text-overflow: ellipsis; white-space: nowrap; font-size: 8px; }
+.nav-match span { margin: 0; color: var(--text-muted); font-size: 10px; }
+.nav-match strong { display: block; overflow: hidden; margin-top: 2px; color: var(--text-secondary); text-overflow: ellipsis; white-space: nowrap; font-size: 10px; }
 .preview-card { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; padding: 9px 10px; border: 1px solid rgba(111, 148, 248, .12); border-radius: 9px; background: rgba(91, 140, 255, .07); }
 .preview-card span, .preview-card strong { display: block; }
-.preview-card span { color: var(--text-muted); font-size: 8px; }
+.preview-card span { color: var(--text-muted); font-size: 10px; }
 .preview-card strong { margin-top: 3px; font-size: 11px; }
 .up { color: var(--danger); }
 .down { color: var(--success); }
-.form-errors { display: flex; flex-wrap: wrap; gap: 3px 8px; margin-top: 8px; color: #f28b82; font-size: 8px; }
+.form-errors { display: flex; flex-wrap: wrap; gap: 3px 8px; margin-top: 8px; color: #f28b82; font-size: 10px; }
 .form-errors span::before { content: '• '; }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 7px; margin-top: 12px; }
 .dialog-actions button { min-width: 74px; height: 30px; border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-secondary); background: transparent; font: inherit; font-size: 10px; cursor: pointer; }

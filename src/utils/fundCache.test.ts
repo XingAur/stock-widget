@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { readFundDetailCache, writeFundDetailCache } from './fundCache'
+import { readFundDetailCache, shouldRefreshFundHistory, writeFundDetailCache } from './fundCache'
 
 function storage(): Pick<Storage, 'getItem' | 'setItem'> {
   const values = new Map<string, string>()
@@ -45,5 +45,16 @@ describe('fund detail cache', () => {
     target.setItem('fundDetail:history:001186', '{broken')
 
     expect(readFundDetailCache('history', '001186', 1000, 5000, target)).toBeNull()
+  })
+
+  it('refreshes history when the official quote is newer than the cached NAV', () => {
+    const cache = {
+      value: [{ date: '2026-07-21', nav: 2 }],
+      savedAt: new Date(2026, 6, 22, 10).getTime(),
+      isFresh: true
+    }
+
+    expect(shouldRefreshFundHistory(cache, '2026-07-22')).toBe(true)
+    expect(shouldRefreshFundHistory(cache, '2026-07-21')).toBe(false)
   })
 })

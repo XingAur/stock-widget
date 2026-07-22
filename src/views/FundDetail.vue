@@ -3,13 +3,13 @@
     <div v-if="loading && !quote && history.length === 0" class="fund-detail-loading">
       <span class="loading-orbit" />
       <span>基金详情加载中 · {{ code }}</span>
-      <button type="button" title="关闭" @click="emit('close')">×</button>
+      <button type="button" aria-label="关闭基金详情" title="关闭" @click="emit('close')"><X :size="16" aria-hidden="true" /></button>
     </div>
 
     <template v-else>
       <header class="fund-header">
         <div class="identity-block">
-          <button class="close-btn" type="button" title="关闭详情" @click="emit('close')">‹</button>
+          <button class="close-btn" type="button" aria-label="返回基金列表" title="关闭详情" @click="emit('close')"><ArrowLeft :size="16" aria-hidden="true" /></button>
           <div class="fund-identity">
             <div class="identity-line">
               <h2>{{ fundName }}</h2>
@@ -33,7 +33,7 @@
         </div>
 
         <div class="remote-metrics">
-          <div><span>近一年</span><strong :class="profitClass(profile?.oneYearReturn)">{{ formatPercent(profile?.oneYearReturn, true) }}</strong></div>
+          <div><span>近一年</span><strong :class="profitClass(oneYearReturn)">{{ formatPercent(oneYearReturn, true) }}</strong></div>
           <div><span>同类排名</span><strong>{{ rankText }}</strong></div>
           <div><span>持仓占比</span><strong>{{ formatPercent(position?.positionPercent) }}</strong></div>
         </div>
@@ -85,7 +85,7 @@
         <aside class="position-panel">
           <div class="position-title">
             <div><span class="eyebrow">MY POSITION</span><h3>持仓摘要</h3></div>
-            <button type="button" @click="activeAction = 'records'">收益明细 ›</button>
+            <button type="button" @click="handleAction('records', $event)">收益明细 <ChevronRight :size="12" aria-hidden="true" /></button>
           </div>
 
           <template v-if="position">
@@ -117,8 +117,15 @@
       </main>
 
       <footer class="fund-actions">
-        <button v-for="action in actions" :key="action.value" type="button" @click="handleAction(action.value)">
-          <span>{{ action.icon }}</span><small>{{ action.label }}</small>
+        <button
+          v-for="action in actions"
+          :key="action.value"
+          type="button"
+          :aria-label="action.label"
+          @click="handleAction(action.value, $event)"
+        >
+          <component :is="action.icon" class="fund-action-icon" :size="17" :stroke-width="1.8" aria-hidden="true" />
+          <small>{{ action.label }}</small>
         </button>
         <div v-if="showMore" class="more-menu">
           <button type="button" @click="void loadFundDetail(true)">刷新数据</button>
@@ -126,7 +133,14 @@
         </div>
       </footer>
 
-      <div v-if="activeAction" class="action-overlay" @click.self="closeAction">
+      <div
+        v-if="activeAction"
+        ref="actionOverlayRef"
+        class="action-overlay"
+        tabindex="-1"
+        @click.self="closeAction"
+        @keydown="handleActionOverlayKeydown"
+      >
         <FundTransactionList
           v-if="activeAction === 'records'"
           :ledger="ledger"
@@ -158,7 +172,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch, type Component } from 'vue'
+import { ArrowLeft, ChevronRight, Ellipsis, History, Minus, Pencil, Plus, X } from 'lucide-vue-next'
 import {
   fetchFundAllocation,
   fetchFundHistory,
@@ -172,10 +187,11 @@ import {
   type KlinePoint
 } from '../api/stock'
 import { useStockStore } from '../stores/stock'
-import { createPerformanceSeries, type FundChartRange } from '../utils/fundChart'
-import { readFundDetailCache, writeFundDetailCache } from '../utils/fundCache'
+import { calculateFundRangeReturn, createPerformanceSeries, type FundChartRange } from '../utils/fundChart'
+import { readFundDetailCache, shouldRefreshFundHistory, writeFundDetailCache } from '../utils/fundCache'
 import { localDateKey, resolveFundDisplayQuote } from '../utils/fundQuote'
 import { deriveFundPosition, type FundPositionView, type FundTransaction, type FundTransactionInput } from '../utils/fundLedger'
+import { focusFirstModalControl, trapModalFocus } from '../utils/modalFocus'
 import FundIncomeChart from '../components/fund/FundIncomeChart.vue'
 import FundPerformanceChart from '../components/fund/FundPerformanceChart.vue'
 import FundRelatedHoldings from '../components/fund/FundRelatedHoldings.vue'
@@ -190,7 +206,9 @@ type FundTab = 'related' | 'performance' | 'income'
 type FundAction = 'buy' | 'sell' | 'records' | 'adjust' | 'more'
 
 const HISTORY_CACHE_TTL = 6 * 60 * 60 * 1000
+const HISTORY_CACHE_SCOPE = 'history-v2'
 const PROFILE_CACHE_TTL = 6 * 60 * 60 * 1000
+const PROFILE_CACHE_SCOPE = 'profile-v2'
 const ALLOCATION_CACHE_TTL = 24 * 60 * 60 * 1000
 const ALLOCATION_CACHE_SCOPE = 'allocation-v2'
 const BENCHMARK_CACHE_TTL = 6 * 60 * 60 * 1000
@@ -200,12 +218,12 @@ const tabs: Array<{ value: FundTab; label: string }> = [
   { value: 'performance', label: '业绩走势' },
   { value: 'income', label: '我的收益' }
 ]
-const actions: Array<{ value: FundAction; label: string; icon: string }> = [
-  { value: 'buy', label: '加仓', icon: '＋' },
-  { value: 'sell', label: '减仓', icon: '－' },
-  { value: 'records', label: '交易记录', icon: '⇄' },
-  { value: 'adjust', label: '修改持仓', icon: '✎' },
-  { value: 'more', label: '更多', icon: '•••' }
+const actions: Array<{ value: FundAction; label: string; icon: Component }> = [
+  { value: 'buy', label: '加仓', icon: Plus },
+  { value: 'sell', label: '减仓', icon: Minus },
+  { value: 'records', label: '交易记录', icon: History },
+  { value: 'adjust', label: '修改持仓', icon: Pencil },
+  { value: 'more', label: '更多', icon: Ellipsis }
 ]
 
 const quote = ref<FundQuote | null>(null)
@@ -223,7 +241,9 @@ const incomeRange = ref<FundChartRange>('3m')
 const activeAction = ref<Exclude<FundAction, 'more'> | null>(null)
 const editingTransaction = ref<FundTransaction | null>(null)
 const showMore = ref(false)
+const actionOverlayRef = ref<HTMLElement | null>(null)
 let requestVersion = 0
+let actionTrigger: HTMLElement | null = null
 
 const ledger = computed(() => stockStore.fundLedgers[props.code] ?? null)
 const latestHistory = computed(() => history.value[history.value.length - 1] ?? null)
@@ -262,6 +282,8 @@ const fundName = computed(() => quote.value?.name || stockStore.fundNames[props.
 const rankText = computed(() => profile.value?.rank
   ? `${profile.value.rank.current}/${profile.value.rank.total}`
   : '--')
+const oneYearReturn = computed(() => profile.value?.oneYearReturn
+  ?? calculateFundRangeReturn(history.value, '1y'))
 
 const accountMarketValue = computed(() => Object.entries(stockStore.fundLedgers).reduce((total, [code, item]) => {
   const fundQuote = stockStore.getFund(code)
@@ -328,8 +350,8 @@ async function loadFundDetail(force = false): Promise<void> {
   showMore.value = false
   quote.value = stockStore.getFund(props.code) ?? null
 
-  const historyCache = readFundDetailCache<FundNavPoint[]>('history', props.code, HISTORY_CACHE_TTL, now)
-  const profileCache = readFundDetailCache<FundProfile>('profile', props.code, PROFILE_CACHE_TTL, now)
+  const historyCache = readFundDetailCache<FundNavPoint[]>(HISTORY_CACHE_SCOPE, props.code, HISTORY_CACHE_TTL, now)
+  const profileCache = readFundDetailCache<FundProfile>(PROFILE_CACHE_SCOPE, props.code, PROFILE_CACHE_TTL, now)
   const allocationCache = readFundDetailCache<FundAllocation>(ALLOCATION_CACHE_SCOPE, props.code, ALLOCATION_CACHE_TTL, now)
   const benchmarkCache = readFundDetailCache<KlinePoint[]>('benchmark', 'sh000300', BENCHMARK_CACHE_TTL, now)
   if (historyCache) history.value = historyCache.value
@@ -337,7 +359,7 @@ async function loadFundDetail(force = false): Promise<void> {
   if (allocationCache) allocation.value = allocationCache.value
   if (benchmarkCache) benchmark.value = benchmarkCache.value
 
-  const fetchHistoryRemotely = force || !historyCache?.isFresh
+  const fetchHistoryRemotely = shouldRefreshFundHistory(historyCache, quote.value?.navDate ?? '', force)
   const fetchProfileRemotely = force || !profileCache?.isFresh
   const fetchAllocationRemotely = force || !allocationCache?.isFresh
   const fetchBenchmarkRemotely = force || !benchmarkCache?.isFresh
@@ -355,7 +377,7 @@ async function loadFundDetail(force = false): Promise<void> {
   if (quoteResult.status === 'fulfilled' && quoteResult.value[0]) quote.value = quoteResult.value[0]
   if (historyResult.status === 'fulfilled') {
     history.value = historyResult.value
-    if (fetchHistoryRemotely) writeFundDetailCache('history', props.code, historyResult.value, now)
+    if (fetchHistoryRemotely) writeFundDetailCache(HISTORY_CACHE_SCOPE, props.code, historyResult.value, now)
   } else {
     sectionErrors.value.performance = historyCache
       ? '历史净值刷新失败，正在展示最近缓存'
@@ -363,7 +385,7 @@ async function loadFundDetail(force = false): Promise<void> {
   }
   if (profileResult.status === 'fulfilled') {
     profile.value = profileResult.value
-    if (fetchProfileRemotely) writeFundDetailCache('profile', props.code, profileResult.value, now)
+    if (fetchProfileRemotely) writeFundDetailCache(PROFILE_CACHE_SCOPE, props.code, profileResult.value, now)
   }
   if (allocationResult.status === 'fulfilled') {
     allocation.value = allocationResult.value
@@ -406,10 +428,13 @@ async function loadFundDetail(force = false): Promise<void> {
   loading.value = false
 }
 
-function handleAction(action: FundAction): void {
+function handleAction(action: FundAction, event?: MouseEvent): void {
   if (action === 'more') {
     showMore.value = !showMore.value
     return
+  }
+  if (!activeAction.value && event?.currentTarget instanceof HTMLElement) {
+    actionTrigger = event.currentTarget
   }
   showMore.value = false
   editingTransaction.value = null
@@ -419,6 +444,19 @@ function handleAction(action: FundAction): void {
 function closeAction(): void {
   activeAction.value = null
   editingTransaction.value = null
+  void nextTick(() => {
+    actionTrigger?.focus()
+    actionTrigger = null
+  })
+}
+
+function handleActionOverlayKeydown(event: KeyboardEvent): void {
+  if (event.key === 'Escape') {
+    event.preventDefault()
+    closeAction()
+    return
+  }
+  trapModalFocus(event, actionOverlayRef.value)
 }
 
 function editTransaction(transaction: FundTransaction): void {
@@ -492,39 +530,45 @@ watch(() => props.code, () => {
 watch(() => stockStore.getFund(props.code), (nextQuote) => {
   if (nextQuote) quote.value = nextQuote
 })
+
+watch(activeAction, (nextAction) => {
+  if (nextAction) {
+    void nextTick(() => focusFirstModalControl(actionOverlayRef.value))
+  }
+})
 </script>
 
 <style scoped>
 .fund-detail-view { position: relative; height: 100%; display: flex; flex-direction: column; overflow: hidden; color: var(--text-primary); background: var(--window-bg); }
 .fund-detail-loading { position: relative; height: 100%; display: flex; align-items: center; justify-content: center; gap: 10px; color: var(--text-muted); }
-.fund-detail-loading button { position: absolute; top: 12px; right: 16px; border: 0; color: inherit; background: transparent; cursor: pointer; }
+.fund-detail-loading button { position: absolute; top: 12px; right: 16px; display: grid; width: 28px; height: 28px; place-items: center; border: 0; color: inherit; background: transparent; cursor: pointer; }
 .loading-orbit { width: 16px; height: 16px; border: 2px solid var(--divider-color); border-top-color: #6f94f8; border-radius: 50%; animation: spin .8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .fund-header { flex: 0 0 92px; display: grid; grid-template-columns: minmax(200px, 1.25fr) 105px minmax(225px, 1.1fr); align-items: center; gap: 12px; padding: 12px; border-bottom: 1px solid var(--divider-color); background: linear-gradient(115deg, rgba(91, 140, 255, .09), transparent 58%); }
 .identity-block { display: flex; align-items: center; min-width: 0; gap: 11px; }
-.close-btn { flex: 0 0 auto; width: 27px; height: 27px; border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-secondary); background: var(--card-bg); font-size: 23px; line-height: 20px; cursor: pointer; }
+.close-btn { flex: 0 0 auto; display: grid; width: 27px; height: 27px; place-items: center; border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-secondary); background: var(--card-bg); cursor: pointer; }
 .close-btn:hover { color: var(--text-primary); background: var(--card-bg-hover); }
 .fund-identity { min-width: 0; }
 .identity-line { display: flex; align-items: center; min-width: 0; gap: 7px; }
-.identity-line h2 { overflow: hidden; color: var(--text-primary); text-overflow: ellipsis; white-space: nowrap; font-size: 17px; font-weight: 680; letter-spacing: -.02em; }
-.code-chip { flex: 0 0 auto; padding: 2px 5px; border: 1px solid rgba(111, 148, 248, .22); border-radius: 5px; color: #8fb0ff; background: rgba(91, 140, 255, .08); font: 650 9px/1.3 ui-monospace, monospace; }
+.identity-line h2 { overflow: hidden; color: var(--text-primary); text-overflow: ellipsis; white-space: nowrap; font-size: 17px; font-weight: 680; letter-spacing: 0; }
+.code-chip { flex: 0 0 auto; padding: 2px 5px; border: 1px solid rgba(111, 148, 248, .22); border-radius: 5px; color: #8fb0ff; background: rgba(91, 140, 255, .08); font: 650 10px/1.3 ui-monospace, monospace; }
 .fund-tags { display: flex; gap: 5px; margin-top: 7px; }
-.fund-tags span { padding: 2px 5px; border-radius: 4px; color: var(--text-muted); background: var(--card-bg); font-size: 8px; }
+.fund-tags span { padding: 2px 5px; border-radius: 4px; color: var(--text-muted); background: var(--card-bg); font-size: 10px; }
 .nav-block { min-width: 0; padding-left: 14px; border-left: 1px solid var(--divider-color); }
-.nav-source { color: var(--text-muted); font-size: 8px; letter-spacing: .06em; }
+.nav-source { color: var(--text-muted); font-size: 10px; letter-spacing: 0; }
 .nav-source.estimate { color: #f0a35b; }
 .nav-line { display: flex; align-items: baseline; gap: 7px; margin: 2px 0; }
-.nav-line strong { font-size: 21px; font-weight: 710; letter-spacing: -.04em; }
+.nav-line strong { font-size: 21px; font-weight: 710; letter-spacing: 0; }
 .nav-line span { font-size: 10px; font-weight: 650; }
-.nav-block small { color: var(--text-muted); font-size: 8px; }
+.nav-block small { color: var(--text-muted); font-size: 10px; }
 .remote-metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px; }
 .remote-metrics div { min-width: 0; padding: 7px 3px 6px; border-radius: 8px; background: var(--card-bg); }
 .remote-metrics span, .remote-metrics strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.remote-metrics span { color: var(--text-muted); font-size: 8px; }
+.remote-metrics span { color: var(--text-muted); font-size: 10px; }
 .remote-metrics strong { margin-top: 4px; color: var(--text-primary); font-size: 10px; }
 .up { color: var(--danger) !important; }
 .down { color: var(--success) !important; }
-.page-notice { flex: 0 0 20px; display: flex; align-items: center; padding: 0 18px; color: #f0a35b; background: rgba(245, 158, 11, .08); font-size: 9px; }
+.page-notice { flex: 0 0 22px; display: flex; align-items: center; padding: 0 18px; color: #f0a35b; background: rgba(245, 158, 11, .08); font-size: 10px; }
 .fund-main { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 184px; }
 .visual-panel { min-width: 0; min-height: 0; display: flex; flex-direction: column; padding: 0 16px 5px 18px; }
 .fund-tabs { flex: 0 0 39px; display: grid; grid-template-columns: repeat(3, 1fr); border-bottom: 1px solid var(--divider-color); }
@@ -535,33 +579,33 @@ watch(() => stockStore.getFund(props.code), (nextQuote) => {
 .tab-content { flex: 1; min-height: 0; overflow-y: auto; padding-top: 10px; }
 .position-panel { min-width: 0; display: flex; flex-direction: column; padding: 12px 14px 7px; border-left: 1px solid var(--divider-color); background: rgba(255, 255, 255, .018); }
 .position-title { display: flex; align-items: end; justify-content: space-between; }
-.eyebrow { display: block; color: #6f94f8; font-size: 7px; font-weight: 800; letter-spacing: .14em; }
+.eyebrow { display: block; color: #6f94f8; font-size: 10px; font-weight: 800; letter-spacing: 0; }
 .position-title h3 { margin-top: 2px; font-size: 12px; }
-.position-title button { border: 0; color: #8fb0ff; background: transparent; font: inherit; font-size: 8px; cursor: pointer; }
+.position-title button { display: inline-flex; align-items: center; gap: 1px; border: 0; color: #8fb0ff; background: transparent; font: inherit; font-size: 10px; cursor: pointer; }
 .hero-position { margin: 12px 0 10px; padding: 10px; border: 1px solid rgba(111, 148, 248, .12); border-radius: 10px; background: linear-gradient(135deg, rgba(91, 140, 255, .13), rgba(91, 140, 255, .025)); }
 .hero-position span, .hero-position strong, .hero-position small { display: block; }
-.hero-position span { color: var(--text-muted); font-size: 8px; }
-.hero-position strong { margin-top: 3px; font-size: 17px; letter-spacing: -.03em; }
-.hero-position small { margin-top: 3px; color: var(--text-muted); font-size: 8px; }
+.hero-position span { color: var(--text-muted); font-size: 10px; }
+.hero-position strong { margin-top: 3px; font-size: 17px; letter-spacing: 0; }
+.hero-position small { margin-top: 3px; color: var(--text-muted); font-size: 10px; }
 .position-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 9px 7px; }
 .position-grid div { min-width: 0; }
 .position-grid span, .position-grid strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.position-grid span { color: var(--text-muted); font-size: 8px; }
+.position-grid span { color: var(--text-muted); font-size: 10px; }
 .position-grid strong { margin-top: 2px; color: var(--text-primary); font-size: 10px; }
 .no-position { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
 .empty-ring { display: grid; width: 35px; height: 35px; place-items: center; margin-bottom: 8px; border: 1px solid var(--border-color); border-radius: 50%; color: #8fb0ff; background: var(--card-bg); }
 .no-position strong { font-size: 10px; }
-.no-position p { max-width: 130px; margin-top: 4px; color: var(--text-muted); font-size: 8px; line-height: 1.5; }
-.data-footnote { margin-top: auto; padding-top: 7px; border-top: 1px solid var(--divider-color); color: var(--text-muted); font-size: 7px; white-space: nowrap; }
+.no-position p { max-width: 140px; margin-top: 4px; color: var(--text-muted); font-size: 10px; line-height: 1.5; }
+.data-footnote { margin-top: auto; padding-top: 7px; border-top: 1px solid var(--divider-color); color: var(--text-muted); font-size: 10px; line-height: 1.35; white-space: normal; }
 .data-footnote i { display: inline-block; width: 5px; height: 5px; margin-right: 3px; border-radius: 50%; background: var(--success); }
 .data-footnote i.live { background: #f0a35b; box-shadow: 0 0 6px rgba(240, 163, 91, .6); }
 .fund-actions { position: relative; flex: 0 0 49px; display: grid; grid-template-columns: repeat(5, 1fr); border-top: 1px solid var(--divider-color); background: var(--solid-bg); }
 .fund-actions > button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; border: 0; color: var(--text-muted); background: transparent; cursor: pointer; }
 .fund-actions > button:hover { color: var(--text-primary); background: var(--card-bg-hover); }
-.fund-actions > button span { height: 18px; color: #8fb0ff; font-size: 17px; line-height: 16px; font-weight: 500; }
-.fund-actions > button small { font-size: 8px; }
+.fund-action-icon { color: #8fb0ff; }
+.fund-actions > button small { font-size: 10px; }
 .more-menu { position: absolute; right: 7px; bottom: 45px; width: 98px; overflow: hidden; padding: 4px; border: 1px solid var(--border-color); border-radius: 9px; background: var(--solid-bg); box-shadow: 0 12px 35px rgba(0, 0, 0, .35); z-index: 6; }
-.more-menu button { width: 100%; padding: 7px 8px; border: 0; border-radius: 6px; color: var(--text-secondary); text-align: left; background: transparent; font: inherit; font-size: 9px; cursor: pointer; }
+.more-menu button { width: 100%; padding: 7px 8px; border: 0; border-radius: 6px; color: var(--text-secondary); text-align: left; background: transparent; font: inherit; font-size: 10px; cursor: pointer; }
 .more-menu button:hover { background: var(--card-bg-hover); }
 .more-menu button.danger { color: var(--danger); }
 .action-overlay { position: absolute; inset: 0; display: grid; place-items: center; padding: 10px; background: rgba(4, 7, 11, .58); z-index: 10; }

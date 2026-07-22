@@ -23,10 +23,11 @@ describe('asset-aware detail routing', () => {
     expect(fundDetailVue).toContain("defineProps<{ code: string }>()")
   })
 
-  it('shows a clearly labelled current fund estimate with an official NAV fallback', () => {
+  it('shows fund sectors in the list and keeps quote-source labels in details', () => {
     expect(homeVue).toContain('resolveFundDisplayQuote')
-    expect(homeVue).toContain('持仓估算')
-    expect(homeVue).toContain('已确认净值')
+    expect(homeVue).toContain("fund.sector || '板块待更新'")
+    expect(fundDetailVue).toContain('持仓估算')
+    expect(fundDetailVue).toContain('已确认净值')
     expect(homeVue).toContain("display.source === 'estimate'")
   })
 })

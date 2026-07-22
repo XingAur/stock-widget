@@ -61,6 +61,23 @@ export function filterFundNavPointsByRange(
     .sort((left, right) => left.date.localeCompare(right.date))
 }
 
+export function calculateFundRangeReturn(
+  points: readonly FundNavPointLike[],
+  range: FundChartRange
+): number | null {
+  const filtered = filterDatedValuesByRange(
+    points
+      .filter((point) => point.date && Number.isFinite(point.nav) && point.nav > 0)
+      .map((point) => ({ date: point.date, value: point.nav })),
+    range
+  )
+  if (filtered.length < 2) return null
+
+  const first = filtered[0].value
+  const last = filtered[filtered.length - 1].value
+  return roundPercent((last / first - 1) * 100)
+}
+
 export function createPerformanceSeries(
   fundRows: readonly FundNavPointLike[],
   benchmarkRows: readonly DatedValue[],

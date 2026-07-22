@@ -93,6 +93,8 @@ describe('stock store refresh', () => {
 
     expect(store.stockList).toEqual([existingStock])
     expect(store.stocks.get(existingStock.code)).toEqual(existingStock)
+    expect(store.stockRefreshError).toBeTruthy()
+    expect(store.stockLastUpdate).toBeNull()
   })
 
   it('keeps existing fund quotes when a refresh returns no data', async () => {
@@ -106,6 +108,26 @@ describe('stock store refresh', () => {
 
     expect(store.fundList).toEqual([existingFund])
     expect(store.funds.get(existingFund.code)).toEqual(existingFund)
+    expect(store.fundRefreshError).toBeTruthy()
+    expect(store.fundLastUpdate).toBeNull()
+  })
+
+  it('keeps the last successful fund update time when a refresh fails', async () => {
+    const existingFund = createFundQuote()
+    const store = useStockStore()
+    store.fundWatchList = [existingFund.code]
+    store.funds = new Map([[existingFund.code, existingFund]])
+    vi.mocked(fetchFunds)
+      .mockResolvedValueOnce([existingFund])
+      .mockRejectedValueOnce(new Error('network unavailable'))
+
+    await store.refreshFunds()
+    const successfulUpdate = store.fundLastUpdate
+    await store.refreshFunds()
+
+    expect(store.funds.get(existingFund.code)).toEqual(existingFund)
+    expect(store.fundLastUpdate).toEqual(successfulUpdate)
+    expect(store.fundRefreshError).toContain('network unavailable')
   })
 })
 
@@ -169,6 +191,24 @@ describe('fund ledger storage', () => {
     expect(first?.baseline).toMatchObject({ date: '2026-07-21', shares: 500, costAmount: 1100 })
     expect(second).toEqual(first)
     expect(Object.keys(store.fundLedgers)).toEqual(['001186'])
+    expect(store.fundPositions['001186']).toBeUndefined()
+  })
+
+  it('stores a manually entered holding in the ledger when a NAV is available', () => {
+    const fund = createFundQuote({ nav: 2, navDate: '2026-07-21' })
+    const store = useStockStore()
+    store.funds = new Map([[fund.code, fund]])
+
+    store.setFundPosition(fund.code, { holdingAmount: 1000, profit: 100 })
+
+    expect(store.fundLedgers[fund.code]?.baseline).toMatchObject({
+      date: '2026-07-21',
+      nav: 2,
+      holdingAmount: 1000,
+      shares: 500,
+      costAmount: 900
+    })
+    expect(store.fundPositions[fund.code]).toBeUndefined()
   })
 
   it('persists transactions and clears the ledger when the fund is removed', async () => {

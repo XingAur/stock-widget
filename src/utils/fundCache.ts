@@ -11,6 +11,10 @@ interface StoredFundDetailCache<T> {
   value: T
 }
 
+interface FundHistoryPointLike {
+  date: string
+}
+
 function key(scope: string, code: string): string {
   return `fundDetail:${scope}:${code}`
 }
@@ -53,6 +57,21 @@ export function readFundDetailCache<T>(
   } catch {
     return null
   }
+}
+
+export function shouldRefreshFundHistory(
+  cache: FundDetailCacheEntry<readonly FundHistoryPointLike[]> | null,
+  officialNavDate: string,
+  force = false
+): boolean {
+  if (force || !cache?.isFresh) return true
+  if (!officialNavDate) return false
+
+  const latestCachedDate = cache.value.reduce(
+    (latest, point) => point.date > latest ? point.date : latest,
+    ''
+  )
+  return latestCachedDate < officialNavDate
 }
 
 export function writeFundDetailCache<T>(

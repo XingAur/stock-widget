@@ -36,6 +36,24 @@ export function formatSignedPercent(value: number): string {
   return `${sign}${value.toFixed(2)}%`
 }
 
+export function formatCompactMoney(value: number, signed = false): string {
+  if (!Number.isFinite(value)) return '--'
+
+  const absoluteValue = Math.abs(value)
+  const sign = signed ? (value > 0 ? '+' : value < 0 ? '-' : '') : ''
+  if (absoluteValue >= 100_000_000) {
+    return `${sign}¥${(absoluteValue / 100_000_000).toFixed(2)}亿`
+  }
+  if (absoluteValue >= 10_000) {
+    return `${sign}¥${(absoluteValue / 10_000).toFixed(2)}万`
+  }
+
+  return `${sign}¥${absoluteValue.toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  })}`
+}
+
 export function formatVolume(value: number | undefined): string {
   if (!value) return '--'
   if (value >= 100000000) return `${(value / 100000000).toFixed(2)}<span class="stat-unit">亿手</span>`

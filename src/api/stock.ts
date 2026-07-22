@@ -36,6 +36,7 @@ export interface MinutePoint {
   time: string
   price: number
   volume: number
+  averagePrice?: number
 }
 
 export interface KlinePoint {
@@ -69,6 +70,7 @@ export interface FundQuote {
   estimateNav?: number | null
   estimateChangePercent?: number | null
   estimateTime: string
+  sector?: string
 }
 
 export interface FundSearchResult {
@@ -110,6 +112,7 @@ export interface FundHolding {
 
 export interface FundAllocation {
   reportDate: string
+  sector?: string
   industries: FundIndustry[]
   holdings: FundHolding[]
 }
@@ -138,7 +141,7 @@ export async function fetchStocks(codes: string[]): Promise<Stock[]> {
     return []
   }
 
-  return invokeSafe('fetch_stocks', { codes }, [])
+  return invoke<Stock[]>('fetch_stocks', { codes })
 }
 
 export async function searchStock(keyword: string): Promise<SearchResult[]> {
@@ -162,7 +165,7 @@ export async function fetchFunds(codes: string[]): Promise<FundQuote[]> {
     return []
   }
 
-  return invokeSafe('fetch_funds', { codes }, [])
+  return invoke<FundQuote[]>('fetch_funds', { codes })
 }
 
 export async function fetchFundHistory(code: string): Promise<FundNavPoint[]> {

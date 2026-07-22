@@ -143,6 +143,18 @@ function isFundLedger(value: unknown): value is FundLedger {
     && Array.isArray(ledger.snapshots)
 }
 
+function getRefreshErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message.trim()) {
+    return `${fallback}：${error.message}`
+  }
+
+  if (typeof error === 'string' && error.trim()) {
+    return `${fallback}：${error}`
+  }
+
+  return fallback
+}
+
 export const useStockStore = defineStore('stock', () => {
   const activeAssetType = ref<AssetType>('stock')
   const watchList = ref<string[]>([])
@@ -156,11 +168,24 @@ export const useStockStore = defineStore('stock', () => {
   const sparklines = ref<Map<string, number[]>>(new Map())
   const stockLoading = ref(false)
   const fundLoading = ref(false)
-  const lastUpdate = ref<Date | null>(null)
+  const stockLastUpdate = ref<Date | null>(null)
+  const fundLastUpdate = ref<Date | null>(null)
+  const stockRefreshError = ref('')
+  const fundRefreshError = ref('')
 
   let refreshTimer: number | null = null
 
   const loading = computed(() => stockLoading.value || fundLoading.value)
+  const lastUpdate = computed(() => (
+    activeAssetType.value === 'stock' ? stockLastUpdate.value : fundLastUpdate.value
+  ))
+  const activeRefreshError = computed(() => (
+    activeAssetType.value === 'stock' ? stockRefreshError.value : fundRefreshError.value
+  ))
+  const activeDataStale = computed(() => Boolean(
+    activeRefreshError.value
+    && (activeAssetType.value === 'stock' ? stocks.value.size : funds.value.size)
+  ))
 
   watch(watchList, (nextWatchList) => {
     localStorage.setItem(WATCHLIST_STORAGE_KEY, JSON.stringify(nextWatchList))
@@ -211,6 +236,8 @@ export const useStockStore = defineStore('stock', () => {
     if (watchList.value.length === 0) {
       stocks.value = new Map()
       sparklines.value = new Map()
+      stockRefreshError.value = ''
+      stockLastUpdate.value = null
       return
     }
 
@@ -230,9 +257,13 @@ export const useStockStore = defineStore('stock', () => {
       })
       stocks.value = nextStocks
       if (data.length > 0) {
-        lastUpdate.value = new Date()
+        stockLastUpdate.value = new Date()
+        stockRefreshError.value = ''
+      } else {
+        stockRefreshError.value = '行情服务暂未返回股票数据，已保留上次结果'
       }
     } catch (error) {
+      stockRefreshError.value = getRefreshErrorMessage(error, '股票行情刷新失败')
       console.error('Refresh stocks error:', error)
     } finally {
       stockLoading.value = false
@@ -242,6 +273,8 @@ export const useStockStore = defineStore('stock', () => {
   async function refreshFunds() {
     if (fundWatchList.value.length === 0) {
       funds.value = new Map()
+      fundRefreshError.value = ''
+      fundLastUpdate.value = null
       return
     }
 
@@ -262,11 +295,24 @@ export const useStockStore = defineStore('stock', () => {
         const cachedFund = cachedName ? { ...fund, name: cachedName } : undefined
         const resolvedFund = applyFundDisplayName(fund, undefined, nextFunds.get(fund.code) ?? cachedFund)
         nextFunds.set(fund.code, resolvedFund)
+
+        const nav = typeof resolvedFund.nav === 'number' && resolvedFund.nav > 0
+          ? resolvedFund.nav
+          : resolvedFund.estimateNav
+        if (fundPositions.value[fund.code] && typeof nav === 'number' && Number.isFinite(nav) && nav > 0) {
+          ensureFundLedger(fund.code, resolvedFund.navDate || resolvedFund.estimateTime.slice(0, 10), nav)
+        }
       })
 
       funds.value = nextFunds
-      lastUpdate.value = new Date()
+      if (data.length > 0) {
+        fundLastUpdate.value = new Date()
+        fundRefreshError.value = ''
+      } else {
+        fundRefreshError.value = '行情服务暂未返回基金数据，已保留上次结果'
+      }
     } catch (error) {
+      fundRefreshError.value = getRefreshErrorMessage(error, '基金行情刷新失败')
       console.error('Refresh funds error:', error)
     } finally {
       fundLoading.value = false
@@ -290,7 +336,6 @@ export const useStockStore = defineStore('stock', () => {
     }
 
     if (tasks.length === 0) {
-      lastUpdate.value = new Date()
       return
     }
 
@@ -461,16 +506,31 @@ export const useStockStore = defineStore('stock', () => {
   }
 
   function setFundPosition(code: string, position: FundPosition) {
-    fundPositions.value = {
-      ...fundPositions.value,
-      [code]: position
+    const quote = funds.value.get(code)
+    const nav = quote && typeof quote.nav === 'number' && quote.nav > 0
+      ? quote.nav
+      : quote?.estimateNav
+
+    if (quote && nav && Number.isFinite(nav) && nav > 0) {
+      fundLedgers.value = {
+        ...fundLedgers.value,
+        [code]: createLedgerFromLegacyPosition(
+          code,
+          position,
+          quote.navDate || quote.estimateTime.slice(0, 10),
+          nav
+        )
+      }
+      removeLegacyFundPosition(code)
+      return
     }
+
+    fundPositions.value = { ...fundPositions.value, [code]: position }
   }
 
   function clearFundPosition(code: string) {
-    const nextPositions = { ...fundPositions.value }
-    delete nextPositions[code]
-    fundPositions.value = nextPositions
+    removeLegacyFundPosition(code)
+    clearFundLedger(code)
   }
 
   function ensureFundLedger(code: string, date: string, nav: number, allowEmpty = false): FundLedger | null {
@@ -489,7 +549,18 @@ export const useStockStore = defineStore('stock', () => {
       ...fundLedgers.value,
       [code]: ledger
     }
+    if (legacyPosition) {
+      removeLegacyFundPosition(code)
+    }
     return ledger
+  }
+
+  function removeLegacyFundPosition(code: string) {
+    if (!fundPositions.value[code]) return
+
+    const nextPositions = { ...fundPositions.value }
+    delete nextPositions[code]
+    fundPositions.value = nextPositions
   }
 
   function applyFundTransaction(code: string, input: FundTransactionInput) {
@@ -603,6 +674,12 @@ export const useStockStore = defineStore('stock', () => {
     stockLoading,
     fundLoading,
     lastUpdate,
+    stockLastUpdate,
+    fundLastUpdate,
+    stockRefreshError,
+    fundRefreshError,
+    activeRefreshError,
+    activeDataStale,
     stockList,
     fundList,
     init,

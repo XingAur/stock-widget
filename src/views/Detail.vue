@@ -12,6 +12,10 @@
       </div>
     </div>
 
+    <div v-if="detailRefreshError && detail" class="detail-refresh-notice" role="status">
+      {{ detailRefreshError }}
+    </div>
+
     <div v-if="loading && !detail" class="detail-empty">加载中...</div>
 
     <div v-else-if="detail" class="detail-body">
@@ -95,10 +99,34 @@
                     {{ tick.label }}
                   </text>
                   <path class="area-fill" :d="minuteChartModel.areaPath" />
+                  <line
+                    class="minute-volume-divider"
+                    :x1="CHART_PADDING.left"
+                    :x2="minuteChartModel.viewWidth - CHART_PADDING.right"
+                    :y1="MINUTE_VOLUME_TOP - 10"
+                    :y2="MINUTE_VOLUME_TOP - 10"
+                  />
+                  <text class="minute-volume-title" :x="CHART_PADDING.left" :y="MINUTE_VOLUME_TOP + 9">分时量</text>
+                  <text
+                    class="minute-volume-value"
+                    :x="minuteChartModel.viewWidth - CHART_PADDING.right"
+                    :y="MINUTE_VOLUME_TOP + 9"
+                    text-anchor="end"
+                  >{{ formatOrderBookVolume(minuteChartModel.latestVolume) }}</text>
+                  <rect
+                    v-for="bar in minuteChartModel.volumeBars"
+                    :key="bar.key"
+                    class="minute-volume-bar"
+                    :class="bar.tone"
+                    :x="bar.x"
+                    :y="bar.y"
+                    :width="bar.width"
+                    :height="bar.height"
+                  />
                   <polyline class="chart-line chart-line-latest" :points="minuteChartModel.latestPath" />
                   <polyline class="chart-line chart-line-avg" :points="minuteChartModel.avgPath" />
                   <template v-if="minuteHover">
-                    <line class="hover-line" :x1="minuteHover.x" :x2="minuteHover.x" :y1="CHART_PADDING.top" :y2="CHART_HEIGHT - CHART_PADDING.bottom" />
+                    <line class="hover-line" :x1="minuteHover.x" :x2="minuteHover.x" :y1="CHART_PADDING.top" :y2="MINUTE_VOLUME_BOTTOM" />
                     <line class="hover-line" :x1="CHART_PADDING.left" :x2="minuteChartModel.viewWidth - CHART_PADDING.right" :y1="minuteHover.latestY" :y2="minuteHover.latestY" />
                     <circle class="hover-point latest" :cx="minuteHover.x" :cy="minuteHover.latestY" r="3.4" />
                     <circle class="hover-point avg" :cx="minuteHover.x" :cy="minuteHover.avgY" r="2.8" />
@@ -149,20 +177,29 @@
                     <span class="tooltip-key"><span class="tooltip-dot avg"></span>均价</span>
                     <strong>{{ minuteHover.avgPrice.toFixed(3) }}</strong>
                   </div>
+                  <div class="chart-tooltip-row">
+                    <span class="tooltip-key">分时量</span>
+                    <strong>{{ formatOrderBookVolume(minuteHover.volume) }}</strong>
+                  </div>
                 </div>
                 </div>
 
                 <aside class="orderbook-panel">
                   <div class="orderbook-section">
-                    <div v-for="row in sellOrderBookRows" :key="row.label" class="orderbook-row" :class="row.side">
+                    <div v-for="row in sellOrderBookRows" :key="row.label" class="orderbook-row" :class="[row.side, orderBookToneClass]">
+                      <i class="orderbook-depth sell" :style="{ width: `${row.depthPercent}%` }" />
                       <span class="orderbook-level">{{ row.label }}</span>
                       <strong class="orderbook-price">{{ row.priceText }}</strong>
                       <span class="orderbook-volume">{{ row.volumeText }}</span>
                     </div>
                   </div>
-                  <div class="orderbook-divider"></div>
+                  <div class="orderbook-divider" aria-hidden="true">
+                    <i class="buy" :style="{ width: `${orderBookBalance.buyPercent}%` }" />
+                    <i class="sell" :style="{ width: `${orderBookBalance.sellPercent}%` }" />
+                  </div>
                   <div class="orderbook-section">
-                    <div v-for="row in buyOrderBookRows" :key="row.label" class="orderbook-row" :class="row.side">
+                    <div v-for="row in buyOrderBookRows" :key="row.label" class="orderbook-row" :class="[row.side, orderBookToneClass]">
+                      <i class="orderbook-depth buy" :style="{ width: `${row.depthPercent}%` }" />
                       <span class="orderbook-level">{{ row.label }}</span>
                       <strong class="orderbook-price">{{ row.priceText }}</strong>
                       <span class="orderbook-volume">{{ row.volumeText }}</span>
@@ -344,7 +381,7 @@
       </section>
     </div>
 
-    <div v-else class="detail-empty">暂无详情数据</div>
+    <div v-else class="detail-empty">{{ detailRefreshError || '暂无详情数据' }}</div>
   </div>
 </template>
 
@@ -405,6 +442,17 @@ interface MinuteChartModel {
   areaPath: string
   yTicks: YTick[]
   xTicks: XTick[]
+  latestVolume: number
+  volumeBars: MinuteVolumeBar[]
+}
+
+interface MinuteVolumeBar {
+  key: string
+  x: number
+  y: number
+  width: number
+  height: number
+  tone: 'up' | 'down' | 'flat'
 }
 
 interface CandleBar {
@@ -449,6 +497,7 @@ interface MinuteHoverState {
   time: string
   latestPrice: number
   avgPrice: number
+  volume: number
   tooltipLeft: number
   tooltipTop: number
 }
@@ -476,6 +525,7 @@ interface OrderBookDisplayRow {
   priceText: string
   volumeText: string
   side: OrderBookSide
+  depthPercent: number
 }
 
 interface KlineViewport {
@@ -494,6 +544,9 @@ interface KlinePanState {
 const CHART_WIDTH = 720
 const CHART_HEIGHT = 320
 const CHART_PADDING = { top: 18, right: 24, bottom: 44, left: 64 }
+const MINUTE_PRICE_BOTTOM = 196
+const MINUTE_VOLUME_TOP = 218
+const MINUTE_VOLUME_BOTTOM = 294
 const MIN_VISIBLE_KLINE_POINTS = 12
 
 const tabs: TabItem[] = [
@@ -512,6 +565,7 @@ const settingsStore = useSettingsStore()
 
 const detail = ref<StockDetail | null>(null)
 const indices = ref<IndexData[]>([])
+const detailRefreshError = ref('')
 const activeTab = ref<TabKey>('minute')
 const loading = ref(false)
 const chartLoading = ref(false)
@@ -559,8 +613,33 @@ const overviewItems = computed(() => {
   ]
 })
 
-const sellOrderBookRows = computed(() => createOrderBookRows(detail.value?.orderBook?.asks ?? [], 'sell'))
-const buyOrderBookRows = computed(() => createOrderBookRows(detail.value?.orderBook?.bids ?? [], 'buy'))
+const orderBookMaxVolume = computed(() => Math.max(
+  1,
+  ...(detail.value?.orderBook?.asks ?? []).map((level) => level.volume),
+  ...(detail.value?.orderBook?.bids ?? []).map((level) => level.volume)
+))
+const sellOrderBookRows = computed(() => createOrderBookRows(
+  detail.value?.orderBook?.asks ?? [],
+  'sell',
+  orderBookMaxVolume.value
+))
+const buyOrderBookRows = computed(() => createOrderBookRows(
+  detail.value?.orderBook?.bids ?? [],
+  'buy',
+  orderBookMaxVolume.value
+))
+const orderBookToneClass = computed(() => {
+  const change = detail.value?.changePercent ?? 0
+  return change > 0 ? 'up' : change < 0 ? 'down' : 'flat'
+})
+const orderBookBalance = computed(() => {
+  const buyVolume = (detail.value?.orderBook?.bids ?? []).reduce((total, level) => total + level.volume, 0)
+  const sellVolume = (detail.value?.orderBook?.asks ?? []).reduce((total, level) => total + level.volume, 0)
+  const total = buyVolume + sellVolume
+  if (total <= 0) return { buyPercent: 50, sellPercent: 50 }
+  const buyPercent = Number((buyVolume / total * 100).toFixed(2))
+  return { buyPercent, sellPercent: 100 - buyPercent }
+})
 
 const currentKlinePoints = computed(() => {
   if (activeTab.value === 'minute') return []
@@ -604,6 +683,9 @@ const minuteChartModel = computed<MinuteChartModel | null>(() => {
   let cumulativeAmount = 0
   let cumulativeVolume = 0
   const avgPrices = points.map((point) => {
+    if (point.averagePrice && Number.isFinite(point.averagePrice) && point.averagePrice > 0) {
+      return point.averagePrice
+    }
     cumulativeAmount += point.price * point.volume
     cumulativeVolume += point.volume
     return cumulativeVolume > 0 ? cumulativeAmount / cumulativeVolume : point.price
@@ -611,6 +693,22 @@ const minuteChartModel = computed<MinuteChartModel | null>(() => {
 
   const [minPrice, maxPrice] = getRange([...points.map((point) => point.price), ...avgPrices])
   const viewWidth = minuteChartViewWidth.value
+  const maxVolume = Math.max(1, ...points.map((point) => point.volume))
+  const barStep = getPlotWidth(viewWidth) / Math.max(points.length - 1, 1)
+  const barWidth = clamp(barStep * 0.72, 1, 5)
+  const volumeHeight = MINUTE_VOLUME_BOTTOM - MINUTE_VOLUME_TOP - 14
+  const volumeBars = points.map((point, index): MinuteVolumeBar => {
+    const previousPrice = index === 0 ? detail.value?.prevClose ?? point.price : points[index - 1].price
+    const height = point.volume <= 0 ? 0 : Math.max(1, point.volume / maxVolume * volumeHeight)
+    return {
+      key: `${point.time}-${index}`,
+      x: getX(index, points.length, viewWidth) - barWidth / 2,
+      y: MINUTE_VOLUME_BOTTOM - height,
+      width: barWidth,
+      height,
+      tone: point.price > previousPrice ? 'up' : point.price < previousPrice ? 'down' : 'flat'
+    }
+  })
 
   return {
     viewWidth,
@@ -620,11 +718,13 @@ const minuteChartModel = computed<MinuteChartModel | null>(() => {
     maxPrice,
     latestPrice: points[points.length - 1].price,
     avgPrice: avgPrices[avgPrices.length - 1],
-    latestPath: createPolyline(points.map((point) => point.price), minPrice, maxPrice, viewWidth),
-    avgPath: createPolyline(avgPrices, minPrice, maxPrice, viewWidth),
-    areaPath: createAreaPath(points.map((point) => point.price), minPrice, maxPrice, viewWidth),
-    yTicks: createYTicks(minPrice, maxPrice, minuteYTickCount.value, viewWidth),
-    xTicks: createXTicks(points.map((point) => point.time), minuteXTickCount.value, viewWidth)
+    latestPath: createMinutePolyline(points.map((point) => point.price), minPrice, maxPrice, viewWidth),
+    avgPath: createMinutePolyline(avgPrices, minPrice, maxPrice, viewWidth),
+    areaPath: createMinuteAreaPath(points.map((point) => point.price), minPrice, maxPrice, viewWidth),
+    yTicks: createMinuteYTicks(minPrice, maxPrice, minuteYTickCount.value),
+    xTicks: createXTicks(points.map((point) => point.time), minuteXTickCount.value, viewWidth),
+    latestVolume: [...points].reverse().find((point) => point.volume > 0)?.volume ?? 0,
+    volumeBars
   }
 })
 
@@ -677,7 +777,11 @@ const klineChartModel = computed<KlineChartModel | null>(() => {
   }
 })
 
-function createOrderBookRows(levels: OrderLevel[], side: OrderBookSide): OrderBookDisplayRow[] {
+function createOrderBookRows(
+  levels: OrderLevel[],
+  side: OrderBookSide,
+  maxVolume: number
+): OrderBookDisplayRow[] {
   const labels = side === 'sell' ? ['卖5', '卖4', '卖3', '卖2', '卖1'] : ['买1', '买2', '买3', '买4', '买5']
   const orderedLevels = side === 'sell'
     ? [...Array.from({ length: 5 }, (_, index) => levels[index] ?? null)].reverse()
@@ -689,7 +793,8 @@ function createOrderBookRows(levels: OrderLevel[], side: OrderBookSide): OrderBo
       label,
       priceText: level ? formatPrice(level.price) : '--',
       volumeText: level ? formatOrderBookVolume(level.volume) : '--',
-      side
+      side,
+      depthPercent: level ? clamp(level.volume / maxVolume * 100, 2, 100) : 0
     }
   })
 }
@@ -760,6 +865,11 @@ function getY(value: number, min: number, max: number): number {
   return CHART_PADDING.top + (1 - (value - min) / (max - min)) * getPlotHeight()
 }
 
+function getMinuteY(value: number, min: number, max: number): number {
+  return CHART_PADDING.top
+    + (1 - (value - min) / (max - min)) * (MINUTE_PRICE_BOTTOM - CHART_PADDING.top)
+}
+
 function getCandleBodyWidth(total: number): number {
   if (total <= 1) return 10
   const step = getPlotWidth() / (total - 1)
@@ -803,21 +913,28 @@ function createPolyline(values: number[], min: number, max: number, viewWidth = 
     .join(' ')
 }
 
-function createAreaPath(values: number[], min: number, max: number, viewWidth = CHART_WIDTH): string {
+function createMinutePolyline(values: number[], min: number, max: number, viewWidth: number): string {
+  return values
+    .map((value, index) => {
+      if (Number.isNaN(value)) return null
+      return `${getX(index, values.length, viewWidth).toFixed(2)},${getMinuteY(value, min, max).toFixed(2)}`
+    })
+    .filter((item): item is string => Boolean(item))
+    .join(' ')
+}
+
+function createMinuteAreaPath(values: number[], min: number, max: number, viewWidth: number): string {
   const visibleValues = values
     .map((value, index) => Number.isNaN(value) ? null : ({ index, value }))
     .filter((item): item is { index: number; value: number } => Boolean(item))
-
   if (visibleValues.length === 0) return ''
 
-  const baselineY = CHART_HEIGHT - CHART_PADDING.bottom
   const startX = getX(visibleValues[0].index, values.length, viewWidth)
   const endX = getX(visibleValues[visibleValues.length - 1].index, values.length, viewWidth)
   const path = visibleValues
-    .map((item, index) => `${index === 0 ? 'M' : 'L'}${getX(item.index, values.length, viewWidth).toFixed(2)} ${getY(item.value, min, max).toFixed(2)}`)
+    .map((item, index) => `${index === 0 ? 'M' : 'L'}${getX(item.index, values.length, viewWidth).toFixed(2)} ${getMinuteY(item.value, min, max).toFixed(2)}`)
     .join(' ')
-
-  return `${path} L${endX.toFixed(2)} ${baselineY.toFixed(2)} L${startX.toFixed(2)} ${baselineY.toFixed(2)} Z`
+  return `${path} L${endX.toFixed(2)} ${MINUTE_PRICE_BOTTOM} L${startX.toFixed(2)} ${MINUTE_PRICE_BOTTOM} Z`
 }
 
 function formatXAxisLabel(value: string): string {
@@ -872,6 +989,17 @@ function createYTicks(min: number, max: number, steps = 4, _viewWidth = CHART_WI
     return {
       label: activeTab.value === 'minute' ? formatPrice(value) : formatYAxisLabel(value),
       y: getY(value, min, max)
+    }
+  })
+}
+
+function createMinuteYTicks(min: number, max: number, steps = 4): YTick[] {
+  return Array.from({ length: steps }, (_, index) => {
+    const ratio = index / (steps - 1)
+    const value = max - (max - min) * ratio
+    return {
+      label: formatPrice(value),
+      y: getMinuteY(value, min, max)
     }
   })
 }
@@ -996,9 +1124,9 @@ function handleMinuteHover(event: MouseEvent) {
 
   const point = minuteChartModel.value.points[hover.index]
   const avgPrice = minuteChartModel.value.avgPrices[hover.index]
-  const latestY = getY(point.price, minuteChartModel.value.minPrice, minuteChartModel.value.maxPrice)
-  const avgY = getY(avgPrice, minuteChartModel.value.minPrice, minuteChartModel.value.maxPrice)
-  const tooltip = getTooltipPosition(hover.rect, hover.pointX, latestY, 142, 86, minuteChartModel.value.viewWidth)
+  const latestY = getMinuteY(point.price, minuteChartModel.value.minPrice, minuteChartModel.value.maxPrice)
+  const avgY = getMinuteY(avgPrice, minuteChartModel.value.minPrice, minuteChartModel.value.maxPrice)
+  const tooltip = getTooltipPosition(hover.rect, hover.pointX, latestY, 142, 108, minuteChartModel.value.viewWidth)
 
   minuteHover.value = {
     x: hover.pointX,
@@ -1007,6 +1135,7 @@ function handleMinuteHover(event: MouseEvent) {
     time: point.time,
     latestPrice: point.price,
     avgPrice,
+    volume: point.volume,
     tooltipLeft: tooltip.left,
     tooltipTop: tooltip.top
   }
@@ -1049,7 +1178,22 @@ async function loadIndices() {
 }
 
 async function loadBaseDetail() {
-  detail.value = await fetchStockDetail(props.code)
+  try {
+    const nextDetail = await fetchStockDetail(props.code)
+    if (nextDetail) {
+      detail.value = nextDetail
+      detailRefreshError.value = ''
+      return
+    }
+    detailRefreshError.value = detail.value
+      ? '股票详情刷新失败，正在显示上次结果'
+      : '股票详情刷新失败，请稍后重试'
+  } catch (error) {
+    detailRefreshError.value = detail.value
+      ? '股票详情刷新失败，正在显示上次结果'
+      : '股票详情刷新失败，请稍后重试'
+    console.error('Refresh stock detail error:', error)
+  }
 }
 
 async function loadKline(tab: Exclude<TabKey, 'minute'>) {
@@ -1125,6 +1269,8 @@ async function switchTab(tab: TabKey) {
 
 watch(() => props.code, async () => {
   activeTab.value = 'minute'
+  detail.value = null
+  detailRefreshError.value = ''
   klineCache.value = {}
   klineViewports.value = {}
   await loadAll()
@@ -1157,6 +1303,7 @@ onUnmounted(() => {
 
 <style scoped>
 .detail-view{height:100%;display:flex;flex-direction:column;overflow:hidden;padding:14px 18px 16px;background:var(--window-bg)}
+.detail-refresh-notice{flex:0 0 22px;display:flex;align-items:center;margin-top:8px;padding:0 10px;border:1px solid rgba(245,158,11,.22);border-radius:6px;color:#f5b45f;background:rgba(245,158,11,.08);font-size:10px}
 .detail-topbar{display:flex;align-items:flex-start;gap:12px;padding-bottom:12px;border-bottom:1px solid var(--border-color)}
 .indices-strip{flex:1;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px}
 .index-card{display:flex;flex-direction:column;gap:2px;min-width:0}
@@ -1199,16 +1346,24 @@ onUnmounted(() => {
 .minute-layout{display:flex;align-items:stretch;gap:16px;min-height:320px;height:100%}
 .minute-chart-panel{position:relative;flex:1;min-width:0;min-height:320px}
 .orderbook-panel{width:160px;flex:0 0 160px;padding:12px 0 0 14px;border-left:1px solid rgba(255,255,255,.08);display:flex;flex-direction:column;justify-content:flex-start;gap:10px}
-.orderbook-row{display:grid;grid-template-columns:28px 1fr auto;align-items:center;column-gap:10px}
+.orderbook-row{position:relative;isolation:isolate;display:grid;grid-template-columns:28px 1fr auto;align-items:center;column-gap:10px;overflow:hidden}
+.orderbook-row>span,.orderbook-row>strong{position:relative;z-index:1}
+.orderbook-depth{position:absolute;z-index:0;top:3px;right:0;height:18px;opacity:.48;pointer-events:none}
+.orderbook-depth.sell{background:rgba(34,197,94,.62)}
+.orderbook-depth.buy{background:rgba(239,68,68,.58)}
 .orderbook-volume{text-align:right}
 .orderbook-section{display:flex;flex-direction:column;gap:4px}
 .orderbook-row{min-height:24px;font-size:12px}
 .orderbook-level{color:rgba(243,246,255,.72)}
 .orderbook-price{font-weight:700;text-align:left}
 .orderbook-volume{color:rgba(243,246,255,.78);font-variant-numeric:tabular-nums}
-.orderbook-row.sell .orderbook-price{color:#ff7474}
-.orderbook-row.buy .orderbook-price{color:#3ad283}
-.orderbook-divider{height:1px;background:rgba(255,255,255,.08);margin:2px 0}
+.orderbook-row.up .orderbook-price{color:#ff7474}
+.orderbook-row.down .orderbook-price{color:#3ad283}
+.orderbook-row.flat .orderbook-price{color:var(--text-primary)}
+.orderbook-divider{display:flex;height:3px;overflow:hidden;margin:1px 0;background:rgba(255,255,255,.08)}
+.orderbook-divider i{display:block;height:100%}
+.orderbook-divider .buy{background:#ef4444}
+.orderbook-divider .sell{background:#22c55e}
 .chart-svg{width:100%;height:100%;display:block;min-height:320px}
 .chart-svg-kline{cursor:grab;touch-action:none}
 .chart-svg-kline.dragging{cursor:grabbing}
@@ -1216,6 +1371,11 @@ onUnmounted(() => {
 .axis-label{fill:rgba(255,255,255,.42);font-size:11px}
 .axis-label-compact{font-size:9px}
 .area-fill{fill:rgba(29,155,240,.18)}
+.minute-volume-divider{stroke:rgba(255,255,255,.10);stroke-width:1}
+.minute-volume-title,.minute-volume-value{fill:rgba(255,255,255,.58);font-size:10px;font-weight:650}
+.minute-volume-bar.up{fill:#ef4444}
+.minute-volume-bar.down{fill:#22c55e}
+.minute-volume-bar.flat{fill:#7b8497}
 .kline-fill{fill:rgba(29,155,240,.14)}
 .chart-line{fill:none;stroke-width:1.8;stroke-linejoin:round;stroke-linecap:round}
 .chart-line-latest{stroke:#1d9bf0}

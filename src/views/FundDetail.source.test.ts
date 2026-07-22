@@ -58,6 +58,15 @@ describe('FundDetail source', () => {
     expect(source).toContain('HISTORY_CACHE_TTL')
     expect(source).toContain('ALLOCATION_CACHE_TTL')
     expect(source).toContain('loadFundDetail(true)')
+    expect(source).toContain('shouldRefreshFundHistory')
+    expect(source).toContain("const HISTORY_CACHE_SCOPE = 'history-v2'")
+  })
+
+  it('falls back to official NAV history when the profile omits the one-year return', () => {
+    expect(source).toContain('calculateFundRangeReturn')
+    expect(source).toContain("calculateFundRangeReturn(history.value, '1y')")
+    expect(source).toContain('oneYearReturn')
+    expect(source).toContain("const PROFILE_CACHE_SCOPE = 'profile-v2'")
   })
 
   it('invalidates allocation cache entries created before the UTF-8 holdings fix', () => {

@@ -69,9 +69,9 @@ function barWidth(percent: number): number {
 .allocation-state { min-height: 248px; display: grid; place-items: center; color: var(--text-muted); font-size: 12px; }
 .allocation-state.error, .stale-warning { color: #f59e55; }
 .section-heading, .holdings-heading { display: flex; align-items: end; justify-content: space-between; }
-.eyebrow { display: block; color: #6f94f8; font-size: 8px; font-weight: 800; letter-spacing: .16em; margin-bottom: 2px; }
+.eyebrow { display: block; color: #6f94f8; font-size: 10px; font-weight: 800; letter-spacing: 0; margin-bottom: 2px; }
 h3 { color: var(--text-primary); font-size: 13px; font-weight: 650; }
-.report-date, .holdings-heading span { color: var(--text-muted); font-size: 9px; }
+.report-date, .holdings-heading span { color: var(--text-muted); font-size: 10px; }
 .industry-list { display: grid; gap: 8px; margin-top: 11px; }
 .industry-row { display: grid; grid-template-columns: 80px 1fr 45px; align-items: center; gap: 8px; font-size: 10px; }
 .industry-name { overflow: hidden; color: var(--text-secondary); text-overflow: ellipsis; white-space: nowrap; }
@@ -81,12 +81,12 @@ h3 { color: var(--text-primary); font-size: 13px; font-weight: 650; }
 .holdings-heading { margin: 17px 0 7px; padding-top: 10px; border-top: 1px solid var(--divider-color); }
 .holding-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 16px; }
 .holding-item { display: grid; grid-template-columns: 20px 1fr auto; align-items: center; min-width: 0; padding: 5px 0; border-bottom: 1px solid rgba(255, 255, 255, .035); }
-.rank { color: #6f94f8; font: 700 9px/1 ui-monospace, monospace; }
+.rank { color: #6f94f8; font: 700 10px/1 ui-monospace, monospace; }
 .holding-name { min-width: 0; }
 .holding-name strong, .holding-name small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .holding-name strong { color: var(--text-secondary); font-size: 10px; font-weight: 550; }
-.holding-name small { margin-top: 1px; color: var(--text-muted); font-size: 8px; }
+.holding-name small { margin-top: 1px; color: var(--text-muted); font-size: 10px; }
 .holding-percent { color: var(--text-primary); font-size: 10px; }
 .sub-empty { padding: 16px 0 4px; text-align: center; color: var(--text-muted); font-size: 10px; }
-.stale-warning { margin-top: 5px; font-size: 9px; }
+.stale-warning { margin-top: 5px; font-size: 10px; }
 </style>

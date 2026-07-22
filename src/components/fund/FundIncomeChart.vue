@@ -111,8 +111,8 @@ function profitClass(value: number): string {
 .income-header { display: flex; align-items: end; justify-content: space-between; }
 .income-header > div { display: flex; align-items: baseline; gap: 8px; }
 .income-header span { color: var(--text-muted); font-size: 10px; }
-.income-header strong { color: var(--text-primary); font-size: 18px; font-weight: 680; letter-spacing: -.02em; }
-.income-header small { color: var(--text-muted); font-size: 8px; }
+.income-header strong { color: var(--text-primary); font-size: 18px; font-weight: 680; letter-spacing: 0; }
+.income-header small { color: var(--text-muted); font-size: 10px; }
 .up { color: var(--danger) !important; }
 .down { color: var(--success) !important; }
 .income-chart { height: 150px; margin-top: 3px; }
@@ -122,17 +122,17 @@ function profitClass(value: number): string {
 .grid-line { stroke: var(--divider-color); stroke-width: 1; }
 .income-area { fill: url(#income-fill); }
 .income-line { fill: none; stroke: #5b8cff; stroke-width: 2; vector-effect: non-scaling-stroke; stroke-linecap: round; stroke-linejoin: round; }
-.axis-label { fill: var(--text-muted); font-size: 8px; }
+.axis-label { fill: var(--text-muted); font-size: 10px; }
 .axis-label.end { text-anchor: end; }
 .range-switch { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; margin: 1px 0 9px; }
 .range-switch button { height: 24px; border: 0; border-radius: 7px; color: var(--text-muted); background: transparent; font: inherit; font-size: 10px; cursor: pointer; }
 .range-switch button:hover { color: var(--text-primary); background: var(--card-bg-hover); }
 .range-switch button.active { color: #8fb0ff; background: rgba(91, 140, 255, .14); }
 .details-head { display: flex; justify-content: space-between; padding: 8px 0 4px; border-top: 1px solid var(--divider-color); color: var(--text-secondary); font-size: 10px; }
-.details-head small { color: var(--text-muted); font-size: 8px; }
+.details-head small { color: var(--text-muted); font-size: 10px; }
 .income-list { display: grid; align-content: start; padding-bottom: 8px; }
 .income-row { display: grid; grid-template-columns: 1fr auto; align-items: center; min-height: 24px; color: var(--text-secondary); font-size: 10px; border-bottom: 1px solid rgba(255, 255, 255, .035); }
-.income-row small { padding: 2px 5px; border-radius: 4px; color: #8fb0ff; background: rgba(91, 140, 255, .12); font-size: 8px; }
+.income-row small { padding: 2px 5px; border-radius: 4px; color: #8fb0ff; background: rgba(91, 140, 255, .12); font-size: 10px; }
 .income-row strong { color: var(--text-primary); font-size: 10px; }
 .detail-empty { padding: 13px 0; text-align: center; color: var(--text-muted); font-size: 10px; }
 </style>

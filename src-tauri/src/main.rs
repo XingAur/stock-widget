@@ -1,10 +1,15 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod http;
+
+#[cfg(test)]
+use http::decode_utf8_text;
+use http::{fetch_text, fetch_text_gbk};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{
     collections::{HashMap, HashSet},
-    sync::{Mutex, OnceLock},
+    sync::{Arc, Mutex, OnceLock},
     time::{Duration, Instant},
 };
 use tauri::{
@@ -54,6 +59,7 @@ struct FundQuote {
     estimate_nav: Option<f64>,
     estimate_change_percent: Option<f64>,
     estimate_time: String,
+    sector: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
@@ -109,6 +115,7 @@ struct FundHolding {
 #[serde(rename_all = "camelCase")]
 struct FundAllocation {
     report_date: String,
+    sector: String,
     industries: Vec<FundIndustry>,
     holdings: Vec<FundHolding>,
 }
@@ -136,6 +143,7 @@ struct MinutePoint {
     time: String,
     price: f64,
     volume: i64,
+    average_price: f64,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -362,7 +370,25 @@ fn parse_tencent_fund_quote(parts: &[&str]) -> Option<FundQuote> {
         estimate_nav: None,
         estimate_change_percent: None,
         estimate_time: String::new(),
+        sector: String::new(),
     })
+}
+
+fn parse_fund_sector(text: &str) -> Option<String> {
+    let json = parse_json_or_jsonp(text)?;
+    let fund = json
+        .get("Datas")
+        .and_then(Value::as_array)
+        .and_then(|items| items.first())?;
+
+    fund.get("ZTJJInfo")
+        .and_then(Value::as_array)
+        .and_then(|themes| themes.first())
+        .and_then(|theme| theme.get("TTYPENAME"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .map(str::to_string)
 }
 
 fn parse_fund_search_results(text: &str) -> Vec<FundSearchResult> {
@@ -447,8 +473,9 @@ fn extract_js_array_assignment<'a>(text: &'a str, variable: &str) -> AppResult<&
     Err(format!("基金完整历史净值 {variable} 数组不完整"))
 }
 
-fn unix_millis_to_date(timestamp_ms: i64) -> Option<String> {
-    let days = timestamp_ms.div_euclid(86_400_000);
+fn unix_millis_to_china_date(timestamp_ms: i64) -> Option<String> {
+    let china_timestamp_ms = timestamp_ms.checked_add(8 * 60 * 60 * 1000)?;
+    let days = china_timestamp_ms.div_euclid(86_400_000);
     let shifted = days.checked_add(719_468)?;
     let era = if shifted >= 0 {
         shifted
@@ -479,7 +506,7 @@ fn parse_pingzhong_fund_history(text: &str) -> AppResult<Vec<FundNavPoint>> {
         .iter()
         .filter_map(|row| {
             let values = row.as_array()?;
-            let date = unix_millis_to_date(values.first()?.as_i64()?)?;
+            let date = unix_millis_to_china_date(values.first()?.as_i64()?)?;
             let nav = values.get(1)?.as_f64()?;
             (nav.is_finite() && nav > 0.0).then_some((date, nav))
         })
@@ -492,7 +519,7 @@ fn parse_pingzhong_fund_history(text: &str) -> AppResult<Vec<FundNavPoint>> {
             if !nav.is_finite() || nav <= 0.0 {
                 return None;
             }
-            let date = unix_millis_to_date(timestamp)?;
+            let date = unix_millis_to_china_date(timestamp)?;
 
             Some(FundNavPoint {
                 accumulated_nav: accumulated_by_date.get(&date).copied().unwrap_or(nav),
@@ -583,6 +610,17 @@ fn parse_js_number(text: &str, variable: &str) -> Option<f64> {
     let marker = format!("var {variable}=\"");
     let rest = text.split_once(&marker)?.1;
     rest.split_once('"')?.0.trim().parse::<f64>().ok()
+}
+
+fn parse_fund_base_one_year_return(text: &str) -> Option<f64> {
+    let json: Value = serde_json::from_str(text).ok()?;
+    let value = json.get("Datas")?.get("SYL_1N")?;
+    let parsed = value.as_f64().or_else(|| {
+        value
+            .as_str()
+            .and_then(|text| text.trim().parse::<f64>().ok())
+    })?;
+    parsed.is_finite().then_some(parsed)
 }
 
 fn parse_rank(value: &str) -> Option<FundRank> {
@@ -823,6 +861,13 @@ fn format_minute_time(value: &str) -> String {
     }
 }
 
+fn is_a_share_trading_minute(value: &str) -> bool {
+    let Ok(minute) = value.parse::<u16>() else {
+        return false;
+    };
+    (930..=1130).contains(&minute) || (1300..=1500).contains(&minute)
+}
+
 fn parse_order_book(parts: &[&str]) -> Option<OrderBook> {
     if parts.len() < 29 {
         return None;
@@ -957,72 +1002,6 @@ where
     items
 }
 
-fn decode_utf8_text(bytes: &[u8]) -> String {
-    let (text, _, _) = encoding_rs::UTF_8.decode(bytes);
-    text.into_owned()
-}
-
-async fn fetch_text(url: &str, referer: Option<&str>) -> AppResult<String> {
-    let client = reqwest::Client::new();
-    let request = if let Some(referer) = referer {
-        client
-            .get(url)
-            .header(
-                reqwest::header::USER_AGENT,
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 \
-                 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-            )
-            .header("Accept", "*/*")
-            .header("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
-            .header("Referer", referer)
-    } else {
-        client
-            .get(url)
-            .header(
-                reqwest::header::USER_AGENT,
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 \
-                 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-            )
-            .header("Accept", "*/*")
-            .header("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
-    };
-
-    let response = request.send().await.map_err(|error| error.to_string())?;
-    let bytes = response.bytes().await.map_err(|error| error.to_string())?;
-    Ok(decode_utf8_text(&bytes))
-}
-
-async fn fetch_text_gbk(url: &str, referer: Option<&str>) -> AppResult<String> {
-    let client = reqwest::Client::new();
-    let request = if let Some(referer) = referer {
-        client
-            .get(url)
-            .header(
-                reqwest::header::USER_AGENT,
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 \
-                 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-            )
-            .header("Accept", "*/*")
-            .header("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
-            .header("Referer", referer)
-    } else {
-        client
-            .get(url)
-            .header(
-                reqwest::header::USER_AGENT,
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 \
-                 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-            )
-            .header("Accept", "*/*")
-            .header("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
-    };
-
-    let response = request.send().await.map_err(|error| error.to_string())?;
-    let bytes = response.bytes().await.map_err(|error| error.to_string())?;
-    let (text, _, _) = encoding_rs::GBK.decode(&bytes);
-    Ok(text.into_owned())
-}
-
 #[tauri::command]
 async fn fetch_stocks(codes: Vec<String>) -> AppResult<Vec<Stock>> {
     if codes.is_empty() {
@@ -1052,7 +1031,7 @@ async fn search_stock(keyword: String) -> AppResult<Vec<SearchResult>> {
         "https://suggest3.sinajs.cn/suggest/type=11,12,13,14,15,22&key={}",
         keyword.trim()
     );
-    let text = fetch_text(&url, None).await?;
+    let text = fetch_text_gbk(&url, None).await?;
     let mut results = Vec::new();
 
     for line in text.lines().filter(|line| line.contains("suggestvalue=")) {
@@ -1131,10 +1110,20 @@ async fn fetch_funds(codes: Vec<String>) -> AppResult<Vec<FundQuote>> {
         parse_tencent_fund_quote(&parts)
     });
 
-    let mut allocations = HashMap::new();
-    for quote in &quotes {
-        if let Ok(allocation) = load_fund_allocation_cached(&quote.code).await {
-            allocations.insert(quote.code.clone(), allocation);
+    let allocations =
+        load_fund_allocations(quotes.iter().map(|quote| quote.code.clone()).collect()).await;
+
+    for quote in &mut quotes {
+        if let Some(allocation) = allocations.get(&quote.code) {
+            quote.sector = if allocation.sector.is_empty() {
+                allocation
+                    .industries
+                    .first()
+                    .map(|industry| industry.name.clone())
+                    .unwrap_or_default()
+            } else {
+                allocation.sector.clone()
+            };
         }
     }
 
@@ -1211,8 +1200,20 @@ async fn fetch_fund_history(code: String) -> AppResult<Vec<FundNavPoint>> {
 async fn fetch_fund_profile(code: String) -> AppResult<FundProfile> {
     let code = validate_fund_code(&code)?;
     let url = format!("https://fund.eastmoney.com/{code}.html");
-    let text = fetch_text_gbk(&url, Some("https://fund.eastmoney.com/")).await?;
-    parse_fund_profile(code, &text)
+    let base_url = format!(
+        "https://fundmobapi.eastmoney.com/FundMApi/FundBaseTypeInformation.ashx?FCODE={code}&deviceid=Wap&plat=Wap&product=EFund&version=2.0.0"
+    );
+    let (html_result, base_result) = tokio::join!(
+        fetch_text_gbk(&url, Some("https://fund.eastmoney.com/")),
+        fetch_text(&base_url, Some("https://fund.eastmoney.com/"))
+    );
+    let mut profile = parse_fund_profile(code, &html_result?)?;
+    if profile.one_year_return.is_none() {
+        profile.one_year_return = base_result
+            .ok()
+            .and_then(|text| parse_fund_base_one_year_return(&text));
+    }
+    Ok(profile)
 }
 
 fn read_cached_fund_allocation(code: &str, now: Instant) -> Option<FundAllocation> {
@@ -1238,8 +1239,20 @@ fn write_cached_fund_allocation(code: &str, value: &FundAllocation, fetched_at: 
 async fn load_fund_allocation_remote(code: &str) -> AppResult<FundAllocation> {
     let industry_url = format!("https://api.fund.eastmoney.com/f10/HYPZ/?fundCode={code}&year=");
     let referer = format!("https://fundf10.eastmoney.com/hytz_{code}.html");
-    let industry_text = fetch_text(&industry_url, Some(&referer)).await?;
+    let sector_url = format!(
+        "https://fundsuggest.eastmoney.com/FundSearch/api/FundSearchAPI.ashx?m=9&key={code}"
+    );
+    let (industry_result, sector_result) = tokio::join!(
+        fetch_text(&industry_url, Some(&referer)),
+        fetch_text(&sector_url, Some("https://fund.eastmoney.com/"))
+    );
+    let industry_text = industry_result?;
     let (report_date, industries) = parse_fund_industries(&industry_text)?;
+    let sector = sector_result
+        .ok()
+        .and_then(|text| parse_fund_sector(&text))
+        .or_else(|| industries.first().map(|industry| industry.name.clone()))
+        .unwrap_or_default();
     let date_parts = report_date.split('-').collect::<Vec<_>>();
     let holdings = if date_parts.len() >= 2 {
         let holdings_url = format!(
@@ -1255,6 +1268,7 @@ async fn load_fund_allocation_remote(code: &str) -> AppResult<FundAllocation> {
 
     Ok(FundAllocation {
         report_date,
+        sector,
         industries,
         holdings,
     })
@@ -1271,6 +1285,35 @@ async fn load_fund_allocation_cached(code: &str) -> AppResult<FundAllocation> {
     Ok(allocation)
 }
 
+async fn load_fund_allocations(codes: Vec<String>) -> HashMap<String, FundAllocation> {
+    let concurrency = Arc::new(tokio::sync::Semaphore::new(4));
+    let mut tasks = tokio::task::JoinSet::new();
+
+    for code in codes.into_iter().collect::<HashSet<_>>() {
+        let concurrency = Arc::clone(&concurrency);
+        tasks.spawn(async move {
+            let Ok(_permit) = concurrency.acquire_owned().await else {
+                return (code, Err("基金持仓刷新任务已取消".to_string()));
+            };
+            let result =
+                tokio::time::timeout(Duration::from_secs(8), load_fund_allocation_cached(&code))
+                    .await
+                    .map_err(|_| "基金持仓估算请求超时".to_string())
+                    .and_then(|result| result);
+            (code, result)
+        });
+    }
+
+    let mut allocations = HashMap::new();
+    while let Some(task) = tasks.join_next().await {
+        if let Ok((code, Ok(allocation))) = task {
+            allocations.insert(code, allocation);
+        }
+    }
+
+    allocations
+}
+
 #[tauri::command]
 async fn fetch_fund_allocation(code: String) -> AppResult<FundAllocation> {
     let code = validate_fund_code(&code)?;
@@ -1285,20 +1328,16 @@ async fn fetch_index_history(code: String) -> AppResult<Vec<KlinePoint>> {
     fetch_kline_data(code, "day".to_string()).await
 }
 
-#[tauri::command]
-async fn fetch_minute_data(code: String) -> AppResult<Vec<MinutePoint>> {
-    let tencent_code = to_tencent_code(&code);
-    let url = format!("https://ifzq.gtimg.cn/appstock/app/minute/query?code={tencent_code}");
-    let text = fetch_text(&url, None).await?;
-
-    let Ok(json) = serde_json::from_str::<serde_json::Value>(&text) else {
-        return Ok(Vec::new());
+fn parse_minute_points(text: &str, tencent_code: &str) -> Vec<MinutePoint> {
+    let Ok(json) = serde_json::from_str::<Value>(text) else {
+        return Vec::new();
     };
-    let Some(rows) = json["data"][&tencent_code]["data"]["data"].as_array() else {
-        return Ok(Vec::new());
+    let Some(rows) = json["data"][tencent_code]["data"]["data"].as_array() else {
+        return Vec::new();
     };
 
     let mut points = Vec::new();
+    let mut previous_cumulative_volume = 0_i64;
 
     for row in rows {
         let Some(line) = row.as_str() else {
@@ -1308,15 +1347,41 @@ async fn fetch_minute_data(code: String) -> AppResult<Vec<MinutePoint>> {
         if fields.len() < 3 {
             continue;
         }
+        if !is_a_share_trading_minute(fields[0]) {
+            continue;
+        }
+
+        let price = fields[1].parse::<f64>().unwrap_or(0.0);
+        let cumulative_volume = fields[2].parse::<i64>().unwrap_or(0).max(0);
+        if !price.is_finite() || price <= 0.0 {
+            continue;
+        }
+        let average_price = fields
+            .get(3)
+            .and_then(|amount| amount.parse::<f64>().ok())
+            .filter(|amount| amount.is_finite() && *amount >= 0.0 && cumulative_volume > 0)
+            .map(|amount| round4(amount / (cumulative_volume as f64 * 100.0)))
+            .unwrap_or(price);
 
         points.push(MinutePoint {
             time: format_minute_time(fields[0]),
-            price: fields[1].parse::<f64>().unwrap_or(0.0),
-            volume: fields[2].parse::<i64>().unwrap_or(0),
+            price,
+            volume: cumulative_volume.saturating_sub(previous_cumulative_volume),
+            average_price,
         });
+        previous_cumulative_volume = cumulative_volume;
     }
 
-    Ok(points)
+    points
+}
+
+#[tauri::command]
+async fn fetch_minute_data(code: String) -> AppResult<Vec<MinutePoint>> {
+    let tencent_code = to_tencent_code(&code);
+    let url = format!("https://ifzq.gtimg.cn/appstock/app/minute/query?code={tencent_code}");
+    let text = fetch_text(&url, None).await?;
+
+    Ok(parse_minute_points(&text, &tencent_code))
 }
 
 #[tauri::command]
@@ -1593,6 +1658,7 @@ mod tests {
             fetched_at,
             value: FundAllocation {
                 report_date: "2026-06-30".to_string(),
+                sector: "半导体".to_string(),
                 industries: Vec::new(),
                 holdings: Vec::new(),
             },
@@ -1716,6 +1782,48 @@ mod tests {
     }
 
     #[test]
+    fn converts_eastmoney_midnight_timestamp_to_china_calendar_date() {
+        assert_eq!(
+            unix_millis_to_china_date(1_784_563_200_000).as_deref(),
+            Some("2026-07-21")
+        );
+    }
+
+    #[test]
+    fn parses_primary_fund_theme_as_sector() {
+        let body = r#"{
+            "Datas": [{
+                "ZTJJInfo": [
+                    {"TTYPE":"BK000054","TTYPENAME":"半导体"},
+                    {"TTYPE":"BK000053","TTYPENAME":"电子"}
+                ]
+            }]
+        }"#;
+
+        assert_eq!(parse_fund_sector(body).as_deref(), Some("半导体"));
+    }
+
+    #[test]
+    fn converts_cumulative_minute_volume_to_per_minute_bars() {
+        let body = r#"{
+            "data": {"sz002409": {"data": {"data": [
+                "0930 10.00 100 100000.00",
+                "0931 10.10 130 130300.00",
+                "0932 10.05 130 130300.00",
+                "1501 10.05 130 130300.00"
+            ]}}}
+        }"#;
+
+        let points = parse_minute_points(body, "sz002409");
+
+        assert_eq!(points.len(), 3);
+        assert_eq!(points[0].volume, 100);
+        assert_eq!(points[1].volume, 30);
+        assert_eq!(points[2].volume, 0);
+        assert_eq!(points[1].average_price, 10.0231);
+    }
+
+    #[test]
     fn rejects_pingzhong_history_without_trend_variable() {
         assert!(parse_pingzhong_fund_history("var other = [];").is_err());
     }
@@ -1799,6 +1907,13 @@ mod tests {
         assert_eq!(profile.one_year_return, Some(104.59));
         assert_eq!(profile.rank.as_ref().map(|rank| rank.current), Some(339));
         assert_eq!(profile.rank.as_ref().map(|rank| rank.total), Some(4613));
+    }
+
+    #[test]
+    fn parses_fund_base_one_year_return() {
+        let body = r#"{"Datas":{"SYL_1N":"179.19"},"ErrCode":0}"#;
+
+        assert_eq!(parse_fund_base_one_year_return(body), Some(179.19));
     }
 
     #[test]

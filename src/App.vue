@@ -4,7 +4,7 @@
       :title="assetTitle"
       @close="handleClose"
       @minimize="handleMinimize"
-      @settings="showSettings = true"
+      @settings="openSettings"
       @toggle-asset-type="toggleAssetType"
     />
 
@@ -30,16 +30,24 @@
       </section>
     </main>
 
-    <div v-if="showSettings" class="settings-overlay" @click.self="showSettings = false">
-      <div class="settings-dialog">
-        <SettingsView @close="showSettings = false" />
+    <div v-if="showSettings" class="settings-overlay" @click.self="closeSettings">
+      <div
+        ref="settingsDialogRef"
+        class="settings-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-label="应用设置"
+        tabindex="-1"
+        @keydown="handleSettingsKeydown"
+      >
+        <SettingsView @close="closeSettings" />
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { defineAsyncComponent, computed, onMounted, ref, watch } from 'vue'
+import { defineAsyncComponent, computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { LogicalSize, PhysicalPosition } from '@tauri-apps/api/dpi'
 import { currentMonitor, getCurrentWindow } from '@tauri-apps/api/window'
@@ -49,6 +57,7 @@ import { useSettingsStore } from './stores/settings'
 import { useStockStore } from './stores/stock'
 import type { AssetType } from './api/stock'
 import { getAssetTitle, getNextAssetType } from './utils/assets'
+import { focusFirstModalControl, trapModalFocus } from './utils/modalFocus'
 
 const DetailView = defineAsyncComponent(() => import('./views/Detail.vue'))
 const FundDetailView = defineAsyncComponent(() => import('./views/FundDetail.vue'))
@@ -70,8 +79,40 @@ const selectedDetail = ref<DetailSelection | null>(null)
 const selectedCode = computed(() => selectedDetail.value?.code ?? '')
 const detailPosition = ref<'left' | 'right'>('right')
 const showSettings = ref(false)
+const settingsDialogRef = ref<HTMLElement | null>(null)
 const hasDetail = computed(() => Boolean(selectedDetail.value))
 const assetTitle = computed(() => getAssetTitle(stockStore.activeAssetType))
+let settingsTrigger: HTMLElement | null = null
+
+function openSettings() {
+  settingsTrigger = document.activeElement instanceof HTMLElement ? document.activeElement : null
+  showSettings.value = true
+  void nextTick(() => focusFirstModalControl(settingsDialogRef.value))
+}
+
+function closeSettings() {
+  showSettings.value = false
+  void nextTick(() => {
+    settingsTrigger?.focus()
+    settingsTrigger = null
+  })
+}
+
+function handleSettingsKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape') {
+    event.preventDefault()
+    closeSettings()
+    return
+  }
+  trapModalFocus(event, settingsDialogRef.value)
+}
+
+function handleGlobalKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape' && showSettings.value) {
+    event.preventDefault()
+    closeSettings()
+  }
+}
 
 function showDetail(selection: DetailSelection) {
   void openDetail(selection)
@@ -212,6 +253,7 @@ watch(() => [...stockStore.fundWatchList], (fundWatchList) => {
 })
 
 onMounted(async () => {
+  window.addEventListener('keydown', handleGlobalKeydown)
   settingsStore.load()
   try {
     await invoke('set_always_on_top', { enabled: settingsStore.settings.alwaysOnTop })
@@ -219,6 +261,10 @@ onMounted(async () => {
     console.error('Apply always on top setting error:', error)
   }
   await stockStore.init()
+})
+
+onUnmounted(() => {
+  window.removeEventListener('keydown', handleGlobalKeydown)
 })
 </script>
 

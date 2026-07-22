@@ -175,7 +175,7 @@ function valueClass(value: number | null): string {
 .chart-stage svg { width: 100%; height: 100%; overflow: visible; }
 .chart-state { height: 100%; display: grid; place-items: center; color: var(--text-muted); font-size: 12px; }
 .chart-state.error { color: #f59e55; }
-.cache-warning { margin-top: -2px; color: #f59e55; font-size: 8px; }
+.cache-warning { margin-top: -2px; color: #f59e55; font-size: 10px; }
 .grid-line { stroke: var(--divider-color); stroke-width: 1; }
 .zero-line { stroke: var(--text-muted); stroke-width: .8; stroke-dasharray: 4 5; opacity: .5; }
 .series-line, .cost-line { fill: none; vector-effect: non-scaling-stroke; stroke-linecap: round; stroke-linejoin: round; }
@@ -183,7 +183,7 @@ function valueClass(value: number | null): string {
 .series-line.fund { stroke: #5b8cff; }
 .series-line.benchmark { stroke: #f59e55; stroke-width: 1.55; }
 .cost-line { stroke: var(--text-muted); stroke-width: 1; stroke-dasharray: 5 5; }
-.axis-label { fill: var(--text-muted); font-size: 9px; }
+.axis-label { fill: var(--text-muted); font-size: 10px; }
 .axis-label.end { text-anchor: end; }
 .range-switch { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; margin-top: 3px; }
 .range-switch button { height: 26px; border: 0; border-radius: 7px; color: var(--text-muted); background: transparent; font: inherit; font-size: 11px; cursor: pointer; }
@@ -191,7 +191,7 @@ function valueClass(value: number | null): string {
 .range-switch button.active { color: #8fb0ff; background: rgba(91, 140, 255, .14); }
 .nav-history-table { margin-top: 8px; padding-bottom: 10px; border-top: 1px solid var(--divider-color); }
 .nav-history-head, .nav-history-row { display: grid; grid-template-columns: 1.25fr repeat(3, 1fr); align-items: center; column-gap: 8px; }
-.nav-history-head { min-height: 28px; color: var(--text-muted); font-size: 9px; }
+.nav-history-head { min-height: 28px; color: var(--text-muted); font-size: 10px; }
 .nav-history-head span:not(:first-child), .nav-history-row span { text-align: right; }
 .nav-history-row { min-height: 30px; border-top: 1px solid rgba(255, 255, 255, .035); color: var(--text-secondary); font-size: 10px; }
 .nav-history-row strong { color: var(--text-primary); font-weight: 600; }

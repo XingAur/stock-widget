@@ -2,7 +2,7 @@
   <div class="settings-view">
     <header class="settings-header">
       <h2>设置</h2>
-      <button class="close-btn" @click="$emit('close')">
+      <button class="close-btn" type="button" aria-label="关闭设置" @click="$emit('close')">
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <line x1="18" y1="6" x2="6" y2="18"></line>
           <line x1="6" y1="6" x2="18" y2="18"></line>
@@ -18,7 +18,7 @@
           <span class="setting-desc">始终显示在其他窗口上方</span>
         </div>
         <label class="switch">
-          <input type="checkbox" :checked="settings.settings.alwaysOnTop" :disabled="pendingKeys.alwaysOnTop" @change="toggleAlwaysOnTop">
+          <input type="checkbox" aria-label="窗口置顶" :checked="settings.settings.alwaysOnTop" :disabled="pendingKeys.alwaysOnTop" @change="toggleAlwaysOnTop">
           <span class="slider"></span>
         </label>
       </div>
@@ -32,7 +32,7 @@
           <span class="setting-desc">开机时自动启动小组件</span>
         </div>
         <label class="switch">
-          <input type="checkbox" :checked="settings.settings.autoStart" :disabled="pendingKeys.autoStart" @change="toggleAutoStart">
+          <input type="checkbox" aria-label="开机自启" :checked="settings.settings.autoStart" :disabled="pendingKeys.autoStart" @change="toggleAutoStart">
           <span class="slider"></span>
         </label>
       </div>
@@ -46,7 +46,7 @@
           <span class="setting-desc">点击最小化按钮缩到系统托盘</span>
         </div>
         <label class="switch">
-          <input type="checkbox" :checked="settings.settings.minimizeToTray" @change="toggleMinimizeToTray">
+          <input type="checkbox" aria-label="最小化到托盘" :checked="settings.settings.minimizeToTray" @change="toggleMinimizeToTray">
           <span class="slider"></span>
         </label>
       </div>
@@ -62,7 +62,9 @@
         <div class="theme-buttons">
           <button
             class="theme-btn"
+            type="button"
             :class="{ active: settings.settings.theme === 'light' }"
+            :aria-pressed="settings.settings.theme === 'light'"
             @click="setTheme('light')"
           >
             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -80,7 +82,9 @@
           </button>
           <button
             class="theme-btn"
+            type="button"
             :class="{ active: settings.settings.theme === 'dark' }"
+            :aria-pressed="settings.settings.theme === 'dark'"
             @click="setTheme('dark')"
           >
             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -90,7 +94,9 @@
           </button>
           <button
             class="theme-btn custom-btn"
+            type="button"
             :class="{ active: settings.settings.theme === 'custom' }"
+            :aria-pressed="settings.settings.theme === 'custom'"
             @click="setTheme('custom')"
           >
             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -113,6 +119,7 @@
             </div>
             <input
               type="color"
+              aria-label="背景颜色"
               class="color-picker"
               :value="settings.settings.customBgColor"
               @input="setBgColor($event)"
@@ -125,6 +132,7 @@
             </div>
             <input
               type="color"
+              aria-label="字体颜色"
               class="color-picker"
               :value="settings.settings.customFontColor"
               @input="setFontColor($event)"
@@ -146,6 +154,7 @@
         </div>
         <select
           class="font-select"
+          aria-label="字体样式"
           :value="settings.settings.fontFamily"
           @change="setFontFamily($event)"
         >
@@ -166,6 +175,7 @@
         <span class="setting-desc">调节窗口背景透明度</span>
         <input
           type="range"
+          aria-label="背景透明度"
           min="0"
           max="1"
           step="0.05"
@@ -184,7 +194,7 @@
           <span class="setting-desc">显示上证、深证、创业板指数</span>
         </div>
         <label class="switch">
-          <input type="checkbox" :checked="settings.settings.showIndices" @change="toggleShowIndices">
+          <input type="checkbox" aria-label="显示大盘指数" :checked="settings.settings.showIndices" @change="toggleShowIndices">
           <span class="slider"></span>
         </label>
       </div>
@@ -198,7 +208,7 @@
           <span class="setting-desc">在股票列表中显示迷你折线图</span>
         </div>
         <label class="switch">
-          <input type="checkbox" :checked="settings.settings.showSparklines" @change="toggleShowSparklines">
+          <input type="checkbox" aria-label="显示分时折线图" :checked="settings.settings.showSparklines" @change="toggleShowSparklines">
           <span class="slider"></span>
         </label>
       </div>
@@ -448,6 +458,11 @@ input:checked + .slider {
 input:checked + .slider:before {
   transform: translateX(20px);
   background: #ffffff;
+}
+
+.switch input:focus-visible + .slider {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .switch input:disabled + .slider {

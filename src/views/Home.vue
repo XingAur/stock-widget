@@ -28,18 +28,26 @@
       <div v-if="showAccountSummary" class="fund-account-summary">
         <div class="fund-account-card">
           <span>账户资金</span>
-          <strong>{{ formatAccountSummaryMoney(activeAccountSummary?.accountAssets) }}</strong>
+          <strong :title="formatAccountSummaryMoney(activeAccountSummary?.accountAssets)">
+            {{ formatCompactAccountMoney(activeAccountSummary?.accountAssets) }}
+          </strong>
         </div>
         <div class="fund-account-card">
           <span>当日预计收益</span>
-          <strong :class="getPositionToneClass(activeAccountSummary?.estimatedDailyProfit ?? 0)">
-            {{ formatAccountSummaryMoney(activeAccountSummary?.estimatedDailyProfit, true) }}
+          <strong
+            :class="getPositionToneClass(activeAccountSummary?.estimatedDailyProfit ?? 0)"
+            :title="formatAccountSummaryMoney(activeAccountSummary?.estimatedDailyProfit, true)"
+          >
+            {{ formatCompactAccountMoney(activeAccountSummary?.estimatedDailyProfit, true) }}
           </strong>
         </div>
         <div class="fund-account-card">
           <span>账户总收益</span>
-          <strong :class="getPositionToneClass(activeAccountSummary?.totalProfit ?? 0)">
-            {{ formatAccountSummaryMoney(activeAccountSummary?.totalProfit, true) }}
+          <strong
+            :class="getPositionToneClass(activeAccountSummary?.totalProfit ?? 0)"
+            :title="formatAccountSummaryMoney(activeAccountSummary?.totalProfit, true)"
+          >
+            {{ formatCompactAccountMoney(activeAccountSummary?.totalProfit, true) }}
           </strong>
         </div>
       </div>
@@ -242,6 +250,16 @@
       </div>
 
       <div class="bottom-actions">
+        <span
+          v-if="stockStore.activeRefreshError"
+          class="refresh-status"
+          :class="{ stale: stockStore.activeDataStale }"
+          role="status"
+          aria-live="polite"
+          :title="stockStore.activeRefreshError"
+        >
+          {{ stockStore.activeDataStale ? '延迟' : '失败' }}
+        </span>
         <button class="refresh-btn" type="button" title="刷新" @click.stop="handleRefresh">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="23 4 23 10 17 10" />
@@ -253,10 +271,19 @@
     </div>
 
     <div v-if="positionDialog.visible" class="position-overlay" @click.self="closePositionDialog">
-      <form class="position-dialog" @submit.prevent="savePositionDialog" @click.stop>
+      <form
+        ref="positionDialogElement"
+        class="position-dialog"
+        role="dialog"
+        aria-modal="true"
+        :aria-label="positionDialog.assetType === 'stock' ? '录入股票持仓' : '录入基金持有'"
+        @submit.prevent="savePositionDialog"
+        @click.stop
+        @keydown="handlePositionDialogKeydown"
+      >
         <header class="position-dialog-header">
           <h3>{{ positionDialog.assetType === 'stock' ? '录入股票持仓' : '录入基金持有' }}</h3>
-          <button class="position-close-btn" type="button" title="关闭" @click="closePositionDialog">×</button>
+          <button class="position-close-btn" type="button" aria-label="关闭持仓录入" title="关闭" @click="closePositionDialog"><X :size="15" aria-hidden="true" /></button>
         </header>
 
         <div v-if="positionDialog.assetType === 'stock'" class="position-fields">
@@ -311,7 +338,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
+import { X } from 'lucide-vue-next'
 import {
   searchFunds,
   searchStock,
@@ -325,7 +353,10 @@ import { useSettingsStore } from '../stores/settings'
 import { useStockStore } from '../stores/stock'
 import { createSparklinePoints } from '../utils/chart'
 import { resolveFundDisplayQuote, type FundDisplayQuote } from '../utils/fundQuote'
+import { deriveFundPosition } from '../utils/fundLedger'
+import { focusFirstModalControl, trapModalFocus } from '../utils/modalFocus'
 import {
+  formatCompactMoney,
   formatOptionalNumber,
   formatSignedOptionalPercent,
   getSignedChangeTone
@@ -416,12 +447,14 @@ const positionDialog = ref<PositionDialogState>({
   fundProfit: '',
   error: ''
 })
+const positionDialogElement = ref<HTMLElement | null>(null)
 
 let searchTimer: ReturnType<typeof setTimeout> | null = null
 let blurTimer: ReturnType<typeof setTimeout> | null = null
 let suppressClickTimer: ReturnType<typeof setTimeout> | null = null
 let activeSearchRequest = 0
 let dragHandleElement: HTMLElement | null = null
+let positionDialogTrigger: HTMLElement | null = null
 
 const activeListLength = computed(() =>
   stockStore.activeAssetType === 'stock'
@@ -442,8 +475,14 @@ const fundAccountQuotes = computed(() => stockStore.fundList.map((fund) => {
     estimateChangePercent: display.source === 'estimate' ? display.changePercent : null
   }
 }))
+const fundAccountPositions = computed(() => Object.fromEntries(
+  stockStore.fundList.flatMap((fund) => {
+    const position = getFundPosition(fund)
+    return position ? [[fund.code, position] as const] : []
+  })
+))
 const fundAccountSummary = computed<FundAccountSummary | null>(() =>
-  calculateFundAccountSummary(stockStore.fundPositions, fundAccountQuotes.value)
+  calculateFundAccountSummary(fundAccountPositions.value, fundAccountQuotes.value)
 )
 const activeAccountSummary = computed<StockAccountSummary | FundAccountSummary | null>(() =>
   stockStore.activeAssetType === 'stock' ? stockAccountSummary.value : fundAccountSummary.value
@@ -589,7 +628,23 @@ function getStockPositionMetrics(stock: Stock): PositionMetrics | null {
 }
 
 function getFundPositionMetrics(fund: FundQuote): PositionMetrics | null {
-  return calculateFundPositionMetrics(stockStore.fundPositions[fund.code])
+  return calculateFundPositionMetrics(getFundPosition(fund))
+}
+
+function getFundPosition(fund: FundQuote) {
+  const ledger = stockStore.fundLedgers[fund.code]
+  if (ledger) {
+    const display = getFundDisplayQuote(fund)
+    if (typeof display.nav === 'number' && Number.isFinite(display.nav) && display.nav > 0) {
+      const position = deriveFundPosition(ledger, display.nav)
+      return {
+        holdingAmount: position.currentValue,
+        profit: position.totalProfit
+      }
+    }
+  }
+
+  return stockStore.fundPositions[fund.code]
 }
 
 function getFundDisplayQuote(fund: FundQuote): FundDisplayQuote {
@@ -597,14 +652,7 @@ function getFundDisplayQuote(fund: FundQuote): FundDisplayQuote {
 }
 
 function getFundQuoteMeta(fund: FundQuote): string {
-  const display = getFundDisplayQuote(fund)
-  if (display.source === 'estimate') {
-    const time = display.time.match(/(?:\s|T)(\d{2}:\d{2})/)?.[1] ?? ''
-    return `持仓估算${time ? ` ${time}` : ''}`
-  }
-
-  const date = display.time.length >= 10 ? display.time.slice(5, 10) : display.time
-  return `已确认净值${date ? ` ${date}` : ''}`
+  return fund.sector || '板块待更新'
 }
 
 function isStockCardSelected(code: string): boolean {
@@ -664,6 +712,11 @@ function formatAccountSummaryMoney(value: number | null | undefined, signed = fa
   return `${sign}¥${amount}`
 }
 
+function formatCompactAccountMoney(value: number | null | undefined, signed = false): string {
+  if (value === undefined || value === null) return '--'
+  return formatCompactMoney(value, signed)
+}
+
 function formatPositionPercent(value: number | undefined): string {
   return formatSignedOptionalPercent(value)
 }
@@ -679,7 +732,8 @@ function parsePositionNumber(value: string): number | null {
 
 function openPositionDialog(assetType: AssetType, code: string) {
   const stockPosition = stockStore.stockPositions[code]
-  const fundPosition = stockStore.fundPositions[code]
+  const fund = stockStore.getFund(code)
+  const fundPosition = fund ? getFundPosition(fund) : stockStore.fundPositions[code]
 
   positionDialog.value = {
     visible: true,
@@ -691,10 +745,25 @@ function openPositionDialog(assetType: AssetType, code: string) {
     fundProfit: fundPosition ? String(fundPosition.profit) : '',
     error: ''
   }
+  positionDialogTrigger = document.activeElement instanceof HTMLElement ? document.activeElement : null
+  void nextTick(() => focusFirstModalControl(positionDialogElement.value))
 }
 
 function closePositionDialog() {
   positionDialog.value.visible = false
+  void nextTick(() => {
+    positionDialogTrigger?.focus()
+    positionDialogTrigger = null
+  })
+}
+
+function handlePositionDialogKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape') {
+    event.preventDefault()
+    closePositionDialog()
+    return
+  }
+  trapModalFocus(event, positionDialogElement.value)
 }
 
 function savePositionDialog() {
@@ -964,6 +1033,9 @@ async function handleRemoveAsset(assetType: AssetType, code: string) {
 
 function handleGlobalKeydown(event: KeyboardEvent) {
   if (event.key === 'Escape') {
+    if (positionDialog.value.visible) {
+      closePositionDialog()
+    }
     closeContextMenu()
     cancelDrag()
   }
@@ -993,9 +1065,9 @@ onUnmounted(() => {
 .asset-tab{flex:1;height:24px;border:none;border-radius:6px;background:transparent;color:var(--text-muted);font-size:12px;font-weight:700;cursor:pointer;transition:background .15s ease,color .15s ease}
 .asset-tab:hover{color:var(--text-primary);background:rgba(255,255,255,.045)}
 .asset-tab.active{color:#f8fbff;background:rgba(45,124,246,.72);box-shadow:inset 0 1px 0 rgba(255,255,255,.16)}
-.bottom-bar{display:flex;align-items:center;gap:8px;padding:4px 10px 6px}
-.search-shell{position:relative;min-width:0}
-.search-shell input{max-width:125px;height:26px;padding:0 8px 0 28px;border:1px solid rgba(255,255,255,.08);border-radius:8px;outline:none;background:rgba(255,255,255,.03);color:var(--text-primary);font-size:12px;transition:border-color .18s ease,background .18s ease}
+.bottom-bar{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:8px;padding:4px 10px 6px}
+.search-shell{position:relative;min-width:0;width:100%}
+.search-shell input{width:100%;min-width:0;height:26px;padding:0 8px 0 28px;border:1px solid rgba(255,255,255,.08);border-radius:8px;outline:none;background:rgba(255,255,255,.03);color:var(--text-primary);font-size:12px;transition:border-color .18s ease,background .18s ease}
 .search-shell input::placeholder{color:var(--text-muted)}
 .search-shell input:focus{border-color:rgba(59,130,246,.4);background:rgba(255,255,255,.045)}
 .search-icon{position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--text-muted);pointer-events:none}
@@ -1004,6 +1076,8 @@ onUnmounted(() => {
 .search-item:hover{background:rgba(255,255,255,.05)}
 .search-name{font-size:13px;font-weight:600;white-space:nowrap}.search-code{font-size:12px;color:var(--text-muted);white-space:nowrap}
 .bottom-actions{display:inline-flex;align-items:center;gap:6px;flex-shrink:0}
+.refresh-status{display:inline-flex;align-items:center;height:20px;padding:0 5px;border:1px solid rgba(248,113,113,.3);border-radius:5px;background:rgba(248,113,113,.09);color:#ff8c8c;font-size:9px;font-weight:700;white-space:nowrap}
+.refresh-status.stale{border-color:rgba(245,158,11,.28);background:rgba(245,158,11,.08);color:#fbbf57}
 .refresh-btn{width:26px;height:26px;display:inline-flex;align-items:center;justify-content:center;border:none;border-radius:8px;background:transparent;color:var(--text-muted);cursor:pointer;transition:color .15s ease,background .15s ease}
 .refresh-btn:hover{color:var(--text-primary);background:rgba(255,255,255,.05)}
 .update-time{font-size:11px;color:var(--text-muted)}
