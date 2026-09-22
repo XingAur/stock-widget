@@ -69,7 +69,7 @@ jobs:
           gh release download $env:TAG --repo $env:REPO --dir artifacts --clobber
           Get-ChildItem artifacts | ForEach-Object {
             if ($_.Name -match '(\d+\.\d+\.\d+)_x64-setup\.exe$' -and $_.Name -notlike 'APlus_Assistant_*') {
-              Rename-Item $_.FullName ("APlus_Assistant_" + $_.Name) -Force
+              Rename-Item $_.FullName ("APlus_Assistant_{0}_x64-setup.exe" -f $Matches[1]) -Force
             } elseif ($_.Name -notlike '*_x64-setup.exe') {
               Remove-Item $_.FullName -Force
             }

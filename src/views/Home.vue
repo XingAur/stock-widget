@@ -1129,7 +1129,12 @@ async function handleImportFile(event: Event): Promise<void> {
   searchError.value = '正在识别图片…'
   try {
     const dataUrl = await readFileAsDataUrl(file)
-    const lines = await invoke<string[]>('ocr_image', { imageBase64: dataUrl })
+    const lines = await Promise.race([
+      invoke<string[]>('ocr_image', { imageBase64: dataUrl }),
+      new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error('图片识别超时，请换小一点的截图')), 90_000)
+      })
+    ]) as string[]
     searchError.value = ''
     importDialog.value = { visible: true, lines }
   } catch (error) {

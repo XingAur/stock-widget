@@ -609,24 +609,30 @@ fn watch_window_geometry(app: &AppHandle) {
 }
 
 #[tauri::command]
-fn ocr_image(image_base64: String) -> AppResult<Vec<String>> {
-    use base64::Engine;
+async fn ocr_image(image_base64: String) -> AppResult<Vec<String>> {
+    // OCR 的 WinRT 调用全程同步阻塞（数百毫秒到数秒），必须放到线程池执行；
+    // 同步命令会占用 Tauri 主线程，导致窗口"未响应"并触发系统 ghost 窗口。
+    tauri::async_runtime::spawn_blocking(move || {
+        use base64::Engine;
 
-    let cleaned = image_base64.trim();
-    let payload = cleaned
-        .strip_prefix("data:image")
-        .and_then(|rest| rest.split_once(','))
-        .map(|(_, data)| data)
-        .unwrap_or(cleaned);
+        let cleaned = image_base64.trim();
+        let payload = cleaned
+            .strip_prefix("data:image")
+            .and_then(|rest| rest.split_once(','))
+            .map(|(_, data)| data)
+            .unwrap_or(cleaned);
 
-    let bytes = base64::engine::general_purpose::STANDARD
-        .decode(payload)
-        .map_err(|error| format!("图片数据解码失败：{error}"))?;
-    if bytes.is_empty() {
-        return Err("图片内容为空".to_string());
-    }
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(payload)
+            .map_err(|error| format!("图片数据解码失败：{error}"))?;
+        if bytes.is_empty() {
+            return Err("图片内容为空".to_string());
+        }
 
-    ocr_image_bytes(&bytes)
+        ocr_image_bytes(&bytes)
+    })
+    .await
+    .map_err(|error| format!("图片识别任务失败：{error}"))?
 }
 
 #[tauri::command]
