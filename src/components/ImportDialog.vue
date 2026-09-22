@@ -62,7 +62,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { X } from 'lucide-vue-next'
-import { searchFunds } from '../api/stock'
+import { fetchStocks, searchFunds } from '../api/stock'
 import { useStockStore } from '../stores/stock'
 import { parseOcrLines } from '../utils/ocrParse'
 import { focusFirstModalControl, trapModalFocus } from '../utils/modalFocus'
@@ -121,12 +121,26 @@ async function resolve(): Promise<void> {
   const parsed = parseOcrLines(props.lines)
   const nextEntries: ImportEntry[] = []
 
+  // OCR 的股票名经常残缺（水印干扰只剩单字），批量拉行情用正式名称展示
+  const officialNames = new Map<string, string>()
+  if (parsed.stocks.length > 0) {
+    resolving.value = true
+    await nextTick(() => focusFirstModalControl(dialogElement.value))
+    try {
+      const quotes = await fetchStocks(parsed.stocks.map((stock) => stock.code))
+      quotes.forEach((quote) => officialNames.set(quote.code, quote.name))
+    } catch {
+      // 拉不到正式名称时退回 OCR 名称
+    }
+  }
+
   for (const stock of parsed.stocks) {
     const exists = stockStore.watchList.includes(stock.code)
+    const officialName = officialNames.get(stock.code)
     nextEntries.push({
       key: `stock-${stock.code}`,
       type: 'stock',
-      displayName: stock.name || stock.code,
+      displayName: officialName || stock.name || stock.code,
       code: stock.code,
       status: exists ? 'exists' : 'ready',
       checked: !exists
@@ -134,7 +148,9 @@ async function resolve(): Promise<void> {
   }
 
   resolving.value = parsed.funds.length > 0
-  await nextTick(() => focusFirstModalControl(dialogElement.value))
+  if (parsed.funds.length > 0 && !dialogElement.value) {
+    await nextTick(() => focusFirstModalControl(dialogElement.value))
+  }
 
   // 基金截图只有名称：逐个反查代码（搜索结果按相关度排序，取第一个）
   await Promise.all(parsed.funds.map(async (fund) => {
@@ -250,7 +266,7 @@ onMounted(() => {
 .import-secondary-btn,.import-primary-btn{height:30px;padding:0 12px;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer}
 .import-secondary-btn{background:rgba(255,255,255,.06);color:var(--text-secondary)}
 .import-primary-btn{background:rgba(45,124,246,.82);color:#fff}
-.import-primary-btn:disabled{opacity:.5;cursor:not-allowed}
+.import-primary-btn:disabled{opacity:.4;filter:saturate(.6);cursor:not-allowed}
 .import-secondary-btn:hover{background:rgba(255,255,255,.1);color:var(--text-primary)}
 .import-primary-btn:not(:disabled):hover{background:rgba(45,124,246,.94)}
 </style>
