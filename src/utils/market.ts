@@ -34,9 +34,43 @@ export function findMarketGroup(key: string): MarketGroup {
   return MARKET_GROUPS.find((group) => group.key === key) ?? MARKET_GROUPS[0]
 }
 
-/** 板块模式下的行情数据 key：A股用概念板块榜，美股用 SPDR 行业 ETF */
-export function sectorDataKey(groupKey: MarketKey): 'sectors' | 'us-sectors' {
-  return groupKey === 'us' ? 'us-sectors' : 'sectors'
+/** 市场页内的视图模式：行业（主流默认）/ 概念（仅 A股）/ 指数 */
+export type MarketViewMode = 'industry' | 'concept' | 'indices'
+
+export interface MarketViewModeOption {
+  mode: MarketViewMode
+  label: string
+}
+
+/** 各市场的模式切换项：A股三段（行业|概念|指数），美股两段（行业|指数），纯指数市场为空 */
+export function marketViewModeOptions(hasSectors: boolean, isCN: boolean): MarketViewModeOption[] {
+  if (!hasSectors) {
+    return []
+  }
+
+  const options: MarketViewModeOption[] = [
+    { mode: 'industry', label: '行业' },
+    ...(isCN ? [{ mode: 'concept', label: '概念' } as MarketViewModeOption] : []),
+    { mode: 'indices', label: '指数' }
+  ]
+  return options
+}
+
+/** 当前模式对应的行情数据 key；纯指数市场无论什么模式都返回自身 */
+export function dataKeyForView(market: MarketKey, mode: MarketViewMode): MarketKey {
+  if (mode === 'indices' || !findMarketGroup(market).hasSectors) {
+    return market
+  }
+  if (market === 'cn') {
+    return mode === 'concept' ? 'sectors' : 'industry-sectors'
+  }
+  // 美股只有行业 ETF
+  return 'us-sectors'
+}
+
+/** 市场的默认视图模式 */
+export function defaultViewMode(market: MarketKey): MarketViewMode {
+  return findMarketGroup(market).hasSectors ? 'industry' : 'indices'
 }
 
 function parseChinaTime(value: string): number {

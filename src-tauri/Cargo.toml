@@ -1,6 +1,6 @@
 [package]
 name = "stock-widget"
-version = "1.0.4"
+version = "1.0.5"
 description = "Windows A+助手"
 authors = ["you"]
 edition = "2021"

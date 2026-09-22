@@ -17,22 +17,16 @@
       <span class="market-status" :class="{ open: isMarketOpen }" role="status">
         <i></i>{{ statusText }}
       </span>
-      <div v-if="activeGroup.hasSectors" class="market-mode-switch" role="group" aria-label="板块/指数切换">
+      <div v-if="modeOptions.length > 0" class="market-mode-switch" role="group" aria-label="板块/指数切换">
         <button
+          v-for="option in modeOptions"
+          :key="option.mode"
           class="market-mode-btn"
-          :class="{ active: viewMode === 'sectors' }"
+          :class="{ active: viewMode === option.mode }"
           type="button"
-          @click="switchView('sectors')"
+          @click="switchView(option.mode)"
         >
-          板块
-        </button>
-        <button
-          class="market-mode-btn"
-          :class="{ active: viewMode === 'indices' }"
-          type="button"
-          @click="switchView('indices')"
-        >
-          指数
+          {{ option.label }}
         </button>
       </div>
       <span v-if="error" class="market-error" :title="error">刷新失败</span>
@@ -93,11 +87,14 @@ import { fetchGlobalIndices, type GlobalIndexData, type MarketKey } from '../api
 import { useStockStore } from '../stores/stock'
 import {
   MARKET_GROUPS,
+  dataKeyForView,
+  defaultViewMode,
   findMarketGroup,
   isOpenMarket,
   lastWatchlistViewType,
-  sectorDataKey,
-  toMarketCardModel
+  marketViewModeOptions,
+  toMarketCardModel,
+  type MarketViewMode
 } from '../utils/market'
 import { readPersistedSlice, updatePersistedSlice } from '../utils/persistence'
 
@@ -106,10 +103,8 @@ const REFRESH_INTERVAL_MS = 60_000
 
 const stockStore = useStockStore()
 
-type MarketViewMode = 'sectors' | 'indices'
-
 const activeMarket = ref<MarketKey>('cn')
-const viewMode = ref<MarketViewMode>('sectors')
+const viewMode = ref<MarketViewMode>('industry')
 const indices = ref<GlobalIndexData[]>([])
 const loading = ref(false)
 const error = ref('')
@@ -118,18 +113,15 @@ const lastUpdate = ref<Date | null>(null)
 let refreshTimer: number | null = null
 
 const activeGroup = computed(() => findMarketGroup(activeMarket.value))
+const modeOptions = computed(() => marketViewModeOptions(activeGroup.value.hasSectors, activeMarket.value === 'cn'))
 const cards = computed(() => indices.value.map(toMarketCardModel))
 const isMarketOpen = computed(() => isOpenMarket(indices.value))
 const statusText = computed(() => (
   isMarketOpen.value ? `${activeGroup.value.label}盘中` : `${activeGroup.value.label}已休市`
 ))
 
-/** 当前视图实际请求的行情 key：有板块的市场默认板块，切到指数后拉指数 */
-const currentDataKey = computed<MarketKey>(() => (
-  viewMode.value === 'sectors' && activeGroup.value.hasSectors
-    ? sectorDataKey(activeMarket.value)
-    : activeMarket.value
-))
+/** 当前视图实际请求的行情 key：默认行业板块（主流做法），可切概念/指数 */
+const currentDataKey = computed<MarketKey>(() => dataKeyForView(activeMarket.value, viewMode.value))
 
 function formatTime(date: Date): string {
   return `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}:${date.getSeconds().toString().padStart(2, '0')}`
@@ -166,8 +158,8 @@ function switchMarket(market: MarketKey): void {
   }
 
   activeMarket.value = market
-  // 进入新市场回到默认视图：有板块先看板块，纯指数市场只有指数
-  viewMode.value = findMarketGroup(market).hasSectors ? 'sectors' : 'indices'
+  // 进入新市场回到默认视图：默认行业板块（主流做法），纯指数市场只有指数
+  viewMode.value = findMarketGroup(market).hasSectors ? 'industry' : 'indices'
   indices.value = []
   error.value = ''
   lastUpdate.value = null
@@ -207,6 +199,7 @@ onMounted(() => {
   if (typeof rememberedMarket === 'string') {
     activeMarket.value = findMarketGroup(rememberedMarket).key
   }
+  viewMode.value = defaultViewMode(activeMarket.value)
 
   void load()
   refreshTimer = window.setInterval(() => {

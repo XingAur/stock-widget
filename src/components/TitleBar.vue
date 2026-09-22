@@ -1,5 +1,7 @@
 <template>
-  <header class="title-bar" @mousedown="startWindowDrag">
+  <!-- 拖动统一由 App.vue 根节点的全局 mousedown 处理（事件冒泡到此），
+       这里不再单独绑定，避免同一按下触发两次 start_drag 导致顶部拖动失效 -->
+  <header class="title-bar">
     <div class="window-controls">
       <button class="traffic-btn traffic-close" type="button" title="Close" @click.stop="$emit('close')">
         <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round">
@@ -26,8 +28,6 @@
 </template>
 
 <script setup lang="ts">
-import { startWindowDrag } from '../utils/windowDrag'
-
 defineProps<{
   title: string
 }>()

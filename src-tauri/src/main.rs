@@ -357,15 +357,34 @@ async fn fetch_world_global_indices() -> AppResult<Vec<GlobalIndex>> {
     Ok(parse_eastmoney_global_indices(&text))
 }
 
-/// A股概念板块涨幅榜取前 16（两列 8 行，覆盖当日主线概念即可）
-const SECTOR_LIST_SIZE: usize = 16;
+/// A股板块榜拉全量（用户要求不截断），分页 100 条直到取完；安全上限 8 页
+const SECTOR_PAGE_SIZE: usize = 100;
+const SECTOR_MAX_PAGES: usize = 8;
 
-async fn fetch_concept_sectors() -> AppResult<Vec<GlobalIndex>> {
-    let url = format!(
-        "https://push2.eastmoney.com/api/qt/clist/get?pn=1&pz={SECTOR_LIST_SIZE}&po=1&np=1&fltt=2&invt=2&fid=f3&fs=m:90+t:3&fields=f2,f3,f4,f12,f14,f104,f105,f124"
-    );
-    let text = fetch_text(&url, Some("https://quote.eastmoney.com/")).await?;
-    Ok(parse_eastmoney_sectors(&text))
+async fn fetch_cn_sector_list(sector_type: &str) -> AppResult<Vec<GlobalIndex>> {
+    let mut all = Vec::new();
+    let mut seen_codes = std::collections::HashSet::new();
+
+    for page in 1..=SECTOR_MAX_PAGES {
+        // fid=f62 按主力净流入降序：资金涌入最多的热门板块排最前
+        let url = format!(
+            "https://push2.eastmoney.com/api/qt/clist/get?pn={page}&pz={SECTOR_PAGE_SIZE}&po=1&np=1&fltt=2&invt=2&fid=f62&fs=m:90+t:{sector_type}&fields=f2,f3,f4,f12,f14,f104,f105,f124"
+        );
+        let text = fetch_text(&url, Some("https://quote.eastmoney.com/")).await?;
+        let page_rows = parse_eastmoney_sectors(&text);
+        let page_len = page_rows.len();
+        for index in page_rows {
+            if seen_codes.insert(index.code.clone()) {
+                all.push(index);
+            }
+        }
+
+        if page_len < SECTOR_PAGE_SIZE {
+            break;
+        }
+    }
+
+    Ok(all)
 }
 
 /// 美股行业板块：标普 500 的 11 个 SPDR 行业 ETF（GICS 官方行业分类）
@@ -411,7 +430,12 @@ async fn fetch_global_indices(market: String) -> AppResult<Vec<GlobalIndex>> {
         return fetch_world_global_indices().await;
     }
     if market == "sectors" {
-        return fetch_concept_sectors().await;
+        // 概念板块（热点题材，约 500 个）
+        return fetch_cn_sector_list("3").await;
+    }
+    if market == "industry-sectors" {
+        // 行业板块（证监会行业分类，约 86 个，分类稳定，主流 App 板块页默认）
+        return fetch_cn_sector_list("2").await;
     }
     if market == "us-sectors" {
         return fetch_us_sector_indices().await;

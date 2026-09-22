@@ -61,7 +61,7 @@ export interface SearchResult {
 
 export type AssetType = 'stock' | 'fund' | 'market'
 
-export type MarketKey = 'cn' | 'hk' | 'us' | 'world' | 'sectors' | 'us-sectors'
+export type MarketKey = 'cn' | 'hk' | 'us' | 'world' | 'sectors' | 'industry-sectors' | 'us-sectors'
 
 export interface GlobalIndexData {
   code: string

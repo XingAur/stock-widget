@@ -177,7 +177,7 @@ test.describe('详情面板（长时间使用负载优化）', () => {
 })
 
 test.describe('市场助手（全球市场数据页）', () => {
-  test('地球按钮打开市场页，A股默认显示板块榜', async ({ page }) => {
+  test('地球按钮打开市场页，A股默认显示行业板块', async ({ page }) => {
     const globe = page.locator('.market-btn')
     await expect(globe).toHaveAttribute('title', '市场助手')
 
@@ -185,34 +185,37 @@ test.describe('市场助手（全球市场数据页）', () => {
     await expect(page.locator('.market-view')).toBeVisible()
     await expect(page.locator('.market-tab', { hasText: 'A股' })).toHaveClass(/active/)
 
-    // A股默认显示概念板块榜（带涨跌家数）
-    const aiChip = page.locator('.market-card', { hasText: 'AI芯片' })
-    await expect(aiChip).toBeVisible()
-    await expect(aiChip).toHaveClass(/up/)
-    await expect(aiChip.locator('.market-card-members')).toHaveText(/涨 86/)
+    // A股默认行业板块榜（主流做法），带涨跌家数
+    const bank = page.locator('.market-card', { hasText: '银行' })
+    await expect(bank).toBeVisible()
+    await expect(bank.locator('.market-card-members')).toHaveText(/涨 38/)
     await expect(page.locator('.market-status')).toHaveText(/A股盘中/)
   })
 
-  test('有板块的市场可切换板块/指数，纯指数市场只有指数', async ({ page }) => {
+  test('A股三段切换（行业|概念|指数），美股两段，纯指数市场无切换', async ({ page }) => {
     await page.locator('.market-btn').click()
     await page.locator('.market-view').waitFor()
 
-    // A股：板块 → 指数
+    // A股：行业 → 概念 → 指数
+    await page.locator('.market-mode-btn', { hasText: '概念' }).click()
+    const aiChip = page.locator('.market-card', { hasText: 'AI芯片' })
+    await expect(aiChip).toBeVisible()
+    await expect(aiChip).toHaveClass(/up/)
+
     await page.locator('.market-mode-btn', { hasText: '指数' }).click()
     const shIndex = page.locator('.market-card', { hasText: '上证指数' })
     await expect(shIndex).toBeVisible()
     await expect(shIndex).toHaveClass(/up/)
-    const szIndex = page.locator('.market-card', { hasText: '深证成指' })
-    await expect(szIndex).toHaveClass(/down/)
-    await expect(page.locator('.market-mode-btn', { hasText: '指数' })).toHaveClass(/active/)
+    await expect(page.locator('.market-card', { hasText: '深证成指' })).toHaveClass(/down/)
 
-    // 切回板块
-    await page.locator('.market-mode-btn', { hasText: '板块' }).click()
-    await expect(page.locator('.market-card', { hasText: 'AI芯片' })).toBeVisible()
+    // 切回行业
+    await page.locator('.market-mode-btn', { hasText: '行业' }).click()
+    await expect(page.locator('.market-card', { hasText: '银行' })).toBeVisible()
 
-    // 美股：默认行业板块，切换到指数
+    // 美股：两段（行业|指数），默认行业
     await page.locator('.market-tab', { hasText: '美股' }).click()
     await expect(page.locator('.market-card', { hasText: '科技' })).toBeVisible()
+    await expect(page.locator('.market-mode-btn')).toHaveCount(2)
     await page.locator('.market-mode-btn', { hasText: '指数' }).click()
     await expect(page.locator('.market-card', { hasText: '道琼斯' })).toBeVisible()
 

@@ -1,0 +1,58 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Test and build
+        run: |
+          npm run test
+          npm run build
+
+      - name: Test Rust
+        working-directory: src-tauri
+        run: cargo test
+
+      - name: Build and publish release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: v__VERSION__
+          releaseName: 'A+助手 __VERSION__'
+          releaseBody: |
+            Windows 桌面股票/基金小组件 v__VERSION__。
+
+            安装包：APlus_Assistant___VERSION___x64-setup.exe（NSIS 安装程序）
+
+            完整更新说明见提交历史与 README。
+          releaseDraft: false
+          prerelease: false

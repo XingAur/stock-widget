@@ -120,6 +120,10 @@ export const initScript = `
               { code: 'BK1127', name: 'AI芯片', price: 1944.81, change: 58.5, changePercent: 3.1, time: nowText, gainCount: 86, loseCount: 4 },
               { code: 'BK0476', name: '算力', price: 2210.5, change: 45.2, changePercent: 2.61, time: nowText, gainCount: 60, loseCount: 10 }
             ],
+            'industry-sectors': [
+              { code: 'BK0475', name: '银行', price: 2210.5, change: 22.1, changePercent: 1.01, time: nowText, gainCount: 38, loseCount: 4 },
+              { code: 'BK1036', name: '半导体', price: 5310.2, change: 159.3, changePercent: 3.1, time: nowText, gainCount: 180, loseCount: 20 }
+            ],
             'us-sectors': [
               { code: 'XLK', name: '科技', price: 194.85, change: 5.47, changePercent: 2.89, time: nowText },
               { code: 'XLE', name: '能源', price: 62.46, change: -1.47, changePercent: -2.3, time: nowText }

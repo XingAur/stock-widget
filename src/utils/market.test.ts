@@ -2,11 +2,13 @@ import { describe, expect, it } from 'vitest'
 import type { GlobalIndexData } from '../api/stock'
 import {
   MARKET_GROUPS,
+  dataKeyForView,
+  defaultViewMode,
   findMarketGroup,
   isOpenMarket,
   lastWatchlistViewType,
+  marketViewModeOptions,
   rememberWatchlistView,
-  sectorDataKey,
   toMarketCardModel
 } from './market'
 
@@ -36,8 +38,26 @@ describe('market groups', () => {
   })
 
   it('maps each sector-backed market to its sector data key', () => {
-    expect(sectorDataKey('cn')).toBe('sectors')
-    expect(sectorDataKey('us')).toBe('us-sectors')
+    expect(dataKeyForView('cn', 'industry')).toBe('industry-sectors')
+    expect(dataKeyForView('cn', 'concept')).toBe('sectors')
+    expect(dataKeyForView('us', 'industry')).toBe('us-sectors')
+    expect(dataKeyForView('cn', 'indices')).toBe('cn')
+    // 纯指数市场无视模式
+    expect(dataKeyForView('hk', 'industry')).toBe('hk')
+    expect(dataKeyForView('world', 'concept')).toBe('world')
+  })
+
+  it('exposes three-way switching for A-shares and two-way for US', () => {
+    expect(marketViewModeOptions(true, true).map((option) => option.label)).toEqual(['行业', '概念', '指数'])
+    expect(marketViewModeOptions(true, false).map((option) => option.label)).toEqual(['行业', '指数'])
+    expect(marketViewModeOptions(false, true)).toEqual([])
+  })
+
+  it('defaults to industry sectors for sector-backed markets', () => {
+    expect(defaultViewMode('cn')).toBe('industry')
+    expect(defaultViewMode('us')).toBe('industry')
+    expect(defaultViewMode('hk')).toBe('indices')
+    expect(defaultViewMode('world')).toBe('indices')
   })
 })
 
