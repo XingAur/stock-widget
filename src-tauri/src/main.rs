@@ -1,10 +1,12 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod http;
+mod ocr;
 
 #[cfg(test)]
 use http::decode_utf8_text;
 use http::{fetch_text, fetch_text_gbk};
+use ocr::ocr_image_bytes;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{
@@ -604,6 +606,27 @@ fn watch_window_geometry(app: &AppHandle) {
             save_window_geometry(&app_handle);
         }
     });
+}
+
+#[tauri::command]
+fn ocr_image(image_base64: String) -> AppResult<Vec<String>> {
+    use base64::Engine;
+
+    let cleaned = image_base64.trim();
+    let payload = cleaned
+        .strip_prefix("data:image")
+        .and_then(|rest| rest.split_once(','))
+        .map(|(_, data)| data)
+        .unwrap_or(cleaned);
+
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(payload)
+        .map_err(|error| format!("图片数据解码失败：{error}"))?;
+    if bytes.is_empty() {
+        return Err("图片内容为空".to_string());
+    }
+
+    ocr_image_bytes(&bytes)
 }
 
 #[tauri::command]
@@ -2630,6 +2653,7 @@ fn main() {
             fetch_kline_data,
             fetch_indices,
             fetch_global_indices,
+            ocr_image,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

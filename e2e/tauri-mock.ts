@@ -39,7 +39,7 @@ export const initScript = `
     dragCount: 0,
     stocks: []
   };
-  state.stocks = ${JSON.stringify([tauriStock('600000', '浦发银行'), tauriStock('000001', '平安银行', 12)])};
+  state.stocks = ${JSON.stringify([tauriStock('600000', '浦发银行'), tauriStock('000001', '平安银行', 12), tauriStock('600030', '中信证券', 22.69)])};
 
   function stockByCode(code) {
     return state.stocks.filter(function (stock) { return stock.code === code; });
@@ -81,13 +81,30 @@ export const initScript = `
         case 'minimize_to_tray':
           return null;
         case 'fetch_stocks':
-          return stockByCode((args.codes || [])[0] || '');
+          return (args.codes || []).flatMap(function (code) { return stockByCode(code); });
         case 'search_stock':
           return [{ code: '600000', name: '浦发银行', market: '上海' }];
-        case 'search_funds':
+        case 'search_funds': {
+          const keyword = String(args.keyword || '');
+          if (keyword.includes('白酒') || keyword === '161725') {
+            return [{ code: '161725', name: '招商中证白酒指数(LOF)A', type: '指数型' }];
+          }
           return [];
-        case 'fetch_funds':
-          return [];
+        }
+        case 'fetch_funds': {
+          const fundDb = [
+            { code: '161725', name: '招商中证白酒指数(LOF)A', nav: 0.85, navDate: '2026-09-22', changePercent: 1.2, estimateNav: null, estimateChangePercent: null, estimateTime: '', sector: '白酒' }
+          ];
+          const wanted = (args.codes || []).map(String);
+          return fundDb.filter((fund) => wanted.includes(fund.code));
+        }
+        case 'ocr_image':
+          state.ocrCalls = (state.ocrCalls || 0) + 1;
+          return [
+            '中信证券 600030 12,254.00 +6,553.80 +54.96% 22.69 540股',
+            '浦发银行 600000 8,800.00 +120.00',
+            '招商中证白酒指数(LOF)A 2,254.00 25.92% 11.08%'
+          ];
         case 'fetch_minute_data':
           return [
             { time: '09:30', price: 10, volume: 100, averagePrice: 10 },

@@ -251,6 +251,16 @@
       </div>
 
       <div class="bottom-actions">
+        <button class="import-btn" type="button" title="图片导入持仓" @click.stop="openImportPicker">
+          <ImagePlus :size="14" aria-hidden="true" />
+        </button>
+        <input
+          ref="importFileInputRef"
+          class="import-file-input"
+          type="file"
+          accept="image/*"
+          @change="handleImportFile"
+        />
         <button class="market-btn" type="button" title="市场助手" @click.stop="openMarketView">
           <Globe :size="14" aria-hidden="true" />
         </button>
@@ -321,6 +331,14 @@
       </form>
     </div>
 
+    <ImportDialog
+      v-if="importDialog.visible"
+      :visible="importDialog.visible"
+      :lines="importDialog.lines"
+      @close="closeImportDialog"
+      @imported="handleImported"
+    />
+
     <div
       v-if="contextMenu.visible"
       class="context-menu"
@@ -343,7 +361,9 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
-import { Globe, X } from 'lucide-vue-next'
+import { Globe, ImagePlus, X } from 'lucide-vue-next'
+import { invoke } from '@tauri-apps/api/core'
+import ImportDialog from '../components/ImportDialog.vue'
 import {
   searchFunds,
   searchStock,
@@ -1088,6 +1108,61 @@ function openMarketView() {
   stockStore.setActiveAssetType('market')
 }
 
+const importFileInputRef = ref<HTMLInputElement | null>(null)
+const importDialog = ref<{ visible: boolean; lines: string[] }>({ visible: false, lines: [] })
+let importOcrBusy = false
+
+function openImportPicker(): void {
+  closeContextMenu()
+  importFileInputRef.value?.click()
+}
+
+async function handleImportFile(event: Event): Promise<void> {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file || importOcrBusy) {
+    return
+  }
+
+  importOcrBusy = true
+  searchError.value = '正在识别图片…'
+  try {
+    const dataUrl = await readFileAsDataUrl(file)
+    const lines = await invoke<string[]>('ocr_image', { imageBase64: dataUrl })
+    searchError.value = ''
+    importDialog.value = { visible: true, lines }
+  } catch (error) {
+    searchError.value = error instanceof Error ? error.message : String(error)
+  } finally {
+    importOcrBusy = false
+  }
+}
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result as string)
+    reader.onerror = () => reject(reader.error ?? new Error('读取图片失败'))
+    reader.readAsDataURL(file)
+  })
+}
+
+function closeImportDialog(): void {
+  importDialog.value = { ...importDialog.value, visible: false }
+}
+
+function handleImported(summary: string): void {
+  searchError.value = summary
+  if (searchErrorTimer) {
+    clearTimeout(searchErrorTimer)
+  }
+  searchErrorTimer = setTimeout(() => {
+    searchError.value = ''
+    searchErrorTimer = null
+  }, 3000)
+}
+
 async function handleRemoveAsset(assetType: AssetType, code: string) {
   closeContextMenu()
   if (assetType === 'stock') {
@@ -1143,6 +1218,9 @@ onUnmounted(() => {
 .search-item:hover{background:rgba(255,255,255,.05)}
 .search-name{font-size:13px;font-weight:600;white-space:nowrap}.search-code{font-size:12px;color:var(--text-muted);white-space:nowrap}
 .bottom-actions{display:inline-flex;align-items:center;gap:6px;flex-shrink:0}
+.import-btn{width:26px;height:26px;display:inline-flex;align-items:center;justify-content:center;border:none;border-radius:8px;background:transparent;color:var(--text-muted);cursor:pointer;transition:color .15s ease,background .15s ease}
+.import-btn:hover{color:#5da8ff;background:rgba(45,124,246,.14)}
+.import-file-input{display:none}
 .market-btn{width:26px;height:26px;display:inline-flex;align-items:center;justify-content:center;border:none;border-radius:8px;background:transparent;color:var(--text-muted);cursor:pointer;transition:color .15s ease,background .15s ease}
 .market-btn:hover{color:#5da8ff;background:rgba(45,124,246,.14)}
 .refresh-status{display:inline-flex;align-items:center;height:20px;padding:0 5px;border:1px solid rgba(248,113,113,.3);border-radius:5px;background:rgba(248,113,113,.09);color:#ff8c8c;font-size:9px;font-weight:700;white-space:nowrap}

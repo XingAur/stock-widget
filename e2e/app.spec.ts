@@ -248,6 +248,35 @@ test.describe('市场助手（全球市场数据页）', () => {
   })
 })
 
+test.describe('图片导入持仓', () => {
+  test('识别股票与基金并去重已存在项，导入后出现在列表', async ({ page }) => {
+    // 先添加浦发银行（导入图里也有它，应被标为已存在）
+    await addStockThroughSearch(page, '600000', '浦发银行')
+
+    await page.setInputFiles('.import-file-input', 'e2e/fixtures/sample.png')
+
+    const dialog = page.locator('.import-dialog')
+    await expect(dialog).toBeVisible()
+
+    // 股票 600030 待导入；600000 已存在（禁选）；基金按名称反查到代码
+    const rows = dialog.locator('.import-row')
+    await expect(rows).toHaveCount(3)
+    await expect(rows.filter({ hasText: '中信证券' })).toHaveClass(/ready/)
+    await expect(rows.filter({ hasText: '浦发银行' })).toHaveClass(/exists/)
+    const fundRow = rows.filter({ hasText: '招商中证白酒指数(LOF)A' })
+    await expect(fundRow).toHaveClass(/ready/)
+    await expect(fundRow.locator('.import-meta')).toHaveText('161725')
+
+    await dialog.locator('.import-primary-btn').click()
+    await expect(dialog).toHaveCount(0)
+
+    // 自选列表新增中信证券；切到基金页可见白酒基金
+    await expect(page.locator('.stock-card', { hasText: '中信证券' })).toBeVisible()
+    await page.locator('.app-title').click()
+    await expect(page.locator('.stock-card', { hasText: '招商中证白酒指数(LOF)A' })).toBeVisible()
+  })
+})
+
 async function readDragCount(page: Page): Promise<number> {
   return page.evaluate(() => (window as unknown as { __e2eState: { dragCount: number } }).__e2eState.dragCount)
 }
