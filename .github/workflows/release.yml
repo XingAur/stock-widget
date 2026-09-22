@@ -56,3 +56,28 @@ jobs:
             完整更新说明见提交历史与 README。
           releaseDraft: false
           prerelease: false
+
+      # Action 环境下中文 productName 会变成乱码资产名，统一重命名为 APlus_Assistant_ 版本_x64-setup.exe
+      - name: Normalize release asset names
+        if: success()
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release download $env:TAG --repo $env:REPO --dir artifacts --clobber
+          Get-ChildItem artifacts | ForEach-Object {
+            if ($_.Name -match '(\d+\.\d+\.\d+)_x64-setup\.exe$' -and $_.Name -notlike 'APlus_Assistant_*') {
+              Rename-Item $_.FullName ("APlus_Assistant_" + $_.Name) -Force
+            } elseif ($_.Name -notlike '*_x64-setup.exe') {
+              Remove-Item $_.FullName -Force
+            }
+          }
+          $oldAssets = (gh release view $env:TAG --repo $env:REPO --json assets --jq '.assets[].name') -split "`n"
+          foreach ($asset in $oldAssets) {
+            if ($asset -and $asset -notlike 'APlus_Assistant_*_x64-setup.exe') {
+              gh release delete-asset $env:TAG $asset --repo $env:REPO --yes
+            }
+          }
+          gh release upload $env:TAG artifacts/*_x64-setup.exe --repo $env:REPO --clobber
