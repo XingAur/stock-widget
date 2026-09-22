@@ -76,3 +76,51 @@ describe('parseOcrLines', () => {
     expect(result.stocks).toEqual([{ code: '600030', name: '中信证券' }])
   })
 })
+
+describe('parseOcrLines with real Windows OCR output', () => {
+  it('parses fund names with per-character spacing from Windows OCR', () => {
+    const result = parseOcrLines([
+      '11 ： 56',
+      '〈 基 金]',
+      '我 的 持 有 。',
+      '金 额 扌 非 序',
+      '偏 债',
+      '3 ， 941 ． 82',
+      '一 4 ． 53',
+      '宏 利 半 导 体 产 业 混 合 C',
+      '本 基 金 所 属 板 块 入 选 本 月 值 得 投',
+      '嘉 实 中 证 科 创 创 业 50ETF',
+      '联 接 C',
+      '泰 信 资 源 睿 选 混 合 C',
+      '设 备 ETF 联 接 C',
+      '嘉 实 创 新 先 锋 混 合 C',
+      '富 国 上 证 科 创 板 芯 片 ETF',
+      '3 ， 379 ． 40',
+      '+ 24 ． 39',
+      '基 金 市 场',
+      '排 行',
+      '自 选',
+      '全 球'
+    ])
+
+    expect(result.funds.map((fund) => fund.name)).toEqual([
+      '宏利半导体产业混合C',
+      '嘉实中证科创创业50ETF',
+      '泰信资源睿选混合C',
+      '设备ETF联接C',
+      '嘉实创新先锋混合C',
+      '富国上证科创板芯片ETF'
+    ])
+    // OCR 用中文标点分隔金额，不会拼出 6 位代码
+    expect(result.stocks).toEqual([])
+  })
+
+  it('parses broker stock rows with per-character spacing', () => {
+    const result = parseOcrLines([
+      '中 信 证 券 6 0 0 0 3 0 1 2 , 2 5 4 . 0 0',
+      '600030 中 信 证 券 22.69'
+    ])
+
+    expect(result.stocks).toEqual([{ code: '600030', name: '中信证券' }])
+  })
+})

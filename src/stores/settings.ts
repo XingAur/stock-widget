@@ -134,10 +134,10 @@ export const useSettingsStore = defineStore('settings', () => {
       applyCustomTheme()
     } else {
       clearCustomTheme()
-      const opacity = settings.value.backgroundOpacity
+      // 弹窗/浮层底色固定不透明，避免调低背景不透明度后弹窗看不清
       const solidBg = settings.value.theme === 'light'
-        ? `rgba(243, 244, 246, ${opacity})`
-        : `rgba(31, 41, 55, ${opacity})`
+        ? 'rgb(243, 244, 246)'
+        : 'rgb(13, 17, 22)'
       document.documentElement.style.setProperty('--solid-bg', solidBg)
     }
 
@@ -160,7 +160,7 @@ export const useSettingsStore = defineStore('settings', () => {
     document.documentElement.style.setProperty('--border-color', `${settings.value.customFontColor}1a`)
     document.documentElement.style.setProperty('--divider-color', `${settings.value.customFontColor}1a`)
     document.documentElement.style.setProperty('--input-bg', `${settings.value.customFontColor}0d`)
-    document.documentElement.style.setProperty('--solid-bg', `rgba(${r}, ${g}, ${b}, ${opacity})`)
+    document.documentElement.style.setProperty('--solid-bg', `rgb(${r}, ${g}, ${b})`)
   }
 
   function clearCustomTheme() {

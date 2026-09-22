@@ -12,7 +12,7 @@
   --danger: #ef4444;
   --accent: #1d9bf0;
   --input-bg: rgba(255, 255, 255, 0.05);
-  --solid-bg: rgba(13, 17, 22, 0.96);
+  --solid-bg: rgb(13, 17, 22); /* 弹窗/浮层底色，永远不透明，不跟随背景不透明度 */
   --font-family: "Microsoft YaHei", "PingFang SC", "Segoe UI", sans-serif;
   --radius: 14px;
   --radius-sm: 8px;
@@ -31,7 +31,7 @@
   --danger: #ef4444;
   --accent: #2563eb;
   --input-bg: rgba(0, 0, 0, 0.05);
-  --solid-bg: rgba(255, 255, 255, 0.95);
+  --solid-bg: rgb(243, 244, 246);
 }
 
 [data-theme="light"] .detail-view,
