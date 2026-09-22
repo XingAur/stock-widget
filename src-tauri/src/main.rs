@@ -731,24 +731,50 @@ fn parse_latest_release(body: &str, current_version: &str) -> UpdateCheckResult 
 async fn check_update() -> AppResult<UpdateCheckResult> {
     let current_version = env!("CARGO_PKG_VERSION").to_string();
     let client = http_client()?;
-    let response = client
-        .get(GITHUB_LATEST_RELEASE_API)
-        .header("Accept", "application/vnd.github+json")
-        .timeout(Duration::from_secs(15))
-        .send()
-        .await
-        .map_err(|error| format!("检查更新失败：{error}"))?;
 
-    let status = response.status();
-    let body = response
-        .text()
-        .await
-        .map_err(|error| format!("读取更新信息失败：{error}"))?;
-    if !status.is_success() {
-        return Err(format!("更新服务返回 {status}"));
+    // GitHub API 强制要求 User-Agent（缺失直接 403），且国内网络间歇不通，重试 3 次。
+    let mut last_error = String::new();
+    for attempt in 1..=3u32 {
+        let request = client
+            .get(GITHUB_LATEST_RELEASE_API)
+            .header("Accept", "application/vnd.github+json")
+            .header("User-Agent", http::USER_AGENT)
+            .timeout(Duration::from_secs(15));
+        match request.send().await {
+            Ok(response) => {
+                let status = response.status();
+                let body = response
+                    .text()
+                    .await
+                    .map_err(|error| format!("读取更新信息失败：{error}"))?;
+                if status.is_success() {
+                    return Ok(parse_latest_release(&body, &current_version));
+                }
+                last_error = format!("更新服务返回 {status}");
+                if status.as_u16() == 403 || status.is_server_error() {
+                    app_log_buffer(&format!("检查更新第 {attempt} 次尝试被拒：{status}"));
+                    tokio::time::sleep(Duration::from_secs(2)).await;
+                    continue;
+                }
+                return Err(last_error);
+            }
+            Err(error) => {
+                last_error = format!("网络无法访问更新服务：{error}");
+                if attempt < 3 {
+                    tokio::time::sleep(Duration::from_secs(2)).await;
+                }
+            }
+        }
     }
 
-    Ok(parse_latest_release(&body, &current_version))
+    Err(format!(
+        "{last_error}（可稍后再试，或在更新窗口手动打开下载页）"
+    ))
+}
+
+fn app_log_buffer(message: &str) {
+    // 重试期间先输出到 stderr，最终结果由前端 logger 落盘
+    eprintln!("[update] {message}");
 }
 
 #[tauri::command]
@@ -796,6 +822,37 @@ fn run_installer(app: AppHandle, path: String) -> AppResult<()> {
         .map_err(|error| format!("启动安装程序失败：{error}"))?;
 
     app.exit(0);
+    Ok(())
+}
+
+#[cfg(windows)]
+fn spawn_hidden(program: &str, args: &[&str]) -> Result<std::process::Child, String> {
+    use std::os::windows::process::CommandExt;
+    std::process::Command::new(program)
+        .args(args)
+        .creation_flags(0x0800_0000) // CREATE_NO_WINDOW
+        .spawn()
+        .map_err(|error| error.to_string())
+}
+
+#[cfg(not(windows))]
+fn spawn_hidden(program: &str, args: &[&str]) -> Result<std::process::Child, String> {
+    std::process::Command::new(program)
+        .args(args)
+        .spawn()
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn open_release_page(url: String) -> AppResult<()> {
+    let trimmed = url.trim().to_string();
+    if !trimmed.starts_with("https://") {
+        return Err("下载页地址不合法".to_string());
+    }
+
+    #[allow(clippy::zombie_processes)]
+    spawn_hidden("cmd", &["/C", "start", "", &trimmed])
+        .map_err(|error| format!("打开下载页失败：{error}"))?;
     Ok(())
 }
 
@@ -2893,6 +2950,7 @@ fn main() {
             run_installer,
             append_log,
             open_log_file,
+            open_release_page,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -3,7 +3,7 @@ use std::{sync::OnceLock, time::Duration};
 
 type HttpResult<T> = Result<T, String>;
 
-const USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 \
+pub(crate) const USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 \
                          (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
 
 static HTTP_CLIENT: OnceLock<HttpResult<Client>> = OnceLock::new();

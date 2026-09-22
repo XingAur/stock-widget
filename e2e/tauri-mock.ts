@@ -98,6 +98,8 @@ export const initScript = `
           const wanted = (args.codes || []).map(String);
           return fundDb.filter((fund) => wanted.includes(fund.code));
         }
+        case 'open_release_page':
+          return null;
         case 'append_log':
           return null;
         case 'check_update':

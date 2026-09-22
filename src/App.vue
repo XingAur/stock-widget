@@ -54,7 +54,10 @@
         </template>
         <template v-else-if="updateState.error">
           <p class="update-status update-error">{{ updateState.error }}</p>
-          <button class="update-btn" type="button" @click="closeUpdateDialog">关闭</button>
+          <div class="update-actions">
+            <button class="update-btn secondary" type="button" @click="closeUpdateDialog">关闭</button>
+            <button class="update-btn" type="button" @click="openReleasePage">手动打开下载页</button>
+          </div>
         </template>
         <template v-else-if="updateInfo?.hasUpdate">
           <p class="update-status">发现新版本 <strong>v{{ updateInfo.latestVersion }}</strong>（当前 v{{ updateInfo.currentVersion }}）</p>
@@ -173,6 +176,16 @@ async function startUpdate(): Promise<void> {
   } catch (error) {
     updateState.value = { ...updateState.value, downloading: false, error: error instanceof Error ? error.message : String(error) }
     logError('下载/启动更新失败', error)
+  }
+}
+
+async function openReleasePage(): Promise<void> {
+  const url = updateInfo.value?.releaseUrl || 'https://github.com/XingAur/stock-widget/releases/latest'
+  try {
+    await invoke('open_release_page', { url })
+    closeUpdateDialog()
+  } catch (error) {
+    logError('打开下载页失败', error)
   }
 }
 let resumeTimer: ReturnType<typeof setTimeout> | null = null
