@@ -14,6 +14,10 @@ export default defineConfig({
     }
   },
   clearScreen: false,
+  // e2e/ 由 Playwright 负责（npm run test:e2e），vitest 只收集 src 下的单测
+  test: {
+    include: ['src/**/*.{test,spec}.?(c|m)[jt]s?(x)']
+  },
   server: {
     port: 1420,
     strictPort: true,

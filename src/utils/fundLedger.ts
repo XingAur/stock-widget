@@ -183,8 +183,11 @@ function replayInputs(
     if (input.type === 'buy') {
       requirePositive(input.amount, '加仓金额', input.tradeDate)
       requireFeeRate(input.feeRate, input.tradeDate)
-      const fee = roundMoney(input.amount * input.feeRate / 100)
-      const shares = roundShares((input.amount - fee) / input.nav)
+      // 证监会规范的外扣法：净申购金额 = 申购金额 / (1 + 申购费率)，
+      // 申购费 = 申购金额 - 净申购金额，份额 = 净申购金额 / 当日净值。
+      const netAmount = roundMoney(input.amount / (1 + input.feeRate / 100))
+      const fee = roundMoney(input.amount - netAmount)
+      const shares = roundShares(netAmount / input.nav)
       requirePositive(shares, '确认份额', input.tradeDate)
 
       if (state.shares <= SHARE_EPSILON) {
@@ -413,7 +416,7 @@ export function rebuildFundSnapshots(
     }
   })
 
-  let previousTotalProfit: number | null = null
+  let previousSnapshot: { nav: number; shares: number } | null = null
   const snapshots = [...historyByDate.entries()]
     .sort(([left], [right]) => left.localeCompare(right))
     .map(([date, nav]) => {
@@ -423,10 +426,12 @@ export function rebuildFundSnapshots(
       const hasAdjustment = ledger.transactions.some(
         (transaction) => transaction.type === 'adjustment' && transaction.tradeDate === date
       )
-      const dailyProfit = previousTotalProfit === null || hasAdjustment
+      // 主流口径（支付宝/天天基金）：当日收益 =（当日净值 - 上一交易日净值）× 上一交易日份额。
+      // 当日买入的份额当日不产生收益；当日卖出部分仍按昨日份额计入当日涨跌。
+      const dailyProfit = !previousSnapshot || hasAdjustment
         ? null
-        : roundMoney(totalProfit - previousTotalProfit)
-      previousTotalProfit = totalProfit
+        : roundMoney((nav - previousSnapshot.nav) * previousSnapshot.shares)
+      previousSnapshot = { nav, shares: state.shares }
 
       return {
         date,

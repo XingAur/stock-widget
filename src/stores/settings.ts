@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, watch } from 'vue'
+import { readPersistedState, updatePersistedSlice } from '../utils/persistence'
 
 const SETTINGS_STORAGE_KEY = 'settings'
 
@@ -95,29 +96,34 @@ export const useSettingsStore = defineStore('settings', () => {
       return
     }
 
-    persist()
+    updatePersistedSlice('settings', { ...settings.value })
     applySettings()
   }, { deep: true })
 
-  function load() {
+  function readLegacySettings(): unknown {
     const saved = localStorage.getItem(SETTINGS_STORAGE_KEY)
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved)
-        settings.value = sanitizeSettings(parsed)
-      } catch (error) {
-        console.error('Load settings error:', error)
-        settings.value = { ...DEFAULT_SETTINGS }
-      }
+    if (!saved) {
+      return null
+    }
+
+    try {
+      return JSON.parse(saved)
+    } catch (error) {
+      console.error('Load settings error:', error)
+      return null
+    }
+  }
+
+  async function load() {
+    const persisted = await readPersistedState()
+    const source = persisted?.settings ?? readLegacySettings()
+    if (source) {
+      settings.value = sanitizeSettings(source)
     }
 
     hasLoaded.value = true
-    persist()
+    updatePersistedSlice('settings', { ...settings.value })
     applySettings()
-  }
-
-  function persist() {
-    localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings.value))
   }
 
   function applySettings() {
@@ -183,7 +189,7 @@ export const useSettingsStore = defineStore('settings', () => {
   return {
     settings,
     load,
-    save: persist,
+    save: () => updatePersistedSlice('settings', { ...settings.value }),
     updateSettings,
     reset
   }

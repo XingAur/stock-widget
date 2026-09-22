@@ -22,7 +22,15 @@ import {
   type FundTransactionInput
 } from '../utils/fundLedger'
 import { moveItem } from '../utils/list'
+import {
+  PERSIST_SHADOW_KEY,
+  adoptPersistedSlices,
+  parsePersistedState,
+  readPersistedState,
+  updatePersistedSlice
+} from '../utils/persistence'
 import type { FundPosition, StockPosition } from '../utils/positions'
+import { isPageVisible } from '../utils/windowLifecycle'
 
 const WATCHLIST_STORAGE_KEY = 'watchList'
 const FUND_WATCHLIST_STORAGE_KEY = 'fundWatchList'
@@ -56,7 +64,35 @@ function readStoredList(key: string): string[] {
 
 function readStoredAssetType(): AssetType {
   const saved = localStorage.getItem(ACTIVE_ASSET_TYPE_STORAGE_KEY)
-  return saved === 'fund' ? 'fund' : 'stock'
+  return saved === 'fund' || saved === 'market' ? saved : 'stock'
+}
+
+function toStringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+    : []
+}
+
+function toStringRecord(value: unknown): Record<string, string> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return {}
+  }
+
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter((entry): entry is [string, string] => typeof entry[0] === 'string' && typeof entry[1] === 'string')
+  )
+}
+
+function pickValidRecordEntries<T>(value: unknown, isValid: (entry: unknown) => entry is T): Record<string, T> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return {}
+  }
+
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter((entry): entry is [string, T] => typeof entry[0] === 'string' && isValid(entry[1]))
+  )
 }
 
 function readStoredRecord(key: string): Record<string, string> {
@@ -188,45 +224,86 @@ export const useStockStore = defineStore('stock', () => {
   ))
 
   watch(watchList, (nextWatchList) => {
-    localStorage.setItem(WATCHLIST_STORAGE_KEY, JSON.stringify(nextWatchList))
+    updatePersistedSlice('watchList', nextWatchList)
   }, { deep: true })
 
   watch(fundWatchList, (nextWatchList) => {
-    localStorage.setItem(FUND_WATCHLIST_STORAGE_KEY, JSON.stringify(nextWatchList))
+    updatePersistedSlice('fundWatchList', nextWatchList)
   }, { deep: true })
 
   watch(fundNames, (nextNames) => {
-    localStorage.setItem(FUND_NAMES_STORAGE_KEY, JSON.stringify(nextNames))
+    updatePersistedSlice('fundNames', nextNames)
   }, { deep: true })
 
   watch(stockPositions, (nextPositions) => {
-    localStorage.setItem(STOCK_POSITIONS_STORAGE_KEY, JSON.stringify(nextPositions))
+    updatePersistedSlice('stockPositions', nextPositions)
   }, { deep: true })
 
   watch(fundPositions, (nextPositions) => {
-    localStorage.setItem(FUND_POSITIONS_STORAGE_KEY, JSON.stringify(nextPositions))
+    updatePersistedSlice('fundPositions', nextPositions)
   }, { deep: true })
 
   watch(fundLedgers, (nextLedgers) => {
-    localStorage.setItem(FUND_LEDGERS_STORAGE_KEY, JSON.stringify(nextLedgers))
+    updatePersistedSlice('fundLedgers', nextLedgers)
   }, { deep: true })
 
   watch(activeAssetType, (nextAssetType) => {
-    localStorage.setItem(ACTIVE_ASSET_TYPE_STORAGE_KEY, nextAssetType)
+    updatePersistedSlice('activeAssetType', nextAssetType)
   })
 
   function loadStoredState() {
-    watchList.value = readStoredList(WATCHLIST_STORAGE_KEY)
-    fundWatchList.value = readStoredList(FUND_WATCHLIST_STORAGE_KEY)
-    fundNames.value = readStoredRecord(FUND_NAMES_STORAGE_KEY)
-    stockPositions.value = readStoredNumberRecord(STOCK_POSITIONS_STORAGE_KEY, isStockPosition)
-    fundPositions.value = readStoredNumberRecord(FUND_POSITIONS_STORAGE_KEY, isFundPosition)
-    fundLedgers.value = readStoredNumberRecord(FUND_LEDGERS_STORAGE_KEY, isFundLedger)
-    activeAssetType.value = readStoredAssetType()
+    const legacy = {
+      watchList: readStoredList(WATCHLIST_STORAGE_KEY),
+      fundWatchList: readStoredList(FUND_WATCHLIST_STORAGE_KEY),
+      fundNames: readStoredRecord(FUND_NAMES_STORAGE_KEY),
+      stockPositions: readStoredNumberRecord(STOCK_POSITIONS_STORAGE_KEY, isStockPosition),
+      fundPositions: readStoredNumberRecord(FUND_POSITIONS_STORAGE_KEY, isFundPosition),
+      fundLedgers: readStoredNumberRecord(FUND_LEDGERS_STORAGE_KEY, isFundLedger),
+      activeAssetType: readStoredAssetType()
+    }
+
+    watchList.value = legacy.watchList
+    fundWatchList.value = legacy.fundWatchList
+    fundNames.value = legacy.fundNames
+    stockPositions.value = legacy.stockPositions
+    fundPositions.value = legacy.fundPositions
+    fundLedgers.value = legacy.fundLedgers
+    activeAssetType.value = legacy.activeAssetType
+
+    // 旧版本只写 localStorage；确认没有文件状态时把旧数据迁移进文件。
+    const shadow = parsePersistedState(localStorage.getItem(PERSIST_SHADOW_KEY))
+    if (!shadow) {
+      updatePersistedSlice('watchList', legacy.watchList)
+      updatePersistedSlice('fundWatchList', legacy.fundWatchList)
+      updatePersistedSlice('fundNames', legacy.fundNames)
+      updatePersistedSlice('stockPositions', legacy.stockPositions)
+      updatePersistedSlice('fundPositions', legacy.fundPositions)
+      updatePersistedSlice('fundLedgers', legacy.fundLedgers)
+      updatePersistedSlice('activeAssetType', legacy.activeAssetType)
+    }
+  }
+
+  async function restorePersistedState() {
+    const persisted = await readPersistedState()
+    if (!persisted) {
+      loadStoredState()
+      return
+    }
+
+    adoptPersistedSlices(persisted)
+    watchList.value = toStringArray(persisted.watchList)
+    fundWatchList.value = toStringArray(persisted.fundWatchList)
+    fundNames.value = toStringRecord(persisted.fundNames)
+    stockPositions.value = pickValidRecordEntries(persisted.stockPositions, isStockPosition)
+    fundPositions.value = pickValidRecordEntries(persisted.fundPositions, isFundPosition)
+    fundLedgers.value = pickValidRecordEntries(persisted.fundLedgers, isFundLedger)
+    activeAssetType.value = persisted.activeAssetType === 'fund' || persisted.activeAssetType === 'market'
+      ? persisted.activeAssetType
+      : 'stock'
   }
 
   async function init() {
-    loadStoredState()
+    await restorePersistedState()
 
     await refreshAll()
     startAutoRefresh()
@@ -345,6 +422,9 @@ export const useStockStore = defineStore('stock', () => {
   function startAutoRefresh() {
     stopAutoRefresh()
     refreshTimer = window.setInterval(() => {
+      if (!isPageVisible()) {
+        return
+      }
       void refreshAll()
     }, 30000)
   }
@@ -360,15 +440,21 @@ export const useStockStore = defineStore('stock', () => {
     activeAssetType.value = assetType
   }
 
-  async function addStock(code: string) {
+  async function addStock(code: string): Promise<boolean> {
     if (watchList.value.includes(code)) {
-      return
+      return true
     }
 
-    const data = await fetchStocks([code])
+    let data: Awaited<ReturnType<typeof fetchStocks>>
+    try {
+      data = await fetchStocks([code])
+    } catch (error) {
+      console.error('Add stock error:', error)
+      return false
+    }
     if (data.length === 0) {
       console.warn('fetchStocks returned empty for', code)
-      return
+      return false
     }
 
     watchList.value = [...watchList.value, code]
@@ -377,35 +463,42 @@ export const useStockStore = defineStore('stock', () => {
     stocks.value = nextMap
 
     void fetchSparkline(code)
+    return true
   }
 
-  async function addFund(code: string) {
+  async function addFund(code: string): Promise<boolean> {
     const normalizedCode = code.trim()
     if (fundWatchList.value.includes(normalizedCode)) {
-      return
+      return true
     }
 
-    const matchedFund = findExactFundSearchResult(await searchFunds(normalizedCode), normalizedCode)
-    if (!matchedFund) {
-      console.warn('searchFunds did not return a supported OTC fund for', normalizedCode)
-      return
-    }
+    try {
+      const matchedFund = findExactFundSearchResult(await searchFunds(normalizedCode), normalizedCode)
+      if (!matchedFund) {
+        console.warn('searchFunds did not return a supported OTC fund for', normalizedCode)
+        return false
+      }
 
-    const data = await fetchFunds([matchedFund.code])
-    if (data.length === 0) {
-      console.warn('fetchFunds returned empty for', matchedFund.code)
-      return
-    }
+      const data = await fetchFunds([matchedFund.code])
+      if (data.length === 0) {
+        console.warn('fetchFunds returned empty for', matchedFund.code)
+        return false
+      }
 
-    const fund = applyFundDisplayName(data[0], matchedFund)
-    fundNames.value = {
-      ...fundNames.value,
-      [fund.code]: fund.name
+      const fund = applyFundDisplayName(data[0], matchedFund)
+      fundNames.value = {
+        ...fundNames.value,
+        [fund.code]: fund.name
+      }
+      fundWatchList.value = [...fundWatchList.value, fund.code]
+      const nextMap = new Map(funds.value)
+      nextMap.set(fund.code, fund)
+      funds.value = nextMap
+      return true
+    } catch (error) {
+      console.error('Add fund error:', error)
+      return false
     }
-    fundWatchList.value = [...fundWatchList.value, fund.code]
-    const nextMap = new Map(funds.value)
-    nextMap.set(fund.code, fund)
-    funds.value = nextMap
   }
 
   async function removeStock(code: string) {
@@ -684,6 +777,7 @@ export const useStockStore = defineStore('stock', () => {
     fundList,
     init,
     loadStoredState,
+    restorePersistedState,
     refreshStocks,
     refreshFunds,
     refreshAll,

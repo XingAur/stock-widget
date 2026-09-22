@@ -1,6 +1,6 @@
 [package]
 name = "stock-widget"
-version = "1.0.3"
+version = "1.0.4"
 description = "Windows A+助手"
 authors = ["you"]
 edition = "2021"
@@ -10,6 +10,7 @@ tauri-build = { version = "2.0", features = [] }
 
 [dependencies]
 tauri = { version = "2.0", features = ["tray-icon"] }
+tauri-plugin-single-instance = "2.0"
 tauri-plugin-autostart = "2.0"
 tauri-plugin-store = "2.0"
 serde = { version = "1", features = ["derive"] }

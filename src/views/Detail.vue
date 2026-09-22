@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="detail-view">
     <div v-if="settingsStore.settings.showIndices && indices.length > 0" class="detail-topbar">
       <div class="indices-strip">
@@ -418,6 +418,7 @@ import {
   formatSignedPercent,
   formatVolume
 } from '../utils/format'
+import { isPageVisible, onPageVisibilityChange } from '../utils/windowLifecycle'
 
 type TabKey = 'minute' | 'day' | 'week' | 'month' | 'quarter' | 'year'
 
@@ -554,6 +555,8 @@ const CHART_WIDTH = 720
 const CHART_HEIGHT = 320
 const CHART_PADDING = { top: 18, right: 24, bottom: 44, left: 64 }
 const MIN_VISIBLE_KLINE_POINTS = 12
+// K 线是历史数据，无需跟着 30 秒行情节奏全量重拉；5 分钟同步一次足够。
+const KLINE_REFRESH_INTERVAL_MS = 5 * 60 * 1000
 
 const tabs: TabItem[] = [
   { key: 'minute', label: '分时' },
@@ -586,6 +589,7 @@ const minuteChartPanelHeight = ref(0)
 
 let refreshTimer: number | null = null
 let minuteChartResizeObserver: ResizeObserver | null = null
+let lastKlineLoadedAt = 0
 
 const exchangeLabel = computed(() => {
   if (props.code.startsWith('6')) return '沪A'
@@ -1295,12 +1299,20 @@ async function preloadKlines() {
 
 async function loadAll() {
   loading.value = true
-  clearChartHover()
+  const tasks: Promise<void>[] = [loadBaseDetail(), loadIndices()]
+  if (Date.now() - lastKlineLoadedAt >= KLINE_REFRESH_INTERVAL_MS) {
+    tasks.push(reloadKlines())
+  }
   try {
-    await Promise.all([loadBaseDetail(), loadIndices(), preloadKlines()])
+    await Promise.all(tasks)
   } finally {
     loading.value = false
   }
+}
+
+async function reloadKlines() {
+  lastKlineLoadedAt = Date.now()
+  await preloadKlines()
 }
 
 async function switchTab(tab: TabKey) {
@@ -1319,6 +1331,7 @@ watch(() => props.code, async () => {
   detailRefreshError.value = ''
   klineCache.value = {}
   klineViewports.value = {}
+  lastKlineLoadedAt = 0
   await loadAll()
 })
 
@@ -1337,17 +1350,29 @@ watch(minuteChartPanelRef, (panel) => {
   syncMinuteChartPanelSize()
 }, { flush: 'post' })
 
+let stopVisibility: (() => void) | null = null
+
 onMounted(async () => {
   await loadAll()
   syncMinuteChartPanelSize()
   refreshTimer = window.setInterval(() => {
+    if (!isPageVisible()) {
+      return
+    }
     void loadAll()
   }, 30000)
+  stopVisibility = onPageVisibilityChange((visible) => {
+    if (visible) {
+      void loadAll()
+      syncMinuteChartPanelSize()
+    }
+  })
 })
 
 onUnmounted(() => {
   minuteChartResizeObserver?.disconnect()
   minuteChartResizeObserver = null
+  stopVisibility?.()
   if (refreshTimer) clearInterval(refreshTimer)
 })
 </script>

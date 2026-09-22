@@ -1,7 +1,9 @@
+// @vitest-environment happy-dom
 import { createPinia, setActivePinia } from 'pinia'
 import { nextTick } from 'vue'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { fetchFunds, fetchStocks, type FundQuote, type Stock } from '../api/stock'
+import { fetchFunds, fetchMinuteData, fetchStocks, type FundQuote, type Stock } from '../api/stock'
+import { PERSIST_SHADOW_KEY, flushPersistedState, resetPersistenceForTests } from '../utils/persistence'
 import { useStockStore } from './stock'
 
 vi.mock('../api/stock', () => ({
@@ -79,7 +81,54 @@ describe('stock store refresh', () => {
       value: createLocalStorage(),
       configurable: true
     })
+    resetPersistenceForTests()
     vi.clearAllMocks()
+  })
+
+  it('skips auto refresh ticks while the document is hidden', async () => {
+    vi.useFakeTimers()
+    const store = useStockStore()
+    store.watchList = ['000001']
+    vi.mocked(fetchStocks).mockResolvedValue([createStock()])
+    vi.mocked(fetchMinuteData).mockResolvedValue([])
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      get: () => 'hidden'
+    })
+
+    try {
+      store.startAutoRefresh()
+      await vi.advanceTimersByTimeAsync(30_000)
+      expect(fetchStocks).not.toHaveBeenCalled()
+    } finally {
+      store.stopAutoRefresh()
+      vi.useRealTimers()
+      Object.defineProperty(document, 'visibilityState', {
+        configurable: true,
+        value: 'visible'
+      })
+    }
+  })
+
+  it('refreshes on an auto refresh tick while the document is visible', async () => {
+    vi.useFakeTimers()
+    const store = useStockStore()
+    store.watchList = ['000001']
+    vi.mocked(fetchStocks).mockResolvedValue([createStock()])
+    vi.mocked(fetchMinuteData).mockResolvedValue([])
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      get: () => 'visible'
+    })
+
+    try {
+      store.startAutoRefresh()
+      await vi.advanceTimersByTimeAsync(30_000)
+      expect(fetchStocks).toHaveBeenCalled()
+    } finally {
+      store.stopAutoRefresh()
+      vi.useRealTimers()
+    }
   })
 
   it('keeps existing stock quotes when a refresh returns no data', async () => {
@@ -151,6 +200,7 @@ describe('fund ledger storage', () => {
       value: createLocalStorage(),
       configurable: true
     })
+    resetPersistenceForTests()
     vi.clearAllMocks()
   })
 
@@ -226,8 +276,10 @@ describe('fund ledger storage', () => {
       createdAt: '2026-07-22T10:00:00.000Z'
     })
     await nextTick()
+    await flushPersistedState()
 
-    expect(JSON.parse(localStorage.getItem('fundLedgers') ?? '{}')['001186'].transactions).toHaveLength(1)
+    const persisted = JSON.parse(localStorage.getItem(PERSIST_SHADOW_KEY) ?? '{}')
+    expect(persisted.fundLedgers['001186'].transactions).toHaveLength(1)
 
     await store.removeFund('001186')
     expect(store.fundLedgers['001186']).toBeUndefined()
@@ -267,5 +319,93 @@ describe('fund ledger storage', () => {
 
     store.deleteFundTransaction('001186', 'buy-1')
     expect(store.fundLedgers['001186'].transactions).toEqual([])
+  })
+})
+
+describe('state persistence across restarts', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    Object.defineProperty(globalThis, 'localStorage', {
+      value: createLocalStorage(),
+      configurable: true
+    })
+    resetPersistenceForTests()
+    vi.clearAllMocks()
+  })
+
+  async function readShadow(): Promise<Record<string, unknown>> {
+    await nextTick()
+    await flushPersistedState()
+    return JSON.parse(localStorage.getItem(PERSIST_SHADOW_KEY) ?? '{}')
+  }
+
+  it('keeps a removed stock out of the persisted watch list', async () => {
+    const store = useStockStore()
+    store.watchList = ['000001', '600000']
+    await nextTick()
+
+    await store.removeStock('600000')
+    const persisted = await readShadow()
+
+    expect(persisted.watchList).toEqual(['000001'])
+    expect(persisted.stockPositions).not.toHaveProperty('600000')
+  })
+
+  it('keeps a cleared position out of the persisted state', async () => {
+    const store = useStockStore()
+    store.watchList = ['000001']
+    store.stockPositions = { '000001': { costPrice: 10, shares: 100 } }
+    await nextTick()
+
+    store.clearStockPosition('000001')
+    const persisted = await readShadow()
+
+    expect(persisted.stockPositions).toEqual({})
+  })
+
+  it('restores state from the persisted payload on restart', async () => {
+    const fund = createFundQuote()
+    vi.mocked(fetchFunds).mockResolvedValueOnce([fund])
+
+    const first = useStockStore()
+    first.watchList = ['000001']
+    first.stockPositions = { '000001': { costPrice: 12, shares: 200 } }
+    first.fundWatchList = [fund.code]
+    first.activeAssetType = 'fund'
+    await nextTick()
+    await readShadow()
+
+    // 模拟进程重启：全新 store + 全新 persistence 读取缓存
+    resetPersistenceForTests()
+    setActivePinia(createPinia())
+    const second = useStockStore()
+    await second.restorePersistedState()
+
+    expect(second.watchList).toEqual(['000001'])
+    expect(second.stockPositions).toEqual({ '000001': { costPrice: 12, shares: 200 } })
+    expect(second.fundWatchList).toEqual([fund.code])
+    expect(second.activeAssetType).toBe('fund')
+  })
+
+  it('migrates legacy localStorage keys into the persisted payload', async () => {
+    localStorage.setItem('watchList', JSON.stringify(['600000']))
+    localStorage.setItem('activeAssetType', 'fund')
+
+    const store = useStockStore()
+    store.loadStoredState()
+    await readShadow()
+
+    const persisted = JSON.parse(localStorage.getItem(PERSIST_SHADOW_KEY) ?? '{}')
+    expect(persisted.watchList).toEqual(['600000'])
+    expect(persisted.activeAssetType).toBe('fund')
+  })
+
+  it('reports add failures so the UI can warn the user', async () => {
+    vi.mocked(fetchStocks).mockResolvedValueOnce([])
+    const store = useStockStore()
+    const succeeded = await store.addStock('999999')
+
+    expect(succeeded).toBe(false)
+    expect(store.watchList).toEqual([])
   })
 })

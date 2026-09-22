@@ -140,6 +140,11 @@ html, body {
   color-scheme: dark;
 }
 
+input,
+textarea {
+  user-select: text;
+}
+
 #app {
   width: 100vw;
   height: 100vh;

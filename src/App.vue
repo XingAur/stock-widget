@@ -1,5 +1,5 @@
 <template>
-  <div class="app-shell">
+  <div class="app-shell" @mousedown="handleShellMouseDown">
     <TitleBar
       :title="assetTitle"
       @close="handleClose"
@@ -11,9 +11,11 @@
     <main class="workspace" :class="{ 'detail-left': hasDetail && detailPosition === 'left', 'detail-right': hasDetail && detailPosition === 'right' }">
       <aside class="sidebar">
         <HomeView
+          v-if="stockStore.activeAssetType !== 'market'"
           :selected-code="selectedCode"
           @select-detail="showDetail"
         />
+        <MarketView v-else />
       </aside>
 
       <section v-if="hasDetail" class="detail-panel" :class="{ 'panel-left': detailPosition === 'left', 'panel-right': detailPosition === 'right' }">
@@ -53,11 +55,16 @@ import { LogicalSize, PhysicalPosition } from '@tauri-apps/api/dpi'
 import { currentMonitor, getCurrentWindow } from '@tauri-apps/api/window'
 import TitleBar from './components/TitleBar.vue'
 import HomeView from './views/Home.vue'
+import MarketView from './views/MarketView.vue'
 import { useSettingsStore } from './stores/settings'
 import { useStockStore } from './stores/stock'
 import type { AssetType } from './api/stock'
 import { getAssetTitle, getNextAssetType } from './utils/assets'
 import { focusFirstModalControl, trapModalFocus } from './utils/modalFocus'
+import { isTauriRuntime } from './utils/persistence'
+import { rememberWatchlistView } from './utils/market'
+import { startWindowDrag } from './utils/windowDrag'
+import { kickWebViewPaint, onPageVisibilityChange, reloadIfAppShellMissing } from './utils/windowLifecycle'
 
 const DetailView = defineAsyncComponent(() => import('./views/Detail.vue'))
 const FundDetailView = defineAsyncComponent(() => import('./views/FundDetail.vue'))
@@ -83,6 +90,34 @@ const settingsDialogRef = ref<HTMLElement | null>(null)
 const hasDetail = computed(() => Boolean(selectedDetail.value))
 const assetTitle = computed(() => getAssetTitle(stockStore.activeAssetType))
 let settingsTrigger: HTMLElement | null = null
+let stopVisibility: (() => void) | null = null
+let unlistenWindowRestored: (() => void) | null = null
+let resumeTimer: ReturnType<typeof setTimeout> | null = null
+
+function clearResumeTimer() {
+  if (resumeTimer !== null) {
+    clearTimeout(resumeTimer)
+    resumeTimer = null
+  }
+}
+
+async function resumeAfterHidden() {
+  kickWebViewPaint()
+  if (reloadIfAppShellMissing()) {
+    return
+  }
+
+  stockStore.startAutoRefresh()
+  await stockStore.refreshAll()
+}
+
+function scheduleResume() {
+  clearResumeTimer()
+  resumeTimer = setTimeout(() => {
+    resumeTimer = null
+    void resumeAfterHidden()
+  }, 80)
+}
 
 function openSettings() {
   settingsTrigger = document.activeElement instanceof HTMLElement ? document.activeElement : null
@@ -112,6 +147,13 @@ function handleGlobalKeydown(event: KeyboardEvent) {
     event.preventDefault()
     closeSettings()
   }
+}
+
+function handleShellMouseDown(event: MouseEvent) {
+  if (showSettings.value) {
+    return
+  }
+  void startWindowDrag(event)
 }
 
 function showDetail(selection: DetailSelection) {
@@ -232,6 +274,13 @@ async function handleMinimize() {
   }
 }
 
+watch(() => stockStore.activeAssetType, (nextAssetType) => {
+  rememberWatchlistView(nextAssetType)
+  if (nextAssetType === 'market' && selectedDetail.value) {
+    void closeDetail()
+  }
+})
+
 watch(() => [...stockStore.watchList], (watchList) => {
   if (selectedDetail.value?.assetType !== 'stock') {
     return
@@ -254,17 +303,41 @@ watch(() => [...stockStore.fundWatchList], (fundWatchList) => {
 
 onMounted(async () => {
   window.addEventListener('keydown', handleGlobalKeydown)
-  settingsStore.load()
+  await settingsStore.load()
   try {
     await invoke('set_always_on_top', { enabled: settingsStore.settings.alwaysOnTop })
   } catch (error) {
     console.error('Apply always on top setting error:', error)
   }
   await stockStore.init()
+
+  stopVisibility = onPageVisibilityChange((visible) => {
+    if (!visible) {
+      clearResumeTimer()
+      stockStore.stopAutoRefresh()
+      return
+    }
+
+    scheduleResume()
+  })
+
+  if (isTauriRuntime()) {
+    try {
+      unlistenWindowRestored = await getCurrentWindow().listen('window-restored', () => {
+        scheduleResume()
+      })
+    } catch (error) {
+      console.error('Listen window-restored error:', error)
+    }
+  }
 })
 
 onUnmounted(() => {
   window.removeEventListener('keydown', handleGlobalKeydown)
+  stopVisibility?.()
+  unlistenWindowRestored?.()
+  clearResumeTimer()
+  stockStore.stopAutoRefresh()
 })
 </script>
 
@@ -283,6 +356,7 @@ onUnmounted(() => {
   display: flex;
   flex-direction: row;
   overflow: hidden;
+  background: var(--window-bg);
 }
 
 .workspace.detail-left {

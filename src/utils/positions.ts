@@ -11,7 +11,7 @@ export interface FundPosition {
 export interface StockQuoteForSummary {
   code: string
   price: number
-  changePercent?: number | null
+  prevClose?: number | null
 }
 
 export interface PositionMetrics {
@@ -21,9 +21,21 @@ export interface PositionMetrics {
   profitPercent: number
 }
 
+/**
+ * 基金账户汇总用的持仓：份额缺失时（旧版仅录入金额的持仓）无法计算当日收益。
+ */
+export interface FundPositionForSummary {
+  shares: number | null
+  currentValue: number
+  profit: number
+}
+
 export interface FundQuoteForSummary {
   code: string
-  estimateChangePercent?: number | null
+  /** 今日盘中估算净值；没有估算时为空，当日收益不可得 */
+  estimateNav?: number | null
+  /** 最近一个净值日的官方净值（估算涨跌的基准） */
+  officialNav?: number | null
 }
 
 export interface FundAccountSummary {
@@ -106,16 +118,28 @@ export function calculateFundPositionMetrics(position: FundPosition | undefined)
   }
 }
 
-function calculateEstimatedDailyProfit(currentValue: number, estimateChangePercent: number | undefined | null): number | null {
-  if (!isUsableNumber(currentValue) || !isUsableNumber(estimateChangePercent ?? Number.NaN)) {
+/**
+ * 主流口径（支付宝/天天基金）：
+ * 当日（估算）收益 =（当前价 - 上一收盘/净值价）× 份额。
+ * 以份额与价差直接相乘，而不是"当前市值 × 涨跌幅"，后者会把当日涨幅重复计入基数。
+ */
+function calculateEstimatedDailyProfit(
+  shares: number | null,
+  currentPrice: number,
+  previousPrice: number | undefined | null
+): number | null {
+  if (shares === null || shares <= 0 || !isUsableNumber(currentPrice)) {
+    return null
+  }
+  if (!isUsableNumber(previousPrice ?? Number.NaN) || (previousPrice as number) <= 0) {
     return null
   }
 
-  return roundMoney(currentValue * (estimateChangePercent as number) / 100)
+  return roundMoney((currentPrice - (previousPrice as number)) * shares)
 }
 
 export function calculateFundAccountSummary(
-  positions: Record<string, FundPosition>,
+  positions: Record<string, FundPositionForSummary>,
   funds: readonly FundQuoteForSummary[]
 ): FundAccountSummary | null {
   const quoteByCode = new Map(funds.map((fund) => [fund.code, fund]))
@@ -126,18 +150,15 @@ export function calculateFundAccountSummary(
   let estimatedDailyProfitCount = 0
 
   Object.entries(positions).forEach(([code, position]) => {
-    const metrics = calculateFundPositionMetrics(position)
-    if (!metrics) {
-      return
-    }
-
-    accountAssets += metrics.currentValue
-    totalProfit += metrics.profit
+    accountAssets += position.currentValue
+    totalProfit += position.profit
     positionCount += 1
 
+    const quote = quoteByCode.get(code)
     const dailyProfit = calculateEstimatedDailyProfit(
-      metrics.currentValue,
-      quoteByCode.get(code)?.estimateChangePercent
+      position.shares,
+      quote?.estimateNav ?? Number.NaN,
+      quote?.officialNav
     )
     if (dailyProfit !== null) {
       estimatedDailyProfit += dailyProfit
@@ -185,8 +206,9 @@ export function calculateStockAccountSummary(
     positionCount += 1
 
     const dailyProfit = calculateEstimatedDailyProfit(
-      metrics.currentValue,
-      quote.changePercent
+      position.shares,
+      quote.price,
+      quote.prevClose
     )
     if (dailyProfit !== null) {
       estimatedDailyProfit += dailyProfit

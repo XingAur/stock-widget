@@ -220,6 +220,7 @@
 
     <div class="bottom-bar">
       <div class="search-shell">
+        <div v-if="searchError" class="search-error" role="alert">{{ searchError }}</div>
         <svg class="search-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="11" cy="11" r="7" />
           <line x1="20" y1="20" x2="16.65" y2="16.65" />
@@ -250,6 +251,9 @@
       </div>
 
       <div class="bottom-actions">
+        <button class="market-btn" type="button" title="市场助手" @click.stop="openMarketView">
+          <Globe :size="14" aria-hidden="true" />
+        </button>
         <span
           v-if="stockStore.activeRefreshError"
           class="refresh-status"
@@ -339,7 +343,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
-import { X } from 'lucide-vue-next'
+import { Globe, X } from 'lucide-vue-next'
 import {
   searchFunds,
   searchStock,
@@ -352,7 +356,7 @@ import {
 import { useSettingsStore } from '../stores/settings'
 import { useStockStore } from '../stores/stock'
 import { createSparklinePoints } from '../utils/chart'
-import { resolveFundDisplayQuote, type FundDisplayQuote } from '../utils/fundQuote'
+import { resolveFundDisplayQuote, localDateKey, type FundDisplayQuote } from '../utils/fundQuote'
 import { deriveFundPosition } from '../utils/fundLedger'
 import { focusFirstModalControl, trapModalFocus } from '../utils/modalFocus'
 import {
@@ -368,6 +372,7 @@ import {
   calculateStockPositionMetrics,
   getProfitTone,
   type FundAccountSummary,
+  type FundPositionForSummary,
   type PositionMetrics,
   type StockAccountSummary
 } from '../utils/positions'
@@ -425,6 +430,7 @@ const listRef = ref<HTMLElement | null>(null)
 const searchQuery = ref('')
 const searchResults = ref<SearchItem[]>([])
 const showSearch = ref(false)
+const searchError = ref('')
 const hoveredStockCode = ref('')
 const hoveredFundCode = ref('')
 const dragState = ref<DragState | null>(null)
@@ -452,6 +458,7 @@ const positionDialogElement = ref<HTMLElement | null>(null)
 let searchTimer: ReturnType<typeof setTimeout> | null = null
 let blurTimer: ReturnType<typeof setTimeout> | null = null
 let suppressClickTimer: ReturnType<typeof setTimeout> | null = null
+let searchErrorTimer: ReturnType<typeof setTimeout> | null = null
 let activeSearchRequest = 0
 let dragHandleElement: HTMLElement | null = null
 let positionDialogTrigger: HTMLElement | null = null
@@ -472,12 +479,15 @@ const fundAccountQuotes = computed(() => stockStore.fundList.map((fund) => {
   const display = resolveFundDisplayQuote(fund)
   return {
     code: fund.code,
-    estimateChangePercent: display.source === 'estimate' ? display.changePercent : null
+    estimateNav: display.source === 'estimate' ? display.nav : null,
+    officialNav: typeof fund.nav === 'number' && Number.isFinite(fund.nav) && fund.nav > 0
+      ? fund.nav
+      : null
   }
 }))
 const fundAccountPositions = computed(() => Object.fromEntries(
   stockStore.fundList.flatMap((fund) => {
-    const position = getFundPosition(fund)
+    const position = getFundPositionForSummary(fund)
     return position ? [[fund.code, position] as const] : []
   })
 ))
@@ -645,6 +655,36 @@ function getFundPosition(fund: FundQuote) {
   }
 
   return stockStore.fundPositions[fund.code]
+}
+
+/**
+ * 账户汇总用的持仓口径：当日（估算）收益按主流规则计算——
+ * （估算净值 - 昨日官方净值）× 昨日收盘份额，当日买入的份额不计当日收益。
+ */
+function getFundPositionForSummary(fund: FundQuote): FundPositionForSummary | null {
+  const ledger = stockStore.fundLedgers[fund.code]
+  const display = getFundDisplayQuote(fund)
+
+  if (ledger && typeof display.nav === 'number' && Number.isFinite(display.nav) && display.nav > 0) {
+    try {
+      const view = deriveFundPosition(ledger, display.nav)
+      const todayKey = localDateKey(new Date())
+      const sharesBoughtToday = ledger.transactions
+        .filter((transaction) => transaction.type === 'buy' && transaction.tradeDate === todayKey)
+        .reduce((total, transaction) => total + transaction.shares, 0)
+
+      return {
+        shares: view.shares - sharesBoughtToday,
+        currentValue: view.currentValue,
+        profit: view.totalProfit
+      }
+    } catch {
+      // 计算失败时退回旧版金额口径
+    }
+  }
+
+  const legacy = stockStore.fundPositions[fund.code]
+  return legacy ? { shares: null, currentValue: legacy.holdingAmount, profit: legacy.profit } : null
 }
 
 function getFundDisplayQuote(fund: FundQuote): FundDisplayQuote {
@@ -965,6 +1005,13 @@ function isDragOver(assetType: AssetType, index: number) {
 
 async function handleSearch() {
   if (searchTimer) clearTimeout(searchTimer)
+  if (searchError.value) {
+    searchError.value = ''
+    if (searchErrorTimer) {
+      clearTimeout(searchErrorTimer)
+      searchErrorTimer = null
+    }
+  }
   searchTimer = setTimeout(async () => {
     const keyword = searchQuery.value.trim()
     if (!keyword) {
@@ -988,14 +1035,28 @@ async function handleSearch() {
 }
 
 async function handleSelect(code: string) {
-  if (stockStore.activeAssetType === 'stock') {
-    await stockStore.addStock(code)
-  } else {
-    await stockStore.addFund(code)
-  }
+  const assetType = stockStore.activeAssetType
+  const succeeded = assetType === 'stock'
+    ? await stockStore.addStock(code)
+    : await stockStore.addFund(code)
 
   searchQuery.value = ''
   resetSearchState()
+  if (!succeeded) {
+    searchError.value = assetType === 'stock'
+      ? '未找到该股票，添加失败'
+      : '未找到该场外基金，添加失败'
+    if (searchErrorTimer) {
+      clearTimeout(searchErrorTimer)
+    }
+    searchErrorTimer = setTimeout(() => {
+      searchError.value = ''
+      searchErrorTimer = null
+    }, 3000)
+    return
+  }
+
+  searchError.value = ''
 }
 
 function handleEnter() {
@@ -1022,6 +1083,11 @@ async function handleRefresh() {
   await stockStore.refreshAll()
 }
 
+function openMarketView() {
+  closeContextMenu()
+  stockStore.setActiveAssetType('market')
+}
+
 async function handleRemoveAsset(assetType: AssetType, code: string) {
   closeContextMenu()
   if (assetType === 'stock') {
@@ -1041,8 +1107,7 @@ function handleGlobalKeydown(event: KeyboardEvent) {
   }
 }
 
-onMounted(async () => {
-  await stockStore.refreshAll()
+onMounted(() => {
   window.addEventListener('keydown', handleGlobalKeydown)
   window.addEventListener('resize', closeContextMenu)
   window.addEventListener('click', closeContextMenu)
@@ -1052,6 +1117,7 @@ onUnmounted(() => {
   if (searchTimer) clearTimeout(searchTimer)
   if (blurTimer) clearTimeout(blurTimer)
   if (suppressClickTimer) clearTimeout(suppressClickTimer)
+  if (searchErrorTimer) clearTimeout(searchErrorTimer)
   cancelDrag()
   window.removeEventListener('keydown', handleGlobalKeydown)
   window.removeEventListener('resize', closeContextMenu)
@@ -1071,11 +1137,14 @@ onUnmounted(() => {
 .search-shell input::placeholder{color:var(--text-muted)}
 .search-shell input:focus{border-color:rgba(59,130,246,.4);background:rgba(255,255,255,.045)}
 .search-icon{position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--text-muted);pointer-events:none}
+.search-error{position:absolute;bottom:calc(100% + 8px);left:0;z-index:11;padding:7px 10px;border:1px solid rgba(248,113,113,.3);border-radius:8px;background:var(--solid-bg);color:#ff9c9c;font-size:12px;white-space:nowrap}
 .search-results{position:absolute;bottom:calc(100% + 8px);left:0;z-index:10;padding:6px;border:1px solid var(--border-color);border-radius:12px;background:var(--solid-bg);box-shadow:0 20px 48px rgba(0,0,0,.34);min-width:220px}
 .search-item{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 12px;border:none;border-radius:8px;background:transparent;color:var(--text-primary);cursor:pointer;white-space:nowrap;min-width:208px}
 .search-item:hover{background:rgba(255,255,255,.05)}
 .search-name{font-size:13px;font-weight:600;white-space:nowrap}.search-code{font-size:12px;color:var(--text-muted);white-space:nowrap}
 .bottom-actions{display:inline-flex;align-items:center;gap:6px;flex-shrink:0}
+.market-btn{width:26px;height:26px;display:inline-flex;align-items:center;justify-content:center;border:none;border-radius:8px;background:transparent;color:var(--text-muted);cursor:pointer;transition:color .15s ease,background .15s ease}
+.market-btn:hover{color:#5da8ff;background:rgba(45,124,246,.14)}
 .refresh-status{display:inline-flex;align-items:center;height:20px;padding:0 5px;border:1px solid rgba(248,113,113,.3);border-radius:5px;background:rgba(248,113,113,.09);color:#ff8c8c;font-size:9px;font-weight:700;white-space:nowrap}
 .refresh-status.stale{border-color:rgba(245,158,11,.28);background:rgba(245,158,11,.08);color:#fbbf57}
 .refresh-btn{width:26px;height:26px;display:inline-flex;align-items:center;justify-content:center;border:none;border-radius:8px;background:transparent;color:var(--text-muted);cursor:pointer;transition:color .15s ease,background .15s ease}

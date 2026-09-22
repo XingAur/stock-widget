@@ -9,15 +9,24 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{
     collections::{HashMap, HashSet},
+    io::Write,
+    path::PathBuf,
     sync::{Arc, Mutex, OnceLock},
     time::{Duration, Instant},
 };
 use tauri::{
     menu::{Menu, MenuItem},
-    AppHandle, Manager, WebviewWindow,
+    AppHandle, Emitter, Manager, WebviewWindow, WindowEvent,
 };
 
 type AppResult<T> = Result<T, String>;
+
+const APP_STATE_FILE: &str = "app-state.json";
+const WINDOW_STATE_FILE: &str = "window-state.json";
+const WINDOW_SAVE_DEBOUNCE: Duration = Duration::from_millis(600);
+const COMPACT_WINDOW_WIDTH: f64 = 280.0;
+const EXPANDED_WINDOW_WIDTH_THRESHOLD: f64 = 560.0;
+const MIN_VISIBLE_WINDOW_PX: i32 = 60;
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -183,6 +192,396 @@ struct IndexData {
     sparkline: Vec<f64>,
 }
 
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+#[serde(rename_all = "camelCase")]
+struct GlobalIndex {
+    code: String,
+    name: String,
+    price: f64,
+    change: f64,
+    change_percent: f64,
+    time: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    gain_count: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    lose_count: Option<i64>,
+}
+
+const GLOBAL_INDEX_TENCENT_MARKETS: &[(&str, &[&str])] = &[
+    (
+        "cn",
+        &["sh000001", "sz399001", "sz399006", "sh000688", "sh000300"],
+    ),
+    ("hk", &["hkHSI", "hkHSTECH", "hkHSCEI"]),
+    ("us", &["usDJI", "usIXIC", "usINX"]),
+];
+
+const GLOBAL_INDEX_EASTMONEY_WORLD: &str =
+    "100.N225,100.KS11,100.FTSE,100.GDAXI,100.FCHI,100.SENSEX";
+
+fn parse_tencent_global_index(parts: &[&str], code: &str) -> Option<GlobalIndex> {
+    if parts.len() < 33 {
+        return None;
+    }
+
+    let price = parse_f64(parts.get(3).copied());
+    let time = format_quote_time(parts.get(30).copied().unwrap_or_default());
+    if price <= 0.0 || time.is_empty() {
+        return None;
+    }
+
+    Some(GlobalIndex {
+        code: code.to_string(),
+        name: parts.get(1).copied().unwrap_or_default().trim().to_string(),
+        price,
+        change: parse_f64(parts.get(31).copied()),
+        change_percent: parse_f64(parts.get(32).copied()),
+        time,
+        gain_count: None,
+        lose_count: None,
+    })
+}
+
+fn format_eastmoney_timestamp(timestamp_seconds: i64) -> Option<String> {
+    let timestamp_ms = timestamp_seconds.checked_mul(1000)?;
+    let date = unix_millis_to_china_date(timestamp_ms)?;
+    let china_seconds = timestamp_seconds + 8 * 60 * 60;
+    let seconds_of_day = china_seconds.rem_euclid(86_400);
+
+    Some(format!(
+        "{date} {:02}:{:02}:{:02}",
+        seconds_of_day / 3600,
+        (seconds_of_day % 3600) / 60,
+        seconds_of_day % 60
+    ))
+}
+
+fn parse_eastmoney_global_indices(text: &str) -> Vec<GlobalIndex> {
+    parse_eastmoney_rows(text, false)
+}
+
+/// 统计/风格类条目（昨日连板、涨停复盘、大小盘风格等）不是概念板块，从榜单里剔除
+fn is_statistics_style_sector(name: &str) -> bool {
+    const KEYWORDS: &[&str] = &[
+        "昨日",
+        "连板",
+        "涨停",
+        "跌停",
+        "风格",
+        "大盘",
+        "中盘",
+        "小盘",
+        "ST板块",
+        "次新股",
+        "破净",
+        "高送转",
+        "预盈预增",
+        "预亏预减",
+    ];
+
+    KEYWORDS.iter().any(|keyword| name.contains(keyword))
+}
+
+fn parse_eastmoney_sectors(text: &str) -> Vec<GlobalIndex> {
+    parse_eastmoney_rows(text, true)
+        .into_iter()
+        .filter(|index| !is_statistics_style_sector(&index.name))
+        .collect()
+}
+
+fn parse_eastmoney_rows(text: &str, sectors: bool) -> Vec<GlobalIndex> {
+    let Ok(json) = serde_json::from_str::<Value>(text) else {
+        return Vec::new();
+    };
+    let Some(rows) = json["data"]["diff"].as_array() else {
+        return Vec::new();
+    };
+
+    rows.iter()
+        .filter_map(|row| {
+            let number = |key: &str| row[key].as_f64().filter(|value| value.is_finite());
+            let price = number("f2")?;
+            let change_percent = number("f3").unwrap_or(0.0);
+            let change = number("f4").unwrap_or(0.0);
+            let code = row["f12"].as_str()?.trim().to_string();
+            let name = row["f14"].as_str()?.trim().to_string();
+            let timestamp = number("f124").map(|seconds| seconds as i64)?;
+            let time = format_eastmoney_timestamp(timestamp)?;
+            if price <= 0.0 || code.is_empty() || name.is_empty() {
+                return None;
+            }
+
+            Some(GlobalIndex {
+                code,
+                name,
+                price,
+                change,
+                change_percent,
+                time,
+                gain_count: if sectors {
+                    row["f104"].as_i64().filter(|value| *value >= 0)
+                } else {
+                    None
+                },
+                lose_count: if sectors {
+                    row["f105"].as_i64().filter(|value| *value >= 0)
+                } else {
+                    None
+                },
+            })
+        })
+        .collect()
+}
+
+async fn fetch_tencent_global_indices(market: &str) -> AppResult<Vec<GlobalIndex>> {
+    let Some((_, codes)) = GLOBAL_INDEX_TENCENT_MARKETS
+        .iter()
+        .find(|(key, _)| *key == market)
+    else {
+        return Err(format!("不支持的市场分组：{market}"));
+    };
+
+    let url = format!("https://qt.gtimg.cn/q={}", codes.join(","));
+    let text = fetch_text_gbk(&url, None).await?;
+    Ok(parse_tencent_lines(&text, |code, payload| {
+        let parts = payload.split('~').collect::<Vec<_>>();
+        parse_tencent_global_index(&parts, code)
+    }))
+}
+
+async fn fetch_world_global_indices() -> AppResult<Vec<GlobalIndex>> {
+    let url = format!(
+        "https://push2.eastmoney.com/api/qt/ulist.np/get?secids={GLOBAL_INDEX_EASTMONEY_WORLD}&fields=f2,f3,f4,f12,f14,f124&fltt=2"
+    );
+    let text = fetch_text(&url, Some("https://quote.eastmoney.com/")).await?;
+    Ok(parse_eastmoney_global_indices(&text))
+}
+
+/// A股概念板块涨幅榜取前 16（两列 8 行，覆盖当日主线概念即可）
+const SECTOR_LIST_SIZE: usize = 16;
+
+async fn fetch_concept_sectors() -> AppResult<Vec<GlobalIndex>> {
+    let url = format!(
+        "https://push2.eastmoney.com/api/qt/clist/get?pn=1&pz={SECTOR_LIST_SIZE}&po=1&np=1&fltt=2&invt=2&fid=f3&fs=m:90+t:3&fields=f2,f3,f4,f12,f14,f104,f105,f124"
+    );
+    let text = fetch_text(&url, Some("https://quote.eastmoney.com/")).await?;
+    Ok(parse_eastmoney_sectors(&text))
+}
+
+/// 美股行业板块：标普 500 的 11 个 SPDR 行业 ETF（GICS 官方行业分类）
+const US_SECTOR_ETFS: &str =
+    "107.XLK,107.XLF,107.XLE,107.XLV,107.XLI,107.XLY,107.XLP,107.XLB,107.XLU,107.XLRE,107.XLC";
+
+fn simplify_us_sector_name(code: &str, fallback: &str) -> String {
+    match code {
+        "XLK" => "科技",
+        "XLF" => "金融",
+        "XLE" => "能源",
+        "XLV" => "医疗",
+        "XLI" => "工业",
+        "XLY" => "可选消费",
+        "XLP" => "日常消费",
+        "XLB" => "原材料",
+        "XLU" => "公用事业",
+        "XLRE" => "房地产",
+        "XLC" => "通信服务",
+        _ => fallback,
+    }
+    .to_string()
+}
+
+async fn fetch_us_sector_indices() -> AppResult<Vec<GlobalIndex>> {
+    let url = format!(
+        "https://push2.eastmoney.com/api/qt/ulist.np/get?secids={US_SECTOR_ETFS}&fields=f2,f3,f4,f12,f14,f124&fltt=2"
+    );
+    let text = fetch_text(&url, Some("https://quote.eastmoney.com/")).await?;
+    Ok(parse_eastmoney_global_indices(&text)
+        .into_iter()
+        .map(|mut index| {
+            index.name = simplify_us_sector_name(&index.code, &index.name);
+            index
+        })
+        .collect())
+}
+
+#[tauri::command]
+async fn fetch_global_indices(market: String) -> AppResult<Vec<GlobalIndex>> {
+    let market = market.trim();
+    if market == "world" {
+        return fetch_world_global_indices().await;
+    }
+    if market == "sectors" {
+        return fetch_concept_sectors().await;
+    }
+    if market == "us-sectors" {
+        return fetch_us_sector_indices().await;
+    }
+
+    fetch_tencent_global_indices(market).await
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+struct WindowGeometry {
+    x: i32,
+    y: i32,
+    width: u32,
+    height: u32,
+}
+
+fn app_data_file(app: &AppHandle, file_name: &str) -> AppResult<PathBuf> {
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|error| format!("无法定位应用数据目录：{error}"))?;
+    Ok(dir.join(file_name))
+}
+
+fn write_atomic(path: &PathBuf, contents: &[u8]) -> AppResult<()> {
+    let parent = path
+        .parent()
+        .ok_or_else(|| "状态文件缺少父目录".to_string())?;
+    std::fs::create_dir_all(parent).map_err(|error| format!("创建应用数据目录失败：{error}"))?;
+
+    let temp_path = path.with_extension("tmp");
+    std::fs::File::create(&temp_path)
+        .and_then(|mut file| file.write_all(contents).map(|_| file))
+        .and_then(|mut file| file.sync_all())
+        .map_err(|error| format!("写入状态临时文件失败：{error}"))?;
+
+    std::fs::rename(&temp_path, path).map_err(|error| format!("落盘状态文件失败：{error}"))
+}
+
+fn read_state_file(app: &AppHandle, file_name: &str) -> Option<String> {
+    let path = app_data_file(app, file_name).ok()?;
+    std::fs::read_to_string(path)
+        .ok()
+        .map(|text| text.trim().to_string())
+        .filter(|text| !text.is_empty())
+}
+
+#[tauri::command]
+fn persist_app_state(app: AppHandle, state: String) -> AppResult<()> {
+    if state.trim().is_empty() {
+        return Err("应用状态内容为空，已拒绝覆盖持久化文件".to_string());
+    }
+
+    write_atomic(&app_data_file(&app, APP_STATE_FILE)?, state.as_bytes())
+}
+
+#[tauri::command]
+fn load_app_state(app: AppHandle) -> AppResult<Option<String>> {
+    Ok(read_state_file(&app, APP_STATE_FILE))
+}
+
+fn save_window_geometry(app: &AppHandle) {
+    let Some(window) = app.get_webview_window("main") else {
+        return;
+    };
+
+    let (Ok(position), Ok(size)) = (window.outer_position(), window.outer_size()) else {
+        return;
+    };
+
+    let geometry = WindowGeometry {
+        x: position.x,
+        y: position.y,
+        width: size.width,
+        height: size.height,
+    };
+    let Ok(payload) = serde_json::to_string(&geometry) else {
+        return;
+    };
+
+    if let Ok(path) = app_data_file(app, WINDOW_STATE_FILE) {
+        let _ = write_atomic(&path, payload.as_bytes());
+    }
+}
+
+fn is_geometry_visible_on_any_monitor(window: &WebviewWindow, geometry: &WindowGeometry) -> bool {
+    let Ok(monitors) = window.available_monitors() else {
+        return true;
+    };
+    if monitors.is_empty() {
+        return true;
+    }
+
+    monitors.iter().any(|monitor| {
+        let monitor_x = monitor.position().x;
+        let monitor_y = monitor.position().y;
+        let monitor_right = monitor_x + monitor.size().width as i32;
+        let monitor_bottom = monitor_y + monitor.size().height as i32;
+        let visible_x = geometry
+            .x
+            .saturating_add(geometry.width as i32)
+            .min(monitor_right)
+            .saturating_sub(geometry.x.max(monitor_x));
+        let visible_y = geometry
+            .y
+            .saturating_add(geometry.height as i32)
+            .min(monitor_bottom)
+            .saturating_sub(geometry.y.max(monitor_y));
+        visible_x >= MIN_VISIBLE_WINDOW_PX.min(geometry.width as i32)
+            && visible_y >= MIN_VISIBLE_WINDOW_PX.min(geometry.height as i32)
+    })
+}
+
+fn restore_window_geometry(window: &WebviewWindow) {
+    let Some(payload) = read_state_file(window.app_handle(), WINDOW_STATE_FILE) else {
+        return;
+    };
+    let Ok(saved) = serde_json::from_str::<WindowGeometry>(&payload) else {
+        return;
+    };
+    if saved.width == 0 || saved.height == 0 {
+        return;
+    }
+
+    let mut geometry = saved.clone();
+    let Ok(scale_factor) = window.scale_factor() else {
+        return;
+    };
+    let logical_width = saved.width as f64 / scale_factor;
+    if logical_width > EXPANDED_WINDOW_WIDTH_THRESHOLD {
+        // 上次退出时详情面板展开；重启后详情不会自动恢复，回到紧凑宽度。
+        geometry.width = (COMPACT_WINDOW_WIDTH * scale_factor).round() as u32;
+    }
+
+    if !is_geometry_visible_on_any_monitor(window, &geometry) {
+        let _ = window.center();
+        return;
+    }
+
+    let _ = window.set_position(tauri::PhysicalPosition::new(geometry.x, geometry.y));
+    let _ = window.set_size(tauri::PhysicalSize::new(geometry.width, geometry.height));
+}
+
+fn watch_window_geometry(app: &AppHandle) {
+    let Some(window) = app.get_webview_window("main") else {
+        return;
+    };
+
+    let (sender, mut receiver) = tokio::sync::mpsc::channel::<()>(1);
+    window.on_window_event(move |event| {
+        if matches!(event, WindowEvent::Moved(_) | WindowEvent::Resized(_)) {
+            let _ = sender.try_send(());
+        }
+    });
+
+    let app_handle = app.clone();
+    tauri::async_runtime::spawn(async move {
+        while receiver.recv().await.is_some() {
+            let settled = tokio::time::timeout(WINDOW_SAVE_DEBOUNCE, receiver.recv())
+                .await
+                .is_err();
+            if !settled {
+                continue;
+            }
+            save_window_geometry(&app_handle);
+        }
+    });
+}
+
 #[tauri::command]
 fn close_window(window: WebviewWindow) -> AppResult<()> {
     window.hide().map_err(|error| error.to_string())
@@ -196,6 +595,43 @@ fn minimize_window(window: WebviewWindow) -> AppResult<()> {
 #[tauri::command]
 fn minimize_to_tray(window: WebviewWindow) -> AppResult<()> {
     window.hide().map_err(|error| error.to_string())
+}
+
+const WEBVIEW_RESTORE_SCRIPT: &str = r#"
+(() => {
+  try {
+    const root = document.documentElement;
+    if (root) {
+      root.style.transform = 'translateZ(0)';
+      void root.offsetHeight;
+      root.style.transform = '';
+    }
+    const app = document.getElementById('app');
+    if (!app || app.childElementCount === 0) {
+      const key = 'webviewRecoveryAt';
+      const last = Number(sessionStorage.getItem(key) || '0');
+      const now = Date.now();
+      if (now - last > 15000) {
+        sessionStorage.setItem(key, String(now));
+        location.reload();
+      }
+    }
+  } catch (error) {
+    location.reload();
+  }
+})();
+"#;
+
+fn restore_main_window(app: &AppHandle) {
+    let Some(window) = app.get_webview_window("main") else {
+        return;
+    };
+
+    let _ = window.unminimize();
+    let _ = window.show();
+    let _ = window.set_focus();
+    let _ = window.eval(WEBVIEW_RESTORE_SCRIPT);
+    let _ = window.emit("window-restored", ());
 }
 
 #[tauri::command]
@@ -224,11 +660,15 @@ async fn set_auto_start(app: AppHandle, enabled: bool) -> AppResult<()> {
 }
 
 fn to_tencent_code(code: &str) -> String {
-    if code.starts_with("sh") || code.starts_with("sz") {
+    if code.starts_with("sh") || code.starts_with("sz") || code.starts_with("bj") {
         return code.to_string();
     }
 
-    if code.starts_with('5') || code.starts_with('6') {
+    if code.starts_with('4') || code.starts_with('8') || code.starts_with("92") {
+        return format!("bj{code}");
+    }
+
+    if code.starts_with('5') || code.starts_with('6') || code.starts_with('9') {
         format!("sh{code}")
     } else {
         format!("sz{code}")
@@ -1478,6 +1918,141 @@ mod tests {
     }
 
     #[test]
+    fn converts_beijing_exchange_codes_to_bj_prefix() {
+        assert_eq!(to_tencent_code("430047"), "bj430047");
+        assert_eq!(to_tencent_code("830799"), "bj830799");
+        assert_eq!(to_tencent_code("920002"), "bj920002");
+        assert_eq!(to_tencent_code("bj920002"), "bj920002");
+        // 沪市 B 股与深市代码不受影响
+        assert_eq!(to_tencent_code("900901"), "sh900901");
+        assert_eq!(to_tencent_code("002594"), "sz002594");
+    }
+
+    #[test]
+    fn window_geometry_serializes_with_camel_case() {
+        let geometry = WindowGeometry {
+            x: -120,
+            y: 88,
+            width: 280,
+            height: 480,
+        };
+        let payload = serde_json::to_string(&geometry).expect("geometry should serialize");
+        assert_eq!(payload, r#"{"x":-120,"y":88,"width":280,"height":480}"#);
+
+        let parsed: WindowGeometry =
+            serde_json::from_str(&payload).expect("geometry should deserialize");
+        assert_eq!(parsed, geometry);
+    }
+
+    #[test]
+    fn parses_tencent_global_index_payload() {
+        let mut parts = vec![""; 36];
+        parts[1] = "上证指数";
+        parts[3] = "3342.66";
+        parts[30] = "20260922150000";
+        parts[31] = "40.12";
+        parts[32] = "1.21";
+
+        let index =
+            parse_tencent_global_index(&parts, "sh000001").expect("valid index should parse");
+        assert_eq!(index.code, "sh000001");
+        assert_eq!(index.name, "上证指数");
+        assert_eq!(index.price, 3342.66);
+        assert_eq!(index.change_percent, 1.21);
+        assert_eq!(index.time, "2026-09-22 15:00:00");
+    }
+
+    #[test]
+    fn rejects_global_index_payloads_without_valid_price_or_time() {
+        assert!(parse_tencent_global_index(&[""; 36], "sh000001").is_none());
+
+        let mut stale = vec![""; 36];
+        stale[1] = "上证指数";
+        stale[3] = "3342.66";
+        stale[30] = "";
+        assert!(parse_tencent_global_index(&stale, "sh000001").is_none());
+    }
+
+    #[test]
+    fn parses_eastmoney_world_indices() {
+        let body = r#"{"data":{"diff":[
+            {"f2":65018.95,"f3":1.38,"f4":884.11,"f12":"N225","f14":"日经225","f124":1789458600},
+            {"f2":0.0,"f3":0.0,"f4":0.0,"f12":"BAD","f14":"无效","f124":1789458600},
+            {"f2":7117.18,"f3":1.56,"f4":109.4,"f12":"KS11","f14":"韩国KOSPI","f124":1789458600}
+        ]}}"#;
+
+        let indices = parse_eastmoney_global_indices(body);
+
+        assert_eq!(indices.len(), 2);
+        assert_eq!(indices[0].code, "N225");
+        assert_eq!(indices[0].name, "日经225");
+        assert_eq!(indices[0].price, 65018.95);
+        assert_eq!(indices[0].change_percent, 1.38);
+        assert_eq!(indices[0].time, "2026-09-15 15:50:00");
+        assert_eq!(indices[1].code, "KS11");
+    }
+
+    #[test]
+    fn eastmoney_timestamp_uses_china_timezone() {
+        // 1784563200 = 北京时间 2026-07-21 00:00:00
+        assert_eq!(
+            format_eastmoney_timestamp(1_784_563_200).as_deref(),
+            Some("2026-07-21 00:00:00")
+        );
+    }
+
+    #[test]
+    fn rejects_malformed_eastmoney_payloads() {
+        assert!(parse_eastmoney_global_indices("not json").is_empty());
+        assert!(parse_eastmoney_global_indices(r#"{"data":null}"#).is_empty());
+    }
+
+    #[test]
+    fn parses_concept_sectors_with_member_counts_and_filters_statistics() {
+        let body = r#"{"data":{"diff":[
+            {"f2":1944.81,"f3":3.10,"f4":58.5,"f12":"BK1127","f14":"AI芯片","f104":86,"f105":4,"f124":1789458600},
+            {"f2":54580.89,"f3":2.55,"f4":1358.1,"f12":"BK0816","f14":"昨日连板","f104":10,"f105":2,"f124":1789458600},
+            {"f2":962.77,"f3":2.01,"f4":19.0,"f12":"BK1713","f14":"科技风格","f104":40,"f105":20,"f124":1789458600},
+            {"f2":1189.19,"f3":2.23,"f4":25.9,"f12":"BK0885","f14":"VPN","f104":12,"f105":3,"f124":1789458600}
+        ]}}"#;
+
+        let sectors = parse_eastmoney_sectors(body);
+
+        assert_eq!(sectors.len(), 2);
+        assert_eq!(sectors[0].name, "AI芯片");
+        assert_eq!(sectors[0].gain_count, Some(86));
+        assert_eq!(sectors[0].lose_count, Some(4));
+        assert_eq!(sectors[1].name, "VPN");
+        // 世界指数分支不应带涨跌家数
+        assert!(parse_eastmoney_global_indices(body)[0].gain_count.is_none());
+    }
+
+    #[test]
+    fn world_indices_do_not_expose_member_counts() {
+        let body = r#"{"data":{"diff":[
+            {"f2":65018.95,"f3":1.38,"f4":884.11,"f12":"N225","f14":"日经225","f104":99,"f105":1,"f124":1789458600}
+        ]}}"#;
+
+        let indices = parse_eastmoney_global_indices(body);
+        assert_eq!(indices.len(), 1);
+        assert_eq!(indices[0].gain_count, None);
+        assert_eq!(indices[0].lose_count, None);
+    }
+
+    #[test]
+    fn simplifies_us_sector_etf_names() {
+        assert_eq!(
+            simplify_us_sector_name("XLK", "科技行业精选指数ETF-SPDR"),
+            "科技"
+        );
+        assert_eq!(
+            simplify_us_sector_name("XLC", "通讯服务行业精选指数ETF-SPDR"),
+            "通信服务"
+        );
+        assert_eq!(simplify_us_sector_name("UNKNOWN", "原始名称"), "原始名称");
+    }
+
+    #[test]
     fn rejects_short_stock_payloads() {
         let parts = vec![""; 35];
         assert!(parse_stock_from_parts(&parts, "sh600000").is_none());
@@ -1970,6 +2545,11 @@ mod tests {
 
 fn main() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            // 已有实例在运行：唤起它而不是再开一个进程，
+            // 避免两个 WebView2 实例争抢同一数据目录导致界面空白与本地存储写入丢失。
+            restore_main_window(app);
+        }))
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             None,
@@ -1990,15 +2570,18 @@ fn main() {
             tray.set_menu(Some(menu))?;
             let _ = tray.set_show_menu_on_left_click(true);
             tray.on_menu_event(|app, event| match event.id.as_ref() {
-                "restore" => {
-                    if let Some(window) = app.get_webview_window("main") {
-                        let _ = window.show();
-                        let _ = window.set_focus();
-                    }
+                "restore" => restore_main_window(app),
+                "quit" => {
+                    save_window_geometry(app);
+                    app.exit(0);
                 }
-                "quit" => app.exit(0),
                 _ => {}
             });
+
+            if let Some(window) = app.get_webview_window("main") {
+                restore_window_geometry(&window);
+                watch_window_geometry(app.handle());
+            }
 
             Ok(())
         })
@@ -2009,6 +2592,8 @@ fn main() {
             set_always_on_top,
             start_drag,
             set_auto_start,
+            persist_app_state,
+            load_app_state,
             fetch_stocks,
             search_stock,
             search_funds,
@@ -2020,6 +2605,7 @@ fn main() {
             fetch_minute_data,
             fetch_kline_data,
             fetch_indices,
+            fetch_global_indices,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

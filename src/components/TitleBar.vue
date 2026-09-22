@@ -1,5 +1,5 @@
 <template>
-  <header class="title-bar" @mousedown="startDrag">
+  <header class="title-bar" @mousedown="startWindowDrag">
     <div class="window-controls">
       <button class="traffic-btn traffic-close" type="button" title="Close" @click.stop="$emit('close')">
         <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round">
@@ -26,7 +26,7 @@
 </template>
 
 <script setup lang="ts">
-import { invoke } from '@tauri-apps/api/core'
+import { startWindowDrag } from '../utils/windowDrag'
 
 defineProps<{
   title: string
@@ -38,18 +38,6 @@ defineEmits<{
   settings: []
   toggleAssetType: []
 }>()
-
-async function startDrag(event: MouseEvent) {
-  if ((event.target as HTMLElement).closest('.window-controls')) {
-    return
-  }
-
-  try {
-    await invoke('start_drag')
-  } catch (error) {
-    console.error('Start drag error:', error)
-  }
-}
 </script>
 
 <style scoped>

@@ -59,7 +59,20 @@ export interface SearchResult {
   market: string
 }
 
-export type AssetType = 'stock' | 'fund'
+export type AssetType = 'stock' | 'fund' | 'market'
+
+export type MarketKey = 'cn' | 'hk' | 'us' | 'world' | 'sectors' | 'us-sectors'
+
+export interface GlobalIndexData {
+  code: string
+  name: string
+  price: number
+  change: number
+  changePercent: number
+  time: string
+  gainCount?: number | null
+  loseCount?: number | null
+}
 
 export interface FundQuote {
   code: string
@@ -221,4 +234,8 @@ export async function fetchStockDetail(code: string): Promise<StockDetail | null
 
 export async function fetchIndices(): Promise<IndexData[]> {
   return invokeSafe('fetch_indices', undefined, [])
+}
+
+export async function fetchGlobalIndices(market: MarketKey): Promise<GlobalIndexData[]> {
+  return invokeSafe('fetch_global_indices', { market }, [])
 }

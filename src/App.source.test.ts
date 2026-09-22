@@ -23,6 +23,13 @@ describe('asset-aware detail routing', () => {
     expect(fundDetailVue).toContain("defineProps<{ code: string }>()")
   })
 
+  it('recovers the webview after the window has been hidden', () => {
+    expect(appVue).toContain('onPageVisibilityChange')
+    expect(appVue).toContain("listen('window-restored'")
+    expect(appVue).toContain('stockStore.stopAutoRefresh()')
+    expect(appVue).toContain('resumeAfterHidden')
+  })
+
   it('shows fund sectors in the list and keeps quote-source labels in details', () => {
     expect(homeVue).toContain('resolveFundDisplayQuote')
     expect(homeVue).toContain("fund.sector || '板块待更新'")

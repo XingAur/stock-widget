@@ -59,7 +59,7 @@ describe('fund ledger migration', () => {
 })
 
 describe('fund ledger transactions', () => {
-  it('treats a buy amount as the total cash outflow including its fee', () => {
+  it('charges buy fees with the regulator-mandated external method', () => {
     const ledger = createLedgerFromLegacyPosition(
       '001186',
       { holdingAmount: 1000, profit: 0 },
@@ -77,17 +77,18 @@ describe('fund ledger transactions', () => {
       createdAt: '2026-07-22T10:00:00.000Z'
     })
 
+    // 外扣法：净申购金额 = 100 / 1.01 = 99.01，申购费 = 0.99，份额 = 99.01 / 2
     expect(next.transactions[0]).toMatchObject({
       type: 'buy',
-      fee: 1,
-      shares: 49.5
+      fee: 0.99,
+      shares: 49.505
     })
     expect(deriveFundPosition(next, 2)).toMatchObject({
-      shares: 549.5,
-      currentValue: 1099,
+      shares: 549.505,
+      currentValue: 1099.01,
       remainingCost: 1100,
-      holdingProfit: -1,
-      totalProfit: -1
+      holdingProfit: -0.99,
+      totalProfit: -0.99
     })
   })
 
@@ -279,5 +280,62 @@ describe('fund ledger snapshots', () => {
       dailyProfit: null,
       hasAdjustment: true
     })
+  })
+
+  it('computes daily profit as NAV change times previous-day shares (Alipay-style)', () => {
+    const ledger = createLedgerFromLegacyPosition(
+      '001186',
+      { holdingAmount: 1000, profit: 0 },
+      '2026-07-21',
+      2
+    )
+    // 7-22 买入 100 元（费率 1%），7-23 净值涨到 2.2
+    const withBuy = addFundTransaction(ledger, {
+      id: 'buy-1',
+      type: 'buy',
+      tradeDate: '2026-07-22',
+      nav: 2,
+      amount: 100,
+      feeRate: 1,
+      createdAt: '2026-07-22T10:00:00.000Z'
+    })
+
+    const rebuilt = rebuildFundSnapshots(withBuy, [
+      { date: '2026-07-21', nav: 2 },
+      { date: '2026-07-22', nav: 2 },
+      { date: '2026-07-23', nav: 2.2 }
+    ])
+
+    // 买入日：当日收益 =（2-2）× 昨日 500 份 = 0，申购费不计入当日收益
+    expect(rebuilt.snapshots[1]).toMatchObject({ dailyProfit: 0 })
+    // 次日：当日收益 =（2.2-2）× 549.505 份（外扣法确认）= 109.9
+    expect(rebuilt.snapshots[2]).toMatchObject({ dailyProfit: 109.9 })
+  })
+
+  it('counts a partial sell toward the sell-day NAV change only', () => {
+    const ledger = createLedgerFromLegacyPosition(
+      '001186',
+      { holdingAmount: 1000, profit: 0 },
+      '2026-07-21',
+      2
+    )
+    const withSell = addFundTransaction(ledger, {
+      id: 'sell-1',
+      type: 'sell',
+      tradeDate: '2026-07-22',
+      nav: 2.2,
+      shares: 100,
+      feeRate: 0,
+      createdAt: '2026-07-22T10:00:00.000Z'
+    })
+
+    const rebuilt = rebuildFundSnapshots(withSell, [
+      { date: '2026-07-21', nav: 2 },
+      { date: '2026-07-22', nav: 2.2 }
+    ])
+
+    // 卖出日：当日收益 =（2.2-2）× 昨日 500 份 = 100，
+    // 已实现利润（相对成本的 20 元）不再混入当日收益
+    expect(rebuilt.snapshots[1]).toMatchObject({ dailyProfit: 100, realizedProfit: 20 })
   })
 })

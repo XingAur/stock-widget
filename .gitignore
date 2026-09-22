@@ -47,3 +47,8 @@ lerna-debug.log*
 # Local agent planning and preview artifacts
 .superpowers/
 docs/superpowers/
+
+# Playwright
+test-results/
+playwright-report/
+blob-report/

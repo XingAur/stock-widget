@@ -33,4 +33,9 @@ describe('detail order book source', () => {
     expect(detailVue).toContain('detailRefreshError')
     expect(detailVue).toContain('股票详情刷新失败')
   })
+
+  it('pauses detail polling while the window is hidden', () => {
+    expect(detailVue).toContain('isPageVisible')
+    expect(detailVue).toContain('onPageVisibilityChange')
+  })
 })
