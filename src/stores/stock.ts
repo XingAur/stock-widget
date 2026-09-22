@@ -21,6 +21,7 @@ import {
   type FundNavPointLike,
   type FundTransactionInput
 } from '../utils/fundLedger'
+import { logError } from '../utils/logger'
 import { moveItem } from '../utils/list'
 import {
   PERSIST_SHADOW_KEY,
@@ -342,6 +343,7 @@ export const useStockStore = defineStore('stock', () => {
     } catch (error) {
       stockRefreshError.value = getRefreshErrorMessage(error, '股票行情刷新失败')
       console.error('Refresh stocks error:', error)
+      logError('股票行情刷新失败', error)
     } finally {
       stockLoading.value = false
     }
@@ -391,6 +393,7 @@ export const useStockStore = defineStore('stock', () => {
     } catch (error) {
       fundRefreshError.value = getRefreshErrorMessage(error, '基金行情刷新失败')
       console.error('Refresh funds error:', error)
+      logError('基金行情刷新失败', error)
     } finally {
       fundLoading.value = false
     }

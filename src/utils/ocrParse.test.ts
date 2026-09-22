@@ -124,3 +124,45 @@ describe('parseOcrLines with real Windows OCR output', () => {
     expect(result.stocks).toEqual([{ code: '600030', name: '中信证券' }])
   })
 })
+
+describe('pure index fund names', () => {
+  it('recognizes pure index funds with share-class suffix', () => {
+    const result = parseOcrLines([
+      '交 银 施 罗 德 创 业 板 50指 数 C 4,479.74',
+      '易方达上证50指数A 3,000.00'
+    ])
+
+    expect(result.funds.map((fund) => fund.name)).toEqual([
+      '交银施罗德创业板50指数C',
+      '易方达上证50指数A'
+    ])
+  })
+
+  it('still rejects short navigation words containing index', () => {
+    const result = parseOcrLines(['偏 债 指 数', '我的基金 全部 偏股 偏债 指数 黄金 全球'])
+
+    expect(result.funds).toEqual([])
+  })
+})
+
+describe('code below name layout (xueqiu/tonghuashun watchlist)', () => {
+  it('pairs a standalone code line with the name line above it', () => {
+    const result = parseOcrLines([
+      '永鼎股份',
+      '600105',
+      '45.36 -2.91%',
+      '杭电股份',
+      '603618',
+      '38.76 -4.72%',
+      '通鼎互联',
+      '002491',
+      '23.92 -2.72%'
+    ])
+
+    expect(result.stocks).toEqual([
+      { code: '600105', name: '永鼎股份' },
+      { code: '603618', name: '杭电股份' },
+      { code: '002491', name: '通鼎互联' }
+    ])
+  })
+})

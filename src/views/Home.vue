@@ -364,6 +364,7 @@ import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { Globe, ImagePlus, X } from 'lucide-vue-next'
 import { invoke } from '@tauri-apps/api/core'
 import ImportDialog from '../components/ImportDialog.vue'
+import { logError } from '../utils/logger'
 import {
   searchFunds,
   searchStock,
@@ -1139,6 +1140,7 @@ async function handleImportFile(event: Event): Promise<void> {
     importDialog.value = { visible: true, lines }
   } catch (error) {
     searchError.value = error instanceof Error ? error.message : String(error)
+    logError('图片识别失败', error)
   } finally {
     importOcrBusy = false
   }

@@ -45,6 +45,34 @@
         <SettingsView @close="closeSettings" />
       </div>
     </div>
+
+    <div v-if="updateState.visible" class="update-overlay" @click.self="closeUpdateDialog">
+      <div class="update-dialog" role="dialog" aria-modal="true" aria-label="软件更新">
+        <h3>软件更新</h3>
+        <template v-if="updateState.checking">
+          <p class="update-status">正在检查更新…</p>
+        </template>
+        <template v-else-if="updateState.error">
+          <p class="update-status update-error">{{ updateState.error }}</p>
+          <button class="update-btn" type="button" @click="closeUpdateDialog">关闭</button>
+        </template>
+        <template v-else-if="updateInfo?.hasUpdate">
+          <p class="update-status">发现新版本 <strong>v{{ updateInfo.latestVersion }}</strong>（当前 v{{ updateInfo.currentVersion }}）</p>
+          <p class="update-notes">{{ updateInfo.notes }}</p>
+          <p v-if="updateState.downloading" class="update-status">正在下载更新包…</p>
+          <div class="update-actions">
+            <button class="update-btn secondary" type="button" :disabled="updateState.downloading" @click="closeUpdateDialog">稍后再说</button>
+            <button class="update-btn" type="button" :disabled="updateState.downloading || !updateInfo.downloadUrl" @click="startUpdate">
+              {{ updateState.downloading ? '下载中…' : '立即升级' }}
+            </button>
+          </div>
+        </template>
+        <template v-else>
+          <p class="update-status">已是最新版本 v{{ updateInfo?.currentVersion }}</p>
+          <button class="update-btn" type="button" @click="closeUpdateDialog">好的</button>
+        </template>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -63,6 +91,7 @@ import { getAssetTitle, getNextAssetType } from './utils/assets'
 import { focusFirstModalControl, trapModalFocus } from './utils/modalFocus'
 import { isTauriRuntime } from './utils/persistence'
 import { rememberWatchlistView } from './utils/market'
+import { logError, logInfo } from './utils/logger'
 import { startWindowDrag } from './utils/windowDrag'
 import { kickWebViewPaint, onPageVisibilityChange, reloadIfAppShellMissing } from './utils/windowLifecycle'
 
@@ -92,6 +121,60 @@ const assetTitle = computed(() => getAssetTitle(stockStore.activeAssetType))
 let settingsTrigger: HTMLElement | null = null
 let stopVisibility: (() => void) | null = null
 let unlistenWindowRestored: (() => void) | null = null
+let unlistenCheckUpdate: (() => void) | null = null
+
+interface UpdateCheckInfo {
+  currentVersion: string
+  latestVersion: string
+  hasUpdate: boolean
+  releaseUrl: string
+  downloadUrl: string | null
+  notes: string
+}
+
+const updateInfo = ref<UpdateCheckInfo | null>(null)
+const updateState = ref<{ visible: boolean; checking: boolean; downloading: boolean; error: string }>({
+  visible: false,
+  checking: false,
+  downloading: false,
+  error: ''
+})
+
+async function openUpdateDialog(): Promise<void> {
+  updateState.value = { visible: true, checking: true, downloading: false, error: '' }
+  logInfo('开始检查更新')
+  try {
+    updateInfo.value = await invoke<UpdateCheckInfo>('check_update')
+    logInfo(`检查更新完成：最新 v${updateInfo.value.latestVersion}`)
+  } catch (error) {
+    updateState.value = { visible: true, checking: false, downloading: false, error: error instanceof Error ? error.message : String(error) }
+    logError('检查更新失败', error)
+    return
+  }
+  updateState.value = { visible: true, checking: false, downloading: false, error: '' }
+}
+
+function closeUpdateDialog(): void {
+  if (!updateState.value.downloading) {
+    updateState.value = { ...updateState.value, visible: false }
+  }
+}
+
+async function startUpdate(): Promise<void> {
+  const url = updateInfo.value?.downloadUrl
+  if (!url || updateState.value.downloading) {
+    return
+  }
+
+  updateState.value = { ...updateState.value, downloading: true }
+  try {
+    const installerPath = await invoke<string>('download_update', { url })
+    await invoke('run_installer', { path: installerPath })
+  } catch (error) {
+    updateState.value = { ...updateState.value, downloading: false, error: error instanceof Error ? error.message : String(error) }
+    logError('下载/启动更新失败', error)
+  }
+}
 let resumeTimer: ReturnType<typeof setTimeout> | null = null
 
 function clearResumeTimer() {
@@ -329,6 +412,13 @@ onMounted(async () => {
     } catch (error) {
       console.error('Listen window-restored error:', error)
     }
+    try {
+      unlistenCheckUpdate = await getCurrentWindow().listen('tray-check-update', () => {
+        void openUpdateDialog()
+      })
+    } catch (error) {
+      logError('注册检查更新监听失败', error)
+    }
   }
 })
 
@@ -336,6 +426,7 @@ onUnmounted(() => {
   window.removeEventListener('keydown', handleGlobalKeydown)
   stopVisibility?.()
   unlistenWindowRestored?.()
+  unlistenCheckUpdate?.()
   clearResumeTimer()
   stockStore.stopAutoRefresh()
 })
@@ -407,6 +498,101 @@ onUnmounted(() => {
   border-radius: 22px;
   background: var(--solid-bg);
   box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
+}
+
+.update-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 120;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.update-dialog {
+  width: 100%;
+  padding: 16px;
+  border: 1px solid var(--border-color);
+  border-radius: 14px;
+  background: var(--solid-bg);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.45);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.update-dialog h3 {
+  margin: 0;
+  font-size: 15px;
+  color: var(--text-primary);
+}
+
+.update-status {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.update-status strong {
+  color: #5da8ff;
+}
+
+.update-error {
+  color: #ff9c9c;
+}
+
+.update-notes {
+  margin: 0;
+  max-height: 180px;
+  overflow-y: auto;
+  padding: 8px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--text-muted);
+  white-space: pre-line;
+}
+
+.update-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.update-btn {
+  height: 30px;
+  padding: 0 14px;
+  border: none;
+  border-radius: 8px;
+  background: rgba(45, 124, 246, 0.82);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.update-btn:hover {
+  background: rgba(45, 124, 246, 0.94);
+}
+
+.update-btn.secondary {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-secondary);
+}
+
+.update-btn.secondary:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-primary);
+}
+
+.update-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 @media (max-width: 860px) {

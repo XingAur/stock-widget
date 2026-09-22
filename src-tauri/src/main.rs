@@ -1,11 +1,12 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod app_log;
 mod http;
 mod ocr;
 
 #[cfg(test)]
 use http::decode_utf8_text;
-use http::{fetch_text, fetch_text_gbk};
+use http::{fetch_text, fetch_text_gbk, http_client};
 use ocr::ocr_image_bytes;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -633,6 +634,189 @@ async fn ocr_image(image_base64: String) -> AppResult<Vec<String>> {
     })
     .await
     .map_err(|error| format!("图片识别任务失败：{error}"))?
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct UpdateCheckResult {
+    current_version: String,
+    latest_version: String,
+    has_update: bool,
+    release_url: String,
+    download_url: Option<String>,
+    notes: String,
+}
+
+const GITHUB_LATEST_RELEASE_API: &str =
+    "https://api.github.com/repos/XingAur/stock-widget/releases/latest";
+
+fn normalize_version(tag: &str) -> String {
+    tag.trim().trim_start_matches('v').to_string()
+}
+
+fn version_is_newer(latest: &str, current: &str) -> bool {
+    let parse = |value: &str| -> Vec<u64> {
+        value
+            .split('.')
+            .map(|part| part.trim().parse::<u64>().unwrap_or(0))
+            .collect()
+    };
+    let latest_parts = parse(latest);
+    let current_parts = parse(current);
+    for index in 0..latest_parts.len().max(current_parts.len()) {
+        let left = latest_parts.get(index).copied().unwrap_or(0);
+        let right = current_parts.get(index).copied().unwrap_or(0);
+        if left != right {
+            return left > right;
+        }
+    }
+    false
+}
+
+fn parse_latest_release(body: &str, current_version: &str) -> UpdateCheckResult {
+    let Ok(json) = serde_json::from_str::<Value>(body) else {
+        return UpdateCheckResult {
+            current_version: current_version.to_string(),
+            latest_version: current_version.to_string(),
+            has_update: false,
+            release_url: String::new(),
+            download_url: None,
+            notes: "解析更新信息失败".to_string(),
+        };
+    };
+
+    let tag = json
+        .get("tag_name")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    let release_url = json
+        .get("html_url")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    let notes: String = json
+        .get("body")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .chars()
+        .take(600)
+        .collect();
+    let download_url = json
+        .get("assets")
+        .and_then(Value::as_array)
+        .and_then(|assets| {
+            assets
+                .iter()
+                .filter_map(|asset| {
+                    let name = asset.get("name")?.as_str()?;
+                    let url = asset.get("browser_download_url")?.as_str()?;
+                    (name.ends_with("_x64-setup.exe")).then_some(url.to_string())
+                })
+                .next_back()
+        });
+
+    let latest_version = normalize_version(tag);
+    UpdateCheckResult {
+        current_version: current_version.to_string(),
+        latest_version: latest_version.clone(),
+        has_update: !latest_version.is_empty()
+            && version_is_newer(&latest_version, current_version),
+        release_url,
+        download_url,
+        notes,
+    }
+}
+
+#[tauri::command]
+async fn check_update() -> AppResult<UpdateCheckResult> {
+    let current_version = env!("CARGO_PKG_VERSION").to_string();
+    let client = http_client()?;
+    let response = client
+        .get(GITHUB_LATEST_RELEASE_API)
+        .header("Accept", "application/vnd.github+json")
+        .timeout(Duration::from_secs(15))
+        .send()
+        .await
+        .map_err(|error| format!("检查更新失败：{error}"))?;
+
+    let status = response.status();
+    let body = response
+        .text()
+        .await
+        .map_err(|error| format!("读取更新信息失败：{error}"))?;
+    if !status.is_success() {
+        return Err(format!("更新服务返回 {status}"));
+    }
+
+    Ok(parse_latest_release(&body, &current_version))
+}
+
+#[tauri::command]
+async fn download_update(url: String) -> AppResult<String> {
+    let trimmed = url.trim().to_string();
+    if !trimmed.starts_with("https://") {
+        return Err("更新下载地址不合法".to_string());
+    }
+
+    let client = http_client()?;
+    let response = client
+        .get(&trimmed)
+        .timeout(Duration::from_secs(300))
+        .send()
+        .await
+        .map_err(|error| format!("下载更新失败：{error}"))?
+        .error_for_status()
+        .map_err(|error| format!("下载更新失败：{error}"))?;
+    let bytes = response
+        .bytes()
+        .await
+        .map_err(|error| format!("读取更新包失败：{error}"))?;
+
+    let file_name = trimmed
+        .rsplit('/')
+        .next()
+        .filter(|name| name.ends_with(".exe"))
+        .unwrap_or("APlus_update_setup.exe");
+    let path = std::env::temp_dir().join(file_name);
+    std::fs::write(&path, &bytes).map_err(|error| format!("保存更新包失败：{error}"))?;
+
+    Ok(path.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+fn run_installer(app: AppHandle, path: String) -> AppResult<()> {
+    let installer = std::path::Path::new(&path);
+    if !installer.is_file() {
+        return Err("更新包不存在或已损坏".to_string());
+    }
+
+    app_log::append_log(&app, "INFO", &format!("启动更新安装程序：{path}"));
+    std::process::Command::new(installer)
+        .spawn()
+        .map_err(|error| format!("启动安装程序失败：{error}"))?;
+
+    app.exit(0);
+    Ok(())
+}
+
+#[tauri::command]
+fn append_log(app: AppHandle, level: String, message: String) -> AppResult<()> {
+    app_log::append_log(&app, &level, &message);
+    Ok(())
+}
+
+#[tauri::command]
+fn open_log_file(app: AppHandle) -> AppResult<()> {
+    let path = app_log::log_file_path(&app)?;
+    if !path.exists() {
+        std::fs::write(&path, "").map_err(|error| format!("创建日志文件失败：{error}"))?;
+    }
+
+    std::process::Command::new("explorer")
+        .arg(&path)
+        .spawn()
+        .map_err(|error| format!("打开日志失败：{error}"))?;
+    Ok(())
 }
 
 #[tauri::command]
@@ -1962,6 +2146,32 @@ mod tests {
     use super::*;
 
     #[test]
+    fn compares_release_versions() {
+        assert!(version_is_newer("1.0.8", "1.0.7"));
+        assert!(version_is_newer("1.1.0", "1.0.9"));
+        assert!(version_is_newer("2.0", "1.9.9"));
+        assert!(!version_is_newer("1.0.7", "1.0.7"));
+        assert!(!version_is_newer("1.0.6", "1.0.7"));
+        assert!(!version_is_newer("", "1.0.7"));
+    }
+
+    #[test]
+    fn parses_latest_release_payload() {
+        let body = r#"{"tag_name":"v1.0.8","html_url":"https://github.com/XingAur/stock-widget/releases/tag/v1.0.8","body":"修复与优化","assets":[{"name":"latest.json","browser_download_url":"https://example.com/latest.json"},{"name":"APlus_Assistant_1.0.8_x64-setup.exe","browser_download_url":"https://example.com/APlus_Assistant_1.0.8_x64-setup.exe"}]}"#;
+
+        let result = parse_latest_release(body, "1.0.7");
+        assert!(result.has_update);
+        assert_eq!(result.latest_version, "1.0.8");
+        assert_eq!(
+            result.download_url.as_deref(),
+            Some("https://example.com/APlus_Assistant_1.0.8_x64-setup.exe")
+        );
+
+        let same = parse_latest_release(body, "1.0.8");
+        assert!(!same.has_update);
+    }
+
+    #[test]
     fn converts_plain_codes_to_tencent_codes() {
         assert_eq!(to_tencent_code("600000"), "sh600000");
         assert_eq!(to_tencent_code("588870"), "sh588870");
@@ -2609,9 +2819,15 @@ fn main() {
         ))
         .plugin(tauri_plugin_store::Builder::new().build())
         .setup(|app| {
+            app_log::install_panic_hook(app.handle());
+
             let restore = MenuItem::with_id(app, "restore", "恢复窗口", true, None::<&str>)?;
+            let check_update_item =
+                MenuItem::with_id(app, "check-update", "检查更新", true, None::<&str>)?;
+            let open_log_item = MenuItem::with_id(app, "open-log", "运行日志", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&restore, &quit])?;
+            let menu =
+                Menu::with_items(app, &[&restore, &check_update_item, &open_log_item, &quit])?;
 
             let tray = app.tray_by_id("main").expect("tray icon not found");
             if let Some(icon) = app.default_window_icon().cloned() {
@@ -2624,6 +2840,18 @@ fn main() {
             let _ = tray.set_show_menu_on_left_click(true);
             tray.on_menu_event(|app, event| match event.id.as_ref() {
                 "restore" => restore_main_window(app),
+                "check-update" => {
+                    app_log::append_log(app, "INFO", "托盘触发检查更新");
+                    restore_main_window(app);
+                    if let Some(window) = app.get_webview_window("main") {
+                        let _ = window.emit("tray-check-update", ());
+                    }
+                }
+                "open-log" => {
+                    if let Err(error) = open_log_file(app.clone()) {
+                        app_log::append_log(app, "ERROR", &format!("打开日志失败：{error}"));
+                    }
+                }
                 "quit" => {
                     save_window_geometry(app);
                     app.exit(0);
@@ -2660,6 +2888,11 @@ fn main() {
             fetch_indices,
             fetch_global_indices,
             ocr_image,
+            check_update,
+            download_update,
+            run_installer,
+            append_log,
+            open_log_file,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -98,6 +98,17 @@ export const initScript = `
           const wanted = (args.codes || []).map(String);
           return fundDb.filter((fund) => wanted.includes(fund.code));
         }
+        case 'append_log':
+          return null;
+        case 'check_update':
+          return {
+            currentVersion: '9.9.9',
+            latestVersion: '9.9.9',
+            hasUpdate: false,
+            releaseUrl: '',
+            downloadUrl: null,
+            notes: ''
+          };
         case 'ocr_image':
           state.ocrCalls = (state.ocrCalls || 0) + 1;
           return [

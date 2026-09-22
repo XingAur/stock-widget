@@ -8,7 +8,7 @@ const USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/
 
 static HTTP_CLIENT: OnceLock<HttpResult<Client>> = OnceLock::new();
 
-fn http_client() -> HttpResult<&'static Client> {
+pub(crate) fn http_client() -> HttpResult<&'static Client> {
     match HTTP_CLIENT.get_or_init(|| {
         Client::builder()
             .connect_timeout(Duration::from_secs(5))

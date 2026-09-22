@@ -36,6 +36,10 @@ function squeezeSpacing(line: string): string {
   return line.replace(SPACE_AFTER_WORD, '').replace(SPACE_BEFORE_WORD, '')
 }
 
+function normalizeName(value: string): string {
+  return value.replace(/\s+/g, '').replace(/（/g, '(').replace(/）/g, ')')
+}
+
 /**
  * 基金名称的"结构词"：出现即视为基金名。
  * 泛行业词（指数/黄金/半导体等）单独出现不触发，避免把"我的基金 全部 偏股 偏债 指数…"
@@ -46,17 +50,24 @@ const FUND_STRUCTURAL_KEYWORDS = [
   '回报', '趋势', '优势', '量化', '增强', 'LOF', 'ETF', 'FOF', 'QDII'
 ]
 
-function normalizeName(value: string): string {
-  return value.replace(/\s+/g, '').replace(/（/g, '(').replace(/）/g, ')')
-}
-
 function looksLikeFundName(segment: string): boolean {
-  return FUND_STRUCTURAL_KEYWORDS.some((keyword) => segment.includes(keyword))
+  if (FUND_STRUCTURAL_KEYWORDS.some((keyword) => segment.includes(keyword))) {
+    return true
+  }
+
+  // 纯指数基金（"交银施罗德创业板50指数C"）：名称含"指数"、够长、以份额后缀
+  // A/C/E/Y 结尾才认定，挡住"偏债指数"这类短导航词和长导航句。
+  return segment.includes('指数')
+    && segment.length >= 6
+    && /[ACEY]$/.test(segment)
 }
 
 export function parseOcrLines(lines: readonly string[]): OcrParseResult {
   const stockByCode = new Map<string, OcrStockCandidate>()
   const fundByName = new Map<string, OcrFundCandidate>()
+  // 部分 App（雪球/同花顺自选列表）把代码放在名称下方独立一行：
+  // 记住最近一行"纯名称"文本，作为独立代码行的名称来源。
+  let lastStandaloneName = ''
 
   for (const rawLine of lines) {
     const line = squeezeSpacing(rawLine.trim())
@@ -68,15 +79,21 @@ export function parseOcrLines(lines: readonly string[]): OcrParseResult {
     const codes = [...line.matchAll(STOCK_CODE_PATTERN)].map((match) => match[1])
 
     if (codes.length > 0) {
-      // 股票持仓行：取 6 位代码；名称去掉粘连的尾部数字（代码或最新价）
+      // 股票持仓行：取 6 位代码；名称去掉粘连的尾部数字（代码或最新价），
+      // 同行没有名称时回退到上一行的纯名称（跨行布局）。
       for (const code of codes) {
         if (!stockByCode.has(code)) {
-          const rawName = segments[0] ?? ''
+          const rawName = segments[0] ?? lastStandaloneName
           const name = rawName.replace(/\d+$/, '').trim()
           stockByCode.set(code, { code, name: name || rawName })
         }
       }
       continue
+    }
+
+    if (segments.length === 1 && codes.length === 0) {
+      const candidate = segments[0].replace(/[0-9]+$/, '')
+      lastStandaloneName = candidate || segments[0]
     }
 
     for (const segment of segments) {
