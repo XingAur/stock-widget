@@ -35,15 +35,44 @@
         </section>
 
         <section class="quant-section">
-          <h4>持仓对照<span>（目标=池内等权）</span></h4>
+          <h4>
+            持仓对照
+            <div class="target-switch" role="group" aria-label="目标权重模式">
+              <button type="button" :class="{ active: targetMode === 'equal' }" @click="switchTargetMode('equal')">等权</button>
+              <button type="button" :class="{ active: targetMode === 'score' }" @click="switchTargetMode('score')">评分加权</button>
+            </div>
+            <label class="quant-assets">
+              总资金
+              <input
+                v-model="totalAssetsInput"
+                type="number"
+                min="0"
+                step="1"
+                placeholder="万"
+                title="账户总资金（万元，含现金）。填写后按总资产口径对照；留空则按股票持仓内部占比"
+                @change="saveTotalAssets"
+                @keydown.stop
+              >
+              万
+            </label>
+          </h4>
           <div v-if="holdingRows.length === 0" class="quant-hint">尚未录入持仓：右键自选卡片可录入成本与股数</div>
+          <div v-else-if="!totalAssetsInput" class="quant-hint">未填总资金：金额按已录持仓市值折算；填写后按总资产口径并显示建议买入金额</div>
+          <div v-else-if="cashRow" class="quant-hold cash">
+            <span class="quant-name">现金</span>
+            <div class="quant-bars"><div class="quant-bar current" :style="{ width: `${Math.min(100, cashRow.percent)}%` }" /></div>
+            <span class="quant-drift">{{ cashRow.text }}<i>{{ amountText(cashRow.amount) }}</i></span>
+          </div>
           <div v-for="row in holdingRows" :key="row.code" class="quant-hold">
             <span class="quant-name" :title="row.name">{{ row.name }}</span>
             <div class="quant-bars">
               <div class="quant-bar target" :style="{ width: `${row.targetPercent}%` }" />
               <div class="quant-bar current" :style="{ width: `${row.currentPercent}%` }" />
             </div>
-            <span class="quant-drift" :class="driftTone(row.drift)">{{ driftText(row.drift) }}</span>
+            <span class="quant-drift" :class="driftTone(row.drift)">
+              {{ driftText(row.drift, row.held) }}
+              <i>{{ amountText(row.driftAmount) }}</i>
+            </span>
           </div>
         </section>
 
@@ -96,6 +125,7 @@ import { computed, onMounted, ref } from 'vue'
 import type { KlinePoint } from '../api/stock'
 import { useStockStore } from '../stores/stock'
 import { lastWatchlistViewType } from '../utils/market'
+import { readPersistedSlice, updatePersistedSlice } from '../utils/persistence'
 import { computeFactorRows, loadQuantKlines, runEqualWeightBacktest, type BacktestResult, type FactorRow } from '../utils/quant'
 
 interface HoldingRow {
@@ -104,10 +134,15 @@ interface HoldingRow {
   targetPercent: number
   currentPercent: number
   drift: number
+  driftAmount: number | null
+  held: boolean
 }
 
 const stockStore = useStockStore()
 const rows = ref<(FactorRow & { name: string })[]>([])
+const targetMode = ref<'equal' | 'score'>('equal')
+const totalAssetsInput = ref('')
+const cashRow = ref<{ percent: number; amount: number; text: string } | null>(null)
 const holdingRows = ref<HoldingRow[]>([])
 const backtest = ref<BacktestResult | null>(null)
 const loading = ref(false)
@@ -165,11 +200,55 @@ function driftTone(drift: number): string {
   return Math.abs(drift) < 0.005 ? '' : drift > 0 ? 'down' : 'up'
 }
 
-function driftText(drift: number): string {
+/** 目标权重：等权 or 评分加权（线性映射保证为正，最强≈最弱数倍） */
+function targetWeights(poolRows: FactorRow[], mode: 'equal' | 'score'): Map<string, number> {
+  const weights = new Map<string, number>()
+  const n = poolRows.length
+  if (n === 0) {
+    return weights
+  }
+  if (mode === 'equal') {
+    const w = 1 / n
+    poolRows.forEach((row) => weights.set(row.code, w))
+    return weights
+  }
+  const scored = poolRows.filter((row) => row.composite !== null)
+  if (scored.length < 2) {
+    const w = 1 / n
+    poolRows.forEach((row) => weights.set(row.code, w))
+    return weights
+  }
+  const values = scored.map((row) => row.composite as number)
+  const min = Math.min(...values)
+  const raw = scored.map((row) => (row.composite as number) - min + 0.4)
+  const total = raw.reduce((sum, value) => sum + value, 0)
+  scored.forEach((row, index) => weights.set(row.code, raw[index] / total))
+  const fallback = 0.2 / Math.max(n, 1)
+  poolRows.forEach((row) => {
+    if (!weights.has(row.code)) {
+      weights.set(row.code, fallback)
+    }
+  })
+  const sum = [...weights.values()].reduce((acc, value) => acc + value, 0)
+  weights.forEach((value, key) => weights.set(key, value / sum))
+  return weights
+}
+
+function amountText(amount: number | null): string {
+  if (amount === null || !Number.isFinite(amount) || Math.abs(amount) < 1) {
+    return ''
+  }
+  const abs = Math.abs(amount)
+  const text = abs >= 10_000 ? `${(abs / 10_000).toFixed(abs >= 100_000 ? 0 : 1)}万` : abs.toFixed(0)
+  return `¥${text}`
+}
+
+function driftText(drift: number, held: boolean): string {
   if (Math.abs(drift) < 0.005) {
     return '持平'
   }
-  const action = drift > 0 ? '减仓' : '加仓'
+  // 低于目标：有仓位是加仓，没仓位才是建仓
+  const action = drift > 0 ? '减仓' : held ? '加仓' : '建仓'
   return `${action} ${Math.abs(drift * 100).toFixed(1)}%`
 }
 
@@ -201,35 +280,72 @@ async function reload(): Promise<void> {
     rows.value = factorRows.map((row) => ({ ...row, name: displayName(row.code) }))
     backtest.value = runEqualWeightBacktest(usable)
 
-    // 持仓对照：目标=等权，当前=已录持仓市值占比
+    // 持仓对照：填了总资金按总资产口径（含现金与未持仓票）；否则按股票持仓内部占比
     const positions = stockStore.stockPositions
     const priced = Object.keys(usable).map((code) => ({
       code,
       price: usable[code][usable[code].length - 1]?.close ?? 0
     }))
     const priceMap = new Map(priced.map((item) => [item.code, item.price]))
-    const heldValue = Object.entries(positions).reduce((total, [code, position]) => {
-      const price = priceMap.get(code) ?? 0
-      return total + position.shares * price
-    }, 0)
+    const totalAssets = Number(totalAssetsInput.value) * 10_000
 
-    if (heldValue > 0) {
-      const targetWeight = 1 / Math.max(1, usable.length ? Object.keys(usable).length : 1)
-      holdingRows.value = Object.entries(positions)
-        .map(([code, position]) => {
-          const price = priceMap.get(code) ?? 0
-          const currentWeight = (position.shares * price) / heldValue
+    if (totalAssets > 0) {
+      const priced_ = Object.keys(usable).map((code) => {
+        const price = priceMap.get(code) ?? 0
+        const shares = positions[code]?.shares ?? 0
+        return { code, name: displayName(code), value: shares * price }
+      })
+      const invested = priced_.reduce((total, item) => total + item.value, 0)
+      const weights = targetWeights(rows.value, targetMode.value)
+      holdingRows.value = priced_
+        .map((item) => {
+          const currentWeight = item.value / totalAssets
+          const target = weights.get(item.code) ?? 0
+          const drift = currentWeight - target
           return {
-            code,
-            name: displayName(code),
-            targetPercent: Math.min(100, targetWeight * 100),
+            code: item.code,
+            name: item.name,
+            targetPercent: Math.min(100, target * 100),
             currentPercent: Math.min(100, currentWeight * 100),
-            drift: currentWeight - targetWeight
+            drift,
+            driftAmount: drift * totalAssets,
+            held: item.value > 1
           }
         })
         .sort((left, right) => Math.abs(right.drift) - Math.abs(left.drift))
+      const cashWeight = Math.max(0, 1 - invested / totalAssets)
+      cashRow.value = {
+        percent: cashWeight * 100,
+        amount: cashWeight * totalAssets,
+        text: `占 ${(cashWeight * 100).toFixed(1)}%`
+      }
     } else {
-      holdingRows.value = []
+      cashRow.value = null
+      const heldValue = Object.entries(positions).reduce((total, [code, position]) => {
+        const price = priceMap.get(code) ?? 0
+        return total + position.shares * price
+      }, 0)
+
+      // 未填总资金：按股票持仓内部占比对照；未持仓的自选也列出建仓目标（无金额基数）
+      const weightsInner = targetWeights(rows.value, targetMode.value)
+      holdingRows.value = Object.keys(usable)
+        .map((code) => {
+          const price = priceMap.get(code) ?? 0
+          const shares = positions[code]?.shares ?? 0
+          const currentWeight = heldValue > 0 ? (shares * price) / heldValue : 0
+          const target = weightsInner.get(code) ?? 0
+          const drift = currentWeight - target
+          return {
+            code,
+            name: displayName(code),
+            targetPercent: Math.min(100, target * 100),
+            currentPercent: Math.min(100, currentWeight * 100),
+            drift,
+            driftAmount: heldValue > 0 ? drift * heldValue : null,
+            held: shares > 0
+          }
+        })
+        .sort((left, right) => Math.abs(right.drift) - Math.abs(left.drift))
     }
 
     updatedAt.value = new Date()
@@ -242,7 +358,29 @@ function goBack(): void {
   stockStore.setActiveAssetType(lastWatchlistViewType())
 }
 
+function switchTargetMode(mode: 'equal' | 'score'): void {
+  if (targetMode.value === mode) {
+    return
+  }
+  targetMode.value = mode
+  updatePersistedSlice('quantTargetMode', mode)
+  void reload()
+}
+
+function saveTotalAssets(): void {
+  const value = Number(totalAssetsInput.value)
+  updatePersistedSlice('quantTotalAssets', Number.isFinite(value) && value > 0 ? value : null)
+}
+
 onMounted(() => {
+  const savedMode = readPersistedSlice('quantTargetMode')
+  if (savedMode === 'score') {
+    targetMode.value = 'score'
+  }
+  const saved = readPersistedSlice('quantTotalAssets')
+  if (typeof saved === 'number' && saved > 0) {
+    totalAssetsInput.value = String(saved)
+  }
   void reload()
 })
 </script>
@@ -270,13 +408,21 @@ onMounted(() => {
 .quant-score{flex:0 0 34px;font-size:12px;font-weight:800;text-align:right;font-variant-numeric:tabular-nums;color:var(--text-secondary)}
 .quant-score.up{color:#ff7474}
 .quant-score.down{color:#3ad283}
+.quant-assets{display:inline-flex;align-items:center;gap:3px;margin-left:auto;font-size:9px;font-weight:400;color:var(--text-muted)}
+.quant-assets input{width:44px;height:18px;padding:0 4px;border:1px solid rgba(255,255,255,.14);border-radius:5px;background:rgba(255,255,255,.05);color:var(--text-primary);font-size:10px;outline:none}
+.quant-assets input:focus{border-color:rgba(93,168,255,.55)}
+.quant-hold.cash{background:rgba(255,255,255,.02)}
+.target-switch{display:inline-flex;margin-left:6px;padding:1px;border:1px solid rgba(255,255,255,.12);border-radius:6px}
+.target-switch button{height:14px;padding:0 6px;border:none;border-radius:4px;background:transparent;color:var(--text-muted);font-size:9px;font-weight:700;cursor:pointer}
+.target-switch button.active{color:#f8fbff;background:rgba(45,124,246,.75)}
 .quant-hold{display:flex;align-items:center;gap:7px;padding:5px 7px;border-radius:8px;background:rgba(255,255,255,.03)}
 .quant-hold+.quant-hold{margin-top:3px}
 .quant-bars{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
 .quant-bar{height:4px;border-radius:2px}
 .quant-bar.target{background:rgba(93,168,255,.55)}
 .quant-bar.current{background:rgba(255,255,255,.22)}
-.quant-drift{flex:0 0 62px;font-size:10px;font-weight:700;text-align:right;white-space:nowrap;color:var(--text-muted)}
+.quant-drift{flex:0 0 64px;display:flex;flex-direction:column;align-items:flex-end;gap:1px;font-size:10px;font-weight:700;text-align:right;white-space:nowrap;color:var(--text-muted)}
+.quant-drift i{font-style:normal;font-size:9px;font-weight:500;color:var(--text-muted);opacity:.8}
 .quant-drift.up{color:#ff7474}
 .quant-drift.down{color:#3ad283}
 .quant-hint{margin:6px 0 0;font-size:10px;line-height:1.5;color:var(--text-muted)}
