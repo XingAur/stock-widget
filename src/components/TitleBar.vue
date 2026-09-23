@@ -121,7 +121,7 @@ const displayTitle = computed(() => props.title.replace(/^A\+/, '').trim() || pr
 .brand-badge {
   height: 20px;
   padding: 0 7px;
-  margin-left: 2px;
+  margin-right: -6px;
   border: none;
   border-radius: 6px;
   background: rgba(45, 124, 246, 0.14);
@@ -145,7 +145,7 @@ const displayTitle = computed(() => props.title.replace(/^A\+/, '').trim() || pr
 }
 
 .app-title {
-  margin-left: 10px;
+  margin-left: 2px;
   padding: 2px 4px;
   border: none;
   border-radius: 6px;
