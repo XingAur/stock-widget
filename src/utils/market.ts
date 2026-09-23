@@ -18,15 +18,15 @@ export const MARKET_GROUPS: readonly MarketGroup[] = [
 const OPEN_MARKET_MAX_STALE_MINUTES = 30
 
 /** 地球按钮是开关：记录进入市场页前的自选视图（股票/基金），便于返回 */
-let lastWatchlistView: Exclude<AssetType, 'market'> = 'stock'
+let lastWatchlistView: 'stock' | 'fund' = 'stock'
 
 export function rememberWatchlistView(assetType: AssetType): void {
-  if (assetType !== 'market') {
+  if (assetType === 'stock' || assetType === 'fund') {
     lastWatchlistView = assetType
   }
 }
 
-export function lastWatchlistViewType(): Exclude<AssetType, 'market'> {
+export function lastWatchlistViewType(): 'stock' | 'fund' {
   return lastWatchlistView
 }
 

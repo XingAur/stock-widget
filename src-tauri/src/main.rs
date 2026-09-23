@@ -2120,14 +2120,31 @@ async fn fetch_minute_data(code: String) -> AppResult<Vec<MinutePoint>> {
 
 #[tauri::command]
 async fn fetch_kline_data(code: String, ktype: String) -> AppResult<Vec<KlinePoint>> {
+    fetch_kline_series(code, ktype, None, None).await
+}
+
+/// adjust: "qfq"（默认，前端图表用）或 "hfq"（量化因子/回测用，避免前复权的未来函数）；
+/// count: 返回根数，默认 120，量化取 320。
+#[tauri::command]
+async fn fetch_kline_series(
+    code: String,
+    ktype: String,
+    adjust: Option<String>,
+    count: Option<u32>,
+) -> AppResult<Vec<KlinePoint>> {
     let period = match ktype.as_str() {
         "week" => "week",
         "month" => "month",
         _ => "day",
     };
+    let fq = match adjust.as_deref() {
+        Some("hfq") => "hfq",
+        _ => "qfq",
+    };
+    let bars = count.unwrap_or(120).clamp(20, 640);
     let tencent_code = to_tencent_code(&code);
     let url = format!(
-        "https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param={tencent_code},{period},,,120,qfq"
+        "https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param={tencent_code},{period},,,{bars},{fq}"
     );
     let text = fetch_text(&url, None).await?;
 
@@ -2139,7 +2156,7 @@ async fn fetch_kline_data(code: String, ktype: String) -> AppResult<Vec<KlinePoi
         return Ok(Vec::new());
     };
 
-    let fallback_key = format!("qfq{period}");
+    let fallback_key = format!("{fq}{period}");
     let rows = stock_data
         .get(period)
         .and_then(Value::as_array)
@@ -2942,6 +2959,7 @@ fn main() {
             fetch_index_history,
             fetch_minute_data,
             fetch_kline_data,
+            fetch_kline_series,
             fetch_indices,
             fetch_global_indices,
             ocr_image,

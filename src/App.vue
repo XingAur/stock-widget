@@ -2,20 +2,23 @@
   <div class="app-shell" @mousedown="handleShellMouseDown">
     <TitleBar
       :title="assetTitle"
+      :quant-active="stockStore.activeAssetType === 'quant'"
       @close="handleClose"
       @minimize="handleMinimize"
       @settings="openSettings"
       @toggle-asset-type="toggleAssetType"
+      @toggle-quant="toggleQuant"
     />
 
     <main class="workspace" :class="{ 'detail-left': hasDetail && detailPosition === 'left', 'detail-right': hasDetail && detailPosition === 'right' }">
       <aside class="sidebar">
         <HomeView
-          v-if="stockStore.activeAssetType !== 'market'"
+          v-if="stockStore.activeAssetType === 'stock' || stockStore.activeAssetType === 'fund'"
           :selected-code="selectedCode"
           @select-detail="showDetail"
         />
-        <MarketView v-else />
+        <MarketView v-else-if="stockStore.activeAssetType === 'market'" />
+        <QuantView v-else />
       </aside>
 
       <section v-if="hasDetail" class="detail-panel" :class="{ 'panel-left': detailPosition === 'left', 'panel-right': detailPosition === 'right' }">
@@ -87,13 +90,14 @@ import { currentMonitor, getCurrentWindow } from '@tauri-apps/api/window'
 import TitleBar from './components/TitleBar.vue'
 import HomeView from './views/Home.vue'
 import MarketView from './views/MarketView.vue'
+import QuantView from './views/QuantView.vue'
 import { useSettingsStore } from './stores/settings'
 import { useStockStore } from './stores/stock'
 import type { AssetType } from './api/stock'
 import { getAssetTitle, getNextAssetType } from './utils/assets'
 import { focusFirstModalControl, trapModalFocus } from './utils/modalFocus'
 import { isTauriRuntime } from './utils/persistence'
-import { rememberWatchlistView } from './utils/market'
+import { lastWatchlistViewType, rememberWatchlistView } from './utils/market'
 import { logError, logInfo } from './utils/logger'
 import { startWindowDrag } from './utils/windowDrag'
 import { kickWebViewPaint, onPageVisibilityChange, reloadIfAppShellMissing } from './utils/windowLifecycle'
@@ -268,6 +272,16 @@ function toggleAssetType() {
   handleAssetTypeChange(nextAssetType)
 }
 
+function toggleQuant() {
+  const nextAssetType: AssetType = stockStore.activeAssetType === 'quant'
+    ? lastWatchlistViewType()
+    : 'quant'
+  stockStore.setActiveAssetType(nextAssetType)
+  if (nextAssetType !== 'quant') {
+    handleAssetTypeChange(nextAssetType)
+  }
+}
+
 async function determineDetailPosition(): Promise<'left' | 'right'> {
   try {
     const appWindow = getCurrentWindow()
@@ -372,7 +386,7 @@ async function handleMinimize() {
 
 watch(() => stockStore.activeAssetType, (nextAssetType) => {
   rememberWatchlistView(nextAssetType)
-  if (nextAssetType === 'market' && selectedDetail.value) {
+  if ((nextAssetType === 'market' || nextAssetType === 'quant') && selectedDetail.value) {
     void closeDetail()
   }
 })

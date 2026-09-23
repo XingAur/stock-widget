@@ -121,11 +121,14 @@ describe('toMarketCardModel', () => {
 })
 
 describe('watchlist view memory', () => {
-  it('remembers the last non-market view for the globe toggle', () => {
+  it('remembers the last watchlist view for globe and quant toggles', () => {
     rememberWatchlistView('fund')
     expect(lastWatchlistViewType()).toBe('fund')
 
     rememberWatchlistView('market')
+    expect(lastWatchlistViewType()).toBe('fund')
+
+    rememberWatchlistView('quant')
     expect(lastWatchlistViewType()).toBe('fund')
 
     rememberWatchlistView('stock')

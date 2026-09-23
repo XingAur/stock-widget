@@ -59,7 +59,7 @@ export interface SearchResult {
   market: string
 }
 
-export type AssetType = 'stock' | 'fund' | 'market'
+export type AssetType = 'stock' | 'fund' | 'market' | 'quant'
 
 export type MarketKey = 'cn' | 'hk' | 'us' | 'world' | 'sectors' | 'industry-sectors' | 'us-sectors'
 
@@ -213,6 +213,16 @@ function normalizeKlinePoints(points: KlinePoint[]): KlinePoint[] {
 
 export async function fetchKlineData(code: string, period: ChartPeriod = 'day'): Promise<KlinePoint[]> {
   const points = await invokeSafe('fetch_kline_data', { code, ktype: period }, [])
+  return normalizeKlinePoints(points)
+}
+
+/** 量化用 K 线：hfq 后复权（避免前复权的未来函数），count 可到 640 */
+export async function fetchQuantKline(code: string, count = 320): Promise<KlinePoint[]> {
+  const points = await invokeSafe(
+    'fetch_kline_series',
+    { code, ktype: 'day', adjust: 'hfq', count },
+    []
+  )
   return normalizeKlinePoints(points)
 }
 

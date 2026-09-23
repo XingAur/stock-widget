@@ -290,3 +290,32 @@ async function countCommand(page: Page, command: string): Promise<number> {
     command
   )
 }
+
+test.describe('量化页（A+徽标入口）', () => {
+  test('A+ 徽标进入量化页：评分排行、持仓对照、回测指标', async ({ page }) => {
+    await addStockThroughSearch(page, '600000', '浦发银行')
+
+    const badge = page.locator('.brand-badge')
+    await expect(badge).toHaveAttribute('title', /量化/)
+    await badge.click()
+
+    await expect(page.locator('.quant-view')).toBeVisible()
+    await expect(badge).toHaveClass(/active/)
+
+    // 评分排行：浦发银行出现且带动量百分比
+    const row = page.locator('.quant-row', { hasText: '浦发银行' })
+    await expect(row).toBeVisible()
+    await expect(row.locator('.quant-mom')).toHaveText(/%$/)
+
+    // 回测：净值曲线与指标卡（mock K 线单边上涨 → 总收益为正）
+    await expect(page.locator('.quant-nav polyline')).toHaveAttribute('points', /.+/)
+    const metrics = page.locator('.metric')
+    await expect(metrics).toHaveCount(3)
+    await expect(metrics.filter({ hasText: '总收益' }).locator('strong')).toHaveClass(/up/)
+
+    // 返回自选
+    await page.locator('.quant-back').click()
+    await expect(page.locator('.quant-view')).toHaveCount(0)
+    await expect(page.locator('.stock-list')).toBeVisible()
+  })
+})

@@ -124,6 +124,19 @@ export const initScript = `
             { time: '09:31', price: 10.1, volume: 30, averagePrice: 10.05 }
           ];
         case 'fetch_kline_data':
+          return [];
+        case 'fetch_kline_series': {
+          // 量化 K 线 mock：两段上涨（模拟 hfq 连续），够 21 根因子窗口
+          const bars = [];
+          let price = 100;
+          for (let i = 0; i < 60; i += 1) {
+            price = 100 + i;
+            const day = String(i % 28 + 1).padStart(2, '0');
+            const month = String(Math.floor(i / 28) + 1);
+            bars.push({ time: '2026-0' + month + '-' + day, open: price - 0.5, close: price, high: price + 1, low: price - 1, volume: 10000 });
+          }
+          return bars;
+        }
         case 'fetch_indices':
           return [];
         case 'fetch_global_indices': {
