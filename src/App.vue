@@ -273,6 +273,14 @@ function toggleAssetType() {
   handleAssetTypeChange(nextAssetType)
 }
 
+const quantExpandDirection = ref<'left' | 'right'>('right')
+
+async function openQuantWide(): Promise<void> {
+  const direction = await determineDetailPosition(QUANT_WIDE_SIZE.width)
+  quantExpandDirection.value = direction
+  await syncWindowSize(false, direction, true)
+}
+
 function toggleQuant() {
   const nextAssetType: AssetType = stockStore.activeAssetType === 'quant'
     ? lastWatchlistViewType()
@@ -283,7 +291,7 @@ function toggleQuant() {
   }
 }
 
-async function determineDetailPosition(): Promise<'left' | 'right'> {
+async function determineDetailPosition(requiredLogicalWidth = DETAIL_WIDTH): Promise<'left' | 'right'> {
   try {
     const appWindow = getCurrentWindow()
     const scaleFactor = await appWindow.scaleFactor()
@@ -294,7 +302,7 @@ async function determineDetailPosition(): Promise<'left' | 'right'> {
     const monitor = await currentMonitor()
     const monitorLeft = monitor?.workArea.position.x ?? 0
     const monitorRight = monitor ? monitor.workArea.position.x + monitor.workArea.size.width : Number.POSITIVE_INFINITY
-    const requiredWidth = new LogicalSize(DETAIL_WIDTH, 0).toPhysical(scaleFactor).width
+    const requiredWidth = new LogicalSize(requiredLogicalWidth, 0).toPhysical(scaleFactor).width
 
     const rightAvailable = monitorRight - windowRightEdge
     const leftAvailable = windowLeftEdge - monitorLeft
@@ -359,7 +367,7 @@ async function syncWindowSize(
     const currentPosition = await appWindow.outerPosition()
     const targetPhysicalWidth = new LogicalSize(targetWidth, currentLogicalSize.height).toPhysical(scaleFactor).width
     const widthDelta = targetPhysicalWidth - currentSize.width
-    const shouldAnchorWidgetSide = (nextHasDetail && targetDetailPosition === 'left') || (!nextHasDetail && targetDetailPosition === 'left')
+    const shouldAnchorWidgetSide = targetDetailPosition === 'left' && (nextHasDetail || wide)
 
     if (shouldAnchorWidgetSide && widthDelta !== 0) {
       await appWindow.setPosition(new PhysicalPosition(currentPosition.x - widthDelta, currentPosition.y))
@@ -395,7 +403,7 @@ watch(() => stockStore.activeAssetType, (nextAssetType) => {
     void closeDetail()
   }
   if (nextAssetType === 'quant') {
-    void syncWindowSize(false, 'right', true)
+    void openQuantWide()
   } else {
     void syncWindowSize(hasDetail.value, detailPosition.value)
   }
