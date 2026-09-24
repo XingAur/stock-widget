@@ -132,3 +132,36 @@ describe('report import', () => {
     expect(parseReport('x')).toBeNull()
   })
 })
+
+import { selectTopN } from './quant/selector'
+
+describe('top-N selector', () => {
+  const rows = [
+    { code: 'a', composite: 2.0, rank: 1, mom20: null, rev5: null, vol20: null, lastClose: 1 },
+    { code: 'b', composite: 1.5, rank: 2, mom20: null, rev5: null, vol20: null, lastClose: 1 },
+    { code: 'c', composite: 1.0, rank: 3, mom20: null, rev5: null, vol20: null, lastClose: 1 },
+    { code: 'd', composite: 0.5, rank: 4, mom20: null, rev5: null, vol20: null, lastClose: 1 },
+    { code: 'e', composite: null, rank: 0, mom20: null, rev5: null, vol20: null, lastClose: 1 }
+  ] as never[]
+
+  it('selects only top N codes', () => {
+    const result = selectTopN(rows, 3, 'equal')
+    expect(result.selected).toEqual(['a', 'b', 'c'])
+    expect(result.weights.size).toBe(3)
+    expect([...result.weights.values()][0]).toBeCloseTo(1 / 3, 8)
+  })
+
+  it('all keeps every scored code but excludes null scores', () => {
+    const result = selectTopN(rows, 'all', 'equal')
+    expect(result.selected).toEqual(['a', 'b', 'c', 'd'])
+  })
+
+  it('score mode floors negative weights and stays monotone', () => {
+    const result = selectTopN(rows, 5, 'score')
+    const values = result.selected.map((code) => result.weights.get(code) as number)
+    expect(Math.min(...values)).toBeGreaterThan(0)
+    for (let i = 1; i < values.length; i += 1) {
+      expect(values[i - 1]).toBeGreaterThan(values[i])
+    }
+  })
+})

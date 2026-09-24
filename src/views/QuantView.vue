@@ -3,6 +3,25 @@
     <div class="quant-header">
       <span class="quant-title">量化 · 自选池</span>
       <span class="quant-sub">{{ summaryText }}</span>
+      <div class="topn-switch" role="group" aria-label="推荐数量">
+        <button
+          v-for="option in TOP_N_OPTIONS"
+          :key="String(option.value)"
+          type="button"
+          :class="{ active: topN === option.value }"
+          @click="switchTopN(option.value)"
+        >
+          {{ option.label }}
+        </button>
+      </div>
+      <input
+        ref="importFileRef"
+        class="import-report-input"
+        type="file"
+        accept=".json,application/json"
+        @change="onImportReportFile"
+      />
+      <button class="quant-refresh" type="button" title="导入研究报告 JSON" @click="importFileRef?.click()">📥</button>
       <button class="quant-refresh" type="button" title="重新取数并计算" @click="hardReload">
         <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <polyline points="23 4 23 10 17 10" />
@@ -29,6 +48,17 @@
           @update-assets="onTotalAssetsInput"
         />
         <BacktestSection :backtest="backtest" />
+
+        <section v-if="importedReport" class="quant-section">
+          <h4>研究报告（导入）<span>{{ importedReport.strategyId }} · {{ importedReport.evidenceStatus }}</span></h4>
+          <div class="quant-metrics">
+            <div v-for="metric in importedMetrics" :key="metric.label" class="metric">
+              <span>{{ metric.label }}</span>
+              <strong>{{ metric.value }}</strong>
+            </div>
+          </div>
+          <p class="quant-hint">区间 {{ importedReport.interval?.start ?? '?' }} ~ {{ importedReport.interval?.end ?? '?' }}；由文件导入，与本机回测独立展示。</p>
+        </section>
       </template>
     </div>
 
@@ -52,6 +82,9 @@ import FactorRankSection from '../components/quant/FactorRankSection.vue'
 import HoldingsDriftSection from '../components/quant/HoldingsDriftSection.vue'
 import BacktestSection from '../components/quant/BacktestSection.vue'
 import { invalidateQuantCache } from '../utils/quant/cache'
+import { TOP_N_OPTIONS, selectTopN, type TopNOption } from '../utils/quant/selector'
+const importFileRef = ref<HTMLInputElement | null>(null)
+import { parseReport, formatReportMetrics, type ImportedReport } from '../utils/quant/report'
 import { readPersistedSlice, updatePersistedSlice } from '../utils/persistence'
 import { computeFactorRows, loadQuantKlineBundle, runEqualWeightBacktest, type BacktestResult, type FactorRow } from '../utils/quant'
 
@@ -68,6 +101,8 @@ interface HoldingRow {
 const stockStore = useStockStore()
 const rows = ref<(FactorRow & { name: string })[]>([])
 const targetMode = ref<'equal' | 'score'>('equal')
+const topN = ref<TopNOption>(5)
+const importedReport = ref<ImportedReport | null>(null)
 const totalAssetsInput = ref('')
 const cashRow = ref<{ percent: number; amount: number; text: string } | null>(null)
 const holdingRows = ref<HoldingRow[]>([])
@@ -75,44 +110,51 @@ const backtest = ref<BacktestResult | null>(null)
 const loading = ref(false)
 const updatedAt = ref<Date | null>(null)
 
-const summaryText = computed(() => `${rows.value.length} 只 · 评分前 3 高亮`)
+const topNLabel = computed(() => TOP_N_OPTIONS.find((option) => option.value === topN.value)?.label ?? 'Top 5')
+const summaryText = computed(() => `${rows.value.length} 只 · 推荐 ${topNLabel.value} · 评分前 3 高亮`)
+const importedMetrics = computed(() => (importedReport.value ? formatReportMetrics(importedReport.value) : null))
 const updatedText = computed(() => (updatedAt.value
   ? `${String(updatedAt.value.getHours()).padStart(2, '0')}:${String(updatedAt.value.getMinutes()).padStart(2, '0')} 更新`
   : ''))
 
 
-/** 目标权重：等权 or 评分加权（线性映射保证为正，最强≈最弱数倍） */
+/** 目标权重：Top-N 选择 + 等权/评分加权（与 a-share-quant selector 一致） */
 function targetWeights(poolRows: FactorRow[], mode: 'equal' | 'score'): Map<string, number> {
-  const weights = new Map<string, number>()
-  const n = poolRows.length
-  if (n === 0) {
-    return weights
+  return selectTopN(poolRows, topN.value, mode).weights
+}
+
+function switchTopN(value: TopNOption): void {
+  if (topN.value === value) {
+    return
   }
-  if (mode === 'equal') {
-    const w = 1 / n
-    poolRows.forEach((row) => weights.set(row.code, w))
-    return weights
+  topN.value = value
+  updatePersistedSlice('quantTopN', value)
+  void reload()
+}
+
+function onImportReportFile(event: Event): void {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file) {
+    return
   }
-  const scored = poolRows.filter((row) => row.composite !== null)
-  if (scored.length < 2) {
-    const w = 1 / n
-    poolRows.forEach((row) => weights.set(row.code, w))
-    return weights
-  }
-  const values = scored.map((row) => row.composite as number)
-  const min = Math.min(...values)
-  const raw = scored.map((row) => (row.composite as number) - min + 0.4)
-  const total = raw.reduce((sum, value) => sum + value, 0)
-  scored.forEach((row, index) => weights.set(row.code, raw[index] / total))
-  const fallback = 0.2 / Math.max(n, 1)
-  poolRows.forEach((row) => {
-    if (!weights.has(row.code)) {
-      weights.set(row.code, fallback)
+  const reader = new FileReader()
+  reader.onload = () => {
+    try {
+      const payload = JSON.parse(String(reader.result))
+      const report = parseReport(payload)
+      if (!report) {
+        window.alert('报告格式不支持：需要研究端导出的 v1 版本 JSON')
+        return
+      }
+      importedReport.value = report
+      updatePersistedSlice('importedQuantReport', report)
+    } catch {
+      window.alert('报告文件解析失败，请确认是有效的 JSON 文件')
     }
-  })
-  const sum = [...weights.values()].reduce((acc, value) => acc + value, 0)
-  weights.forEach((value, key) => weights.set(key, value / sum))
-  return weights
+  }
+  reader.readAsText(file, 'utf-8')
 }
 
 function displayName(code: string): string {
@@ -252,6 +294,16 @@ onMounted(() => {
   if (savedMode === 'score') {
     targetMode.value = 'score'
   }
+  const savedTopN = readPersistedSlice('quantTopN')
+  const parsedTopN = TOP_N_OPTIONS.find((option) => option.value === savedTopN)
+  if (parsedTopN) {
+    topN.value = parsedTopN.value
+  }
+  const savedReport = readPersistedSlice('importedQuantReport')
+  const reparsed = savedReport ? parseReport(savedReport) : null
+  if (reparsed) {
+    importedReport.value = reparsed
+  }
   const saved = readPersistedSlice('quantTotalAssets')
   if (typeof saved === 'number' && saved > 0) {
     totalAssetsInput.value = String(saved)
@@ -265,6 +317,10 @@ onMounted(() => {
 .quant-header{display:flex;align-items:center;gap:6px;margin:0 10px 8px}
 .quant-title{font-size:13px;font-weight:800;color:var(--text-primary)}
 .quant-sub{flex:1;font-size:10px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.topn-switch{display:inline-flex;gap:2px;padding:1px;border:1px solid rgba(255,255,255,.1);border-radius:6px}
+.topn-switch button{height:18px;padding:0 5px;border:none;border-radius:4px;background:transparent;color:var(--text-muted);font-size:9px;font-weight:700;cursor:pointer}
+.topn-switch button.active{color:#f8fbff;background:rgba(45,124,246,.75)}
+.import-report-input{display:none}
 .quant-refresh{width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;border:none;border-radius:7px;background:transparent;color:var(--text-muted);cursor:pointer}
 .quant-refresh:hover{color:var(--text-primary);background:rgba(255,255,255,.06)}
 .quant-body{flex:1;min-height:0;overflow-y:auto;padding:0 10px 8px;display:flex;flex-direction:column;gap:12px}

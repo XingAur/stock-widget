@@ -13,6 +13,8 @@ export type PersistedStateKey =
   | 'fundLedgers'
   | 'activeAssetType'
   | 'activeMarket'
+  | 'quantTopN'
+  | 'importedQuantReport'
   | 'settings'
 
 export interface PersistedAppState {
@@ -25,6 +27,8 @@ export interface PersistedAppState {
   fundLedgers?: Record<string, unknown>
   activeAssetType?: string
   activeMarket?: string
+  quantTopN?: number | string
+  importedQuantReport?: unknown
   settings?: unknown
 }
 
