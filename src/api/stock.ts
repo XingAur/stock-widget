@@ -216,14 +216,31 @@ export async function fetchKlineData(code: string, period: ChartPeriod = 'day'):
   return normalizeKlinePoints(points)
 }
 
-/** 量化用 K 线：hfq 后复权（避免前复权的未来函数），count 可到 640 */
+export interface KlineSeries {
+  code: string
+  adjust: 'hfq' | 'qfq'
+  points: KlinePoint[]
+}
+
+/** 量化用 K 线：hfq 后复权（避免前复权的未来函数），count 可到 640。
+ * 返回带 adjust 元信息（阶段F-37）：调用方可校验收到的口径与请求一致。 */
 export async function fetchQuantKline(code: string, count = 320): Promise<KlinePoint[]> {
+  const series = await fetchQuantKlineSeries(code, 'hfq', count)
+  return series.points
+}
+
+export async function fetchQuantKlineSeries(
+  code: string,
+  adjust: 'hfq' | 'qfq',
+  count = 320
+): Promise<KlineSeries> {
   const points = await invokeSafe(
     'fetch_kline_series',
-    { code, ktype: 'day', adjust: 'hfq', count },
+    { code, ktype: 'day', adjust, count },
     []
   )
-  return normalizeKlinePoints(points)
+  const normalized = normalizeKlinePoints(points)
+  return { code, adjust, points: normalized }
 }
 
 export async function fetchStockDetail(code: string): Promise<StockDetail | null> {

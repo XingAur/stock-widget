@@ -16,6 +16,18 @@ function todayKey(): string {
 
 const rawCache = new Map<string, { day: string; points: KlinePoint[] }>()
 
+/** 手动失效缓存（阶段F-38）：刷新按钮真正重取数据。 */
+export function invalidateQuantCache(): void {
+  klineCache.clear()
+  rawCache.clear()
+}
+
+/** 当前缓存的日期标签（调试/测试用）。 */
+export function quantCacheDay(): string | null {
+  const first = [...klineCache.values()][0]
+  return first?.day ?? null
+}
+
 export async function loadQuantKlineBundle(codes: string[]): Promise<QuantKlineBundle> {
   const today = todayKey()
   const adjusted: Record<string, KlinePoint[]> = {}

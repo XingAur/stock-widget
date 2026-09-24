@@ -3,7 +3,7 @@
     <div class="quant-header">
       <span class="quant-title">量化 · 自选池</span>
       <span class="quant-sub">{{ summaryText }}</span>
-      <button class="quant-refresh" type="button" title="重新计算" @click="reload">
+      <button class="quant-refresh" type="button" title="重新取数并计算" @click="hardReload">
         <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <polyline points="23 4 23 10 17 10" />
           <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
@@ -19,91 +19,16 @@
       </div>
 
       <template v-else>
-        <section class="quant-section">
-          <h4>因子评分<span>（0.7×动量20 + 0.3×反转5，截面分）</span></h4>
-          <div
-            v-for="row in rows"
-            :key="row.code"
-            class="quant-row"
-            :class="{ active: row.rank > 0 && row.rank <= 3 }"
-          >
-            <span class="quant-rank">{{ row.rank > 0 ? row.rank : '-' }}</span>
-            <span class="quant-name" :title="row.name">{{ row.name }}</span>
-            <span class="quant-mom" :class="tone(row.mom20)">{{ percent(row.mom20) }}</span>
-            <span class="quant-score" :class="scoreTone(row.composite)">{{ scoreText(row.composite) }}</span>
-          </div>
-        </section>
-
-        <section class="quant-section">
-          <h4>
-            持仓对照
-            <div class="target-switch" role="group" aria-label="目标权重模式">
-              <button type="button" :class="{ active: targetMode === 'equal' }" @click="switchTargetMode('equal')">等权</button>
-              <button type="button" :class="{ active: targetMode === 'score' }" @click="switchTargetMode('score')">评分加权</button>
-            </div>
-            <label class="quant-assets">
-              总资金
-              <input
-                v-model="totalAssetsInput"
-                type="number"
-                min="0"
-                step="1"
-                placeholder="万"
-                title="账户总资金（万元，含现金）。填写后按总资产口径对照；留空则按股票持仓内部占比"
-                @change="saveTotalAssets"
-                @keydown.stop
-              >
-              万
-            </label>
-          </h4>
-          <div v-if="holdingRows.length === 0" class="quant-hint">尚未录入持仓：右键自选卡片可录入成本与股数</div>
-          <div v-else-if="!totalAssetsInput" class="quant-hint">未填总资金：金额按已录持仓市值折算；填写后按总资产口径并显示建议买入金额</div>
-          <div v-else-if="cashRow" class="quant-hold cash">
-            <span class="quant-name">现金</span>
-            <div class="quant-bars"><div class="quant-bar current" :style="{ width: `${Math.min(100, cashRow.percent)}%` }" /></div>
-            <span class="quant-drift">{{ cashRow.text }}<i>{{ amountText(cashRow.amount) }}</i></span>
-          </div>
-          <div v-for="row in holdingRows" :key="row.code" class="quant-hold">
-            <span class="quant-name" :title="row.name">{{ row.name }}</span>
-            <div class="quant-bars">
-              <div class="quant-bar target" :style="{ width: `${row.targetPercent}%` }" />
-              <div class="quant-bar current" :style="{ width: `${row.currentPercent}%` }" />
-            </div>
-            <span class="quant-drift" :class="driftTone(row.drift)">
-              {{ driftText(row.drift, row.held) }}
-              <i>{{ amountText(row.driftAmount) }}</i>
-            </span>
-          </div>
-        </section>
-
-        <section class="quant-section">
-          <h4>组合回测<span>（等权持有 · A股规则 · 约{{ backtestYears }}年）</span></h4>
-          <div v-if="backtest" class="quant-bt">
-            <svg v-if="backtest.nav.length > 1" class="quant-nav" :viewBox="`0 0 240 60`" preserveAspectRatio="none">
-              <polyline
-                :points="navPoints"
-                :class="backtest.totalReturn >= 0 ? 'nav-up' : 'nav-down'"
-                fill="none"
-                stroke-width="1.5"
-              />
-            </svg>
-            <div class="quant-metrics">
-              <div class="metric">
-                <span>总收益</span>
-                <strong :class="tone(backtest.totalReturn)">{{ percent(backtest.totalReturn) }}</strong>
-              </div>
-              <div class="metric">
-                <span>年化</span>
-                <strong :class="tone(backtest.annualizedReturn)">{{ percent(backtest.annualizedReturn) }}</strong>
-              </div>
-              <div class="metric">
-                <span>最大回撤</span>
-                <strong class="down">{{ percent(backtest.maxDrawdown) }}</strong>
-              </div>
-            </div>
-            <p class="quant-hint">回测基于后复权日K与等权重平衡（含佣金/印花税/滑点/涨跌停约束），历史表现不代表未来。</p>
-          </div>
-        </section>
+        <FactorRankSection :rows="rows" />
+        <HoldingsDriftSection
+          :rows="holdingRows"
+          :target-mode="targetMode"
+          :total-assets="totalAssetsInput"
+          :cash-row="cashRow"
+          @switch-mode="switchTargetMode"
+          @update-assets="onTotalAssetsInput"
+        />
+        <BacktestSection :backtest="backtest" />
       </template>
     </div>
 
@@ -119,11 +44,14 @@
     </div>
   </div>
 </template>
-
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useStockStore } from '../stores/stock'
 import { lastWatchlistViewType } from '../utils/market'
+import FactorRankSection from '../components/quant/FactorRankSection.vue'
+import HoldingsDriftSection from '../components/quant/HoldingsDriftSection.vue'
+import BacktestSection from '../components/quant/BacktestSection.vue'
+import { invalidateQuantCache } from '../utils/quant/cache'
 import { readPersistedSlice, updatePersistedSlice } from '../utils/persistence'
 import { computeFactorRows, loadQuantKlineBundle, runEqualWeightBacktest, type BacktestResult, type FactorRow } from '../utils/quant'
 
@@ -148,56 +76,10 @@ const loading = ref(false)
 const updatedAt = ref<Date | null>(null)
 
 const summaryText = computed(() => `${rows.value.length} 只 · 评分前 3 高亮`)
-const backtestYears = computed(() => (backtest.value ? Math.max(1, Math.round(backtest.value.nav.length / 244 * 10) / 10) : 0))
 const updatedText = computed(() => (updatedAt.value
   ? `${String(updatedAt.value.getHours()).padStart(2, '0')}:${String(updatedAt.value.getMinutes()).padStart(2, '0')} 更新`
   : ''))
 
-const navPoints = computed(() => {
-  const nav = backtest.value?.nav ?? []
-  if (nav.length < 2) {
-    return ''
-  }
-  const values = nav.map((point) => point.value)
-  const min = Math.min(...values)
-  const max = Math.max(...values)
-  const span = max - min || 1
-  return nav
-    .map((point, index) => `${(index / (nav.length - 1)) * 240},${60 - ((point.value - min) / span) * 56 - 2}`)
-    .join(' ')
-})
-
-function percent(value: number | null | undefined): string {
-  if (value === null || value === undefined || !Number.isFinite(value)) {
-    return '--'
-  }
-  return `${value >= 0 ? '+' : ''}${(value * 100).toFixed(1)}%`
-}
-
-function tone(value: number | null | undefined): string {
-  if (value === null || value === undefined || !Number.isFinite(value) || value === 0) {
-    return ''
-  }
-  return value > 0 ? 'up' : 'down'
-}
-
-function scoreTone(value: number | null): string {
-  if (value === null) {
-    return ''
-  }
-  return value > 0.5 ? 'up' : value < -0.5 ? 'down' : ''
-}
-
-function scoreText(value: number | null): string {
-  if (value === null) {
-    return '--'
-  }
-  return value.toFixed(2)
-}
-
-function driftTone(drift: number): string {
-  return Math.abs(drift) < 0.005 ? '' : drift > 0 ? 'down' : 'up'
-}
 
 /** 目标权重：等权 or 评分加权（线性映射保证为正，最强≈最弱数倍） */
 function targetWeights(poolRows: FactorRow[], mode: 'equal' | 'score'): Map<string, number> {
@@ -233,27 +115,19 @@ function targetWeights(poolRows: FactorRow[], mode: 'equal' | 'score'): Map<stri
   return weights
 }
 
-function amountText(amount: number | null): string {
-  if (amount === null || !Number.isFinite(amount) || Math.abs(amount) < 1) {
-    return ''
-  }
-  const abs = Math.abs(amount)
-  const text = abs >= 10_000 ? `${(abs / 10_000).toFixed(abs >= 100_000 ? 0 : 1)}万` : abs.toFixed(0)
-  return `¥${text}`
-}
-
-function driftText(drift: number, held: boolean): string {
-  if (Math.abs(drift) < 0.005) {
-    return '持平'
-  }
-  // 低于目标：有仓位是加仓，没仓位才是建仓
-  const action = drift > 0 ? '减仓' : held ? '加仓' : '建仓'
-  return `${action} ${Math.abs(drift * 100).toFixed(1)}%`
-}
-
 function displayName(code: string): string {
   const stock = stockStore.stocks.get(code)
   return stock?.name || code
+}
+
+function hardReload(): void {
+  invalidateQuantCache()
+  void reload()
+}
+
+function onTotalAssetsInput(value: string): void {
+  totalAssetsInput.value = value
+  saveTotalAssets()
 }
 
 async function reload(): Promise<void> {
