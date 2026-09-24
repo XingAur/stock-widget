@@ -40,6 +40,8 @@
       <template v-else>
         <div class="quant-column column-left">
           <FactorRankSection :rows="rows" />
+        </div>
+        <div class="quant-column column-right">
           <HoldingsDriftSection
             :rows="holdingRows"
             :target-mode="targetMode"
@@ -48,8 +50,6 @@
             @switch-mode="switchTargetMode"
             @update-assets="onTotalAssetsInput"
           />
-        </div>
-        <div class="quant-column column-right">
           <BacktestSection :backtest="backtest" />
           <section v-if="importedReport" class="quant-section">
             <h4>研究报告<span>{{ importedReport.strategyId }} · {{ importedReport.evidenceStatus }} · {{ isUserImported ? '用户导入' : '内置' }}</span></h4>
