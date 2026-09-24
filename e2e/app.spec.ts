@@ -308,10 +308,9 @@ test.describe('量化页（A+徽标入口）', () => {
     await expect(row.locator('.quant-mom')).toHaveText(/%$/)
 
     // 回测：净值曲线与指标卡（mock K 线单边上涨 → 总收益为正）
-    await expect(page.locator('.quant-nav polyline')).toHaveAttribute('points', /.+/)
-    const metrics = page.locator('.metric')
-    await expect(metrics).toHaveCount(3)
-    await expect(metrics.filter({ hasText: '总收益' }).locator('strong')).toHaveClass(/up/)
+    await expect(page.locator('.quant-nav polyline').first()).toHaveAttribute('points', /.+/)
+    const metrics = page.locator('.quant-column .BacktestSection .metric, section.quant-section:has-text("组合回测") .metric')
+    await expect(metrics.filter({ hasText: '总收益' }).first().locator('strong')).toHaveClass(/up/)
 
     // 返回自选
     await page.locator('.quant-back').click()

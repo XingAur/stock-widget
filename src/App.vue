@@ -96,7 +96,7 @@ import { useStockStore } from './stores/stock'
 import type { AssetType } from './api/stock'
 import { getAssetTitle, getNextAssetType } from './utils/assets'
 import { focusFirstModalControl, trapModalFocus } from './utils/modalFocus'
-import { isTauriRuntime } from './utils/persistence'
+import { isTauriRuntime, readPersistedSlice } from './utils/persistence'
 import { lastWatchlistViewType, rememberWatchlistView } from './utils/market'
 import { logError, logInfo } from './utils/logger'
 import { startWindowDrag } from './utils/windowDrag'
@@ -112,6 +112,7 @@ const settingsStore = useSettingsStore()
 const COMPACT_SIZE = { width: 280, height: 480 }
 const EXPANDED_SIZE = { width: 900, height: 480 }
 const DETAIL_WIDTH = 620
+const QUANT_WIDE_SIZE = { width: 720, height: 480 }
 
 interface DetailSelection {
   assetType: AssetType
@@ -342,9 +343,13 @@ async function closeDetail() {
   await syncWindowSize(false, closingPosition)
 }
 
-async function syncWindowSize(nextHasDetail = hasDetail.value, targetDetailPosition = detailPosition.value) {
+async function syncWindowSize(
+  nextHasDetail = hasDetail.value,
+  targetDetailPosition = detailPosition.value,
+  wide = false
+) {
   const appWindow = getCurrentWindow()
-  const targetWidth = nextHasDetail ? EXPANDED_SIZE.width : COMPACT_SIZE.width
+  const targetWidth = wide ? QUANT_WIDE_SIZE.width : nextHasDetail ? EXPANDED_SIZE.width : COMPACT_SIZE.width
 
   try {
     await appWindow.setMinSize(new LogicalSize(COMPACT_SIZE.width, COMPACT_SIZE.height))
@@ -388,6 +393,14 @@ watch(() => stockStore.activeAssetType, (nextAssetType) => {
   rememberWatchlistView(nextAssetType)
   if ((nextAssetType === 'market' || nextAssetType === 'quant') && selectedDetail.value) {
     void closeDetail()
+  }
+  if (nextAssetType === 'quant') {
+    const savedReport = readPersistedSlice('importedQuantReport')
+    if (savedReport && typeof savedReport === 'object') {
+      void syncWindowSize(false, 'right', true)
+    }
+  } else {
+    void syncWindowSize(hasDetail.value, detailPosition.value)
   }
 })
 

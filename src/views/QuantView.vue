@@ -1,5 +1,5 @@
 <template>
-  <div class="quant-view">
+  <div class="quant-view" :class="{ wide: Boolean(importedReport) }">
     <div class="quant-header">
       <span class="quant-title">量化 · 自选池</span>
       <span class="quant-sub">{{ summaryText }}</span>
@@ -38,27 +38,41 @@
       </div>
 
       <template v-else>
-        <FactorRankSection :rows="rows" />
-        <HoldingsDriftSection
-          :rows="holdingRows"
-          :target-mode="targetMode"
-          :total-assets="totalAssetsInput"
-          :cash-row="cashRow"
-          @switch-mode="switchTargetMode"
-          @update-assets="onTotalAssetsInput"
-        />
-        <BacktestSection :backtest="backtest" />
-
-        <section v-if="importedReport" class="quant-section">
-          <h4>研究报告（导入）<span>{{ importedReport.strategyId }} · {{ importedReport.evidenceStatus }}</span></h4>
-          <div class="quant-metrics">
-            <div v-for="metric in importedMetrics" :key="metric.label" class="metric">
-              <span>{{ metric.label }}</span>
-              <strong>{{ metric.value }}</strong>
+        <div class="quant-column">
+          <FactorRankSection :rows="rows" />
+          <HoldingsDriftSection
+            :rows="holdingRows"
+            :target-mode="targetMode"
+            :total-assets="totalAssetsInput"
+            :cash-row="cashRow"
+            @switch-mode="switchTargetMode"
+            @update-assets="onTotalAssetsInput"
+          />
+        </div>
+        <div v-if="importedReport" class="quant-column">
+          <BacktestSection :backtest="backtest" />
+          <section class="quant-section">
+            <h4>研究报告<span>{{ importedReport.strategyId }} · {{ importedReport.evidenceStatus }} · {{ isUserImported ? '用户导入' : '内置' }}</span></h4>
+            <div class="quant-metrics">
+              <div v-for="metric in importedMetrics" :key="metric.label" class="metric">
+                <span>{{ metric.label }}</span>
+                <strong>{{ metric.value }}</strong>
+              </div>
             </div>
-          </div>
-          <p class="quant-hint">区间 {{ importedReport.interval?.start ?? '?' }} ~ {{ importedReport.interval?.end ?? '?' }}；由文件导入，与本机回测独立展示。</p>
-        </section>
+            <svg v-if="importedReport.nav.length > 1" class="quant-nav" viewBox="0 0 240 60" preserveAspectRatio="none">
+              <polyline
+                :points="importedNavPoints"
+                :class="(importedReport.metrics.total_return ?? 0) >= 0 ? 'nav-up' : 'nav-down'"
+                fill="none"
+                stroke-width="1.5"
+              />
+            </svg>
+            <p class="quant-hint">区间 {{ importedReport.interval?.start ?? '?' }} ~ {{ importedReport.interval?.end ?? '?' }}；由文件导入，与本机回测独立展示。</p>
+          </section>
+        </div>
+        <div v-else class="quant-column">
+          <BacktestSection :backtest="backtest" />
+        </div>
       </template>
     </div>
 
@@ -85,6 +99,7 @@ import { invalidateQuantCache } from '../utils/quant/cache'
 import { TOP_N_OPTIONS, selectTopN, type TopNOption } from '../utils/quant/selector'
 const importFileRef = ref<HTMLInputElement | null>(null)
 import { parseReport, formatReportMetrics, type ImportedReport } from '../utils/quant/report'
+import builtinReportUrl from '../../public/builtin-report.json?url'
 import { readPersistedSlice, updatePersistedSlice } from '../utils/persistence'
 import { computeFactorRows, loadQuantKlineBundle, runEqualWeightBacktest, type BacktestResult, type FactorRow } from '../utils/quant'
 
@@ -103,6 +118,7 @@ const rows = ref<(FactorRow & { name: string })[]>([])
 const targetMode = ref<'equal' | 'score'>('equal')
 const topN = ref<TopNOption>(5)
 const importedReport = ref<ImportedReport | null>(null)
+const isUserImported = ref(false)
 const totalAssetsInput = ref('')
 const cashRow = ref<{ percent: number; amount: number; text: string } | null>(null)
 const holdingRows = ref<HoldingRow[]>([])
@@ -112,6 +128,20 @@ const updatedAt = ref<Date | null>(null)
 
 const topNLabel = computed(() => TOP_N_OPTIONS.find((option) => option.value === topN.value)?.label ?? 'Top 5')
 const summaryText = computed(() => `${rows.value.length} 只 · 推荐 ${topNLabel.value} · 评分前 3 高亮`)
+const importedNavPoints = computed(() => {
+  const nav = importedReport.value?.nav ?? []
+  if (nav.length < 2) {
+    return ''
+  }
+  const values = nav.map((point) => point.value)
+  const min = Math.min(...values)
+  const max = Math.max(...values)
+  const span = max - min || 1
+  return nav
+    .map((point, index) => `${(index / (nav.length - 1)) * 240},${60 - ((point.value - min) / span) * 56 - 2}`)
+    .join(' ')
+})
+
 const importedMetrics = computed(() => (importedReport.value ? formatReportMetrics(importedReport.value) : null))
 const updatedText = computed(() => (updatedAt.value
   ? `${String(updatedAt.value.getHours()).padStart(2, '0')}:${String(updatedAt.value.getMinutes()).padStart(2, '0')} 更新`
@@ -149,6 +179,7 @@ function onImportReportFile(event: Event): void {
         return
       }
       importedReport.value = report
+      isUserImported.value = true
       updatePersistedSlice('importedQuantReport', report)
     } catch {
       window.alert('报告文件解析失败，请确认是有效的 JSON 文件')
@@ -289,7 +320,7 @@ function saveTotalAssets(): void {
   updatePersistedSlice('quantTotalAssets', Number.isFinite(value) && value > 0 ? value : null)
 }
 
-onMounted(() => {
+onMounted(async () => {
   const savedMode = readPersistedSlice('quantTargetMode')
   if (savedMode === 'score') {
     targetMode.value = 'score'
@@ -303,6 +334,20 @@ onMounted(() => {
   const reparsed = savedReport ? parseReport(savedReport) : null
   if (reparsed) {
     importedReport.value = reparsed
+    isUserImported.value = true
+  } else {
+    // 无用户导入时加载随版本分发的内置报告（用户导入后覆盖）
+    try {
+      const response = await fetch(builtinReportUrl)
+      if (response.ok) {
+        const builtin = parseReport(await response.json())
+        if (builtin) {
+          importedReport.value = builtin
+        }
+      }
+    } catch {
+      // 内置报告不可用时静默跳过
+    }
   }
   const saved = readPersistedSlice('quantTotalAssets')
   if (typeof saved === 'number' && saved > 0) {
@@ -314,16 +359,22 @@ onMounted(() => {
 
 <style scoped>
 .quant-view{position:relative;flex:1;min-height:0;display:flex;flex-direction:column;padding:6px 0 0}
-.quant-header{display:flex;align-items:center;gap:6px;margin:0 10px 8px}
+.quant-header{display:flex;align-items:center;gap:3px;margin:0 10px 8px}
 .quant-title{font-size:13px;font-weight:800;color:var(--text-primary)}
 .quant-sub{flex:1;font-size:10px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.topn-switch{display:inline-flex;gap:2px;padding:1px;border:1px solid rgba(255,255,255,.1);border-radius:6px}
+.topn-switch{display:inline-flex;gap:1px;margin-left:auto;padding:1px;border:1px solid rgba(255,255,255,.1);border-radius:6px}
 .topn-switch button{height:18px;padding:0 5px;border:none;border-radius:4px;background:transparent;color:var(--text-muted);font-size:9px;font-weight:700;cursor:pointer}
 .topn-switch button.active{color:#f8fbff;background:rgba(45,124,246,.75)}
 .import-report-input{display:none}
-.quant-refresh{width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;border:none;border-radius:7px;background:transparent;color:var(--text-muted);cursor:pointer}
+.quant-refresh{width:22px;height:22px;margin-left:1px;display:inline-flex;align-items:center;justify-content:center;border:none;border-radius:6px;background:transparent;color:var(--text-muted);cursor:pointer;font-size:11px}
 .quant-refresh:hover{color:var(--text-primary);background:rgba(255,255,255,.06)}
 .quant-body{flex:1;min-height:0;overflow-y:auto;padding:0 10px 8px;display:flex;flex-direction:column;gap:12px}
+.quant-view.wide .quant-body{flex-direction:row;align-items:flex-start;overflow-y:auto}
+.quant-column{flex:1 1 0;min-width:0;display:flex;flex-direction:column;gap:12px}
+.quant-view:not(.wide) .quant-column{flex:1}
+.quant-nav{width:100%;height:56px;display:block;margin-bottom:6px}
+.nav-up{stroke:#ff7474}
+.nav-down{stroke:#3ad283}
 .quant-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;color:var(--text-muted);text-align:center}
 .quant-empty p{font-size:13px;font-weight:600;color:var(--text-secondary)}
 .quant-empty span{font-size:11px}
