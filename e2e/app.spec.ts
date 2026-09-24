@@ -309,12 +309,35 @@ test.describe('量化页（A+徽标入口）', () => {
 
     // 回测：净值曲线与指标卡（mock K 线单边上涨 → 总收益为正）
     await expect(page.locator('.quant-nav polyline').first()).toHaveAttribute('points', /.+/)
-    const metrics = page.locator('.quant-column .BacktestSection .metric, section.quant-section:has-text("组合回测") .metric')
+    const metrics = page.locator('section.quant-section:has-text("自选池历史示意") .metric')
     await expect(metrics.filter({ hasText: '总收益' }).first().locator('strong')).toHaveClass(/up/)
 
     // 返回自选
     await page.locator('.quant-back').click()
     await expect(page.locator('.quant-view')).toHaveCount(0)
     await expect(page.locator('.stock-list')).toBeVisible()
+  })
+
+  test('已有自选和持仓直接用于量化对照，不推断账户现金', async ({ page }) => {
+    await page.evaluate(() => {
+      window.localStorage.setItem('__e2e_persisted_state__', JSON.stringify({
+        schemaVersion: 1,
+        watchList: ['600000', '000001', '600030'],
+        stockPositions: {
+          '600000': { costPrice: 8, shares: 100 },
+          '000001': { costPrice: 10, shares: 100 }
+        },
+        activeAssetType: 'stock'
+      }))
+    })
+    await simulateAppRestart(page)
+    await page.locator('.brand-badge').click()
+
+    await expect(page.locator('.quant-sub')).toContainText('自选 3 只')
+    await expect(page.locator('.quant-sub')).toContainText('已录持仓 2 只')
+    await expect(page.locator('.quant-hint', { hasText: '已录入的 2 只股票持仓市值' })).toBeVisible()
+    await expect(page.locator('.quant-hold')).toHaveCount(3)
+    await expect(page.locator('.quant-assets')).toHaveCount(0)
+    await expect(page.locator('.quant-hold.cash')).toHaveCount(0)
   })
 })

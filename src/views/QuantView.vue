@@ -32,9 +32,9 @@
 
     <div class="quant-body">
       <div v-if="loading" class="quant-empty">正在拉取 K 线与计算因子…</div>
-      <div v-else-if="rows.length === 0" class="quant-empty">
-        <p>自选列表暂无股票</p>
-        <span>添加股票自选后即可评分</span>
+      <div v-else-if="rows.length === 0 && holdingRows.length === 0" class="quant-empty">
+        <p>{{ stockStore.watchList.length === 0 ? '自选列表暂无股票' : '暂未取得可用评分行情' }}</p>
+        <span>{{ stockStore.watchList.length === 0 ? '添加股票自选后即可评分' : '可刷新行情后重试' }}</span>
       </div>
 
       <template v-else>
@@ -45,10 +45,10 @@
           <HoldingsDriftSection
             :rows="holdingRows"
             :target-mode="targetMode"
-            :total-assets="totalAssetsInput"
-            :cash-row="cashRow"
+            :holding-count="comparison.heldCount"
+            :holding-value="comparison.heldValue"
+            :missing-held-quotes="comparison.missingHeldQuotes"
             @switch-mode="switchTargetMode"
-            @update-assets="onTotalAssetsInput"
           />
           <BacktestSection :backtest="backtest" />
           <section v-if="importedReport" class="quant-section">
@@ -67,7 +67,7 @@
                 stroke-width="1.5"
               />
             </svg>
-            <p class="quant-hint">区间 {{ importedReport.interval?.start ?? '?' }} ~ {{ importedReport.interval?.end ?? '?' }}；{{ isUserImported ? '由文件导入' : '随版本内置' }}，与本机回测独立展示。</p>
+            <p class="quant-hint">区间 {{ importedReport.interval?.start ?? '?' }} ~ {{ importedReport.interval?.end ?? '?' }}；{{ isUserImported ? '由文件导入' : `历史示例（${importedReport.sourcePoolSize ?? '未知'}只固定池）` }}，与当前 {{ stockStore.watchList.length }} 只自选独立展示。</p>
           </section>
         </div>
       </template>
@@ -86,29 +86,20 @@
   </div>
 </template>
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useStockStore } from '../stores/stock'
 import { lastWatchlistViewType } from '../utils/market'
 import FactorRankSection from '../components/quant/FactorRankSection.vue'
 import HoldingsDriftSection from '../components/quant/HoldingsDriftSection.vue'
 import BacktestSection from '../components/quant/BacktestSection.vue'
 import { invalidateQuantCache } from '../utils/quant/cache'
-import { TOP_N_OPTIONS, selectTopN, type TopNOption } from '../utils/quant/selector'
+import { TOP_N_OPTIONS, type TopNOption } from '../utils/quant/selector'
+import { compareRecordedHoldings } from '../utils/quant/holdings'
 const importFileRef = ref<HTMLInputElement | null>(null)
 import { parseReport, formatReportMetrics, type ImportedReport } from '../utils/quant/report'
 import builtinReportUrl from '../../public/builtin-report.json?url'
 import { readPersistedSlice, updatePersistedSlice } from '../utils/persistence'
 import { computeFactorRows, loadQuantKlineBundle, runEqualWeightBacktest, type BacktestResult, type FactorRow } from '../utils/quant'
-
-interface HoldingRow {
-  code: string
-  name: string
-  targetPercent: number
-  currentPercent: number
-  drift: number
-  driftAmount: number | null
-  held: boolean
-}
 
 const stockStore = useStockStore()
 const rows = ref<(FactorRow & { name: string })[]>([])
@@ -116,15 +107,28 @@ const targetMode = ref<'equal' | 'score'>('equal')
 const topN = ref<TopNOption>(5)
 const importedReport = ref<ImportedReport | null>(null)
 const isUserImported = ref(false)
-const totalAssetsInput = ref('')
-const cashRow = ref<{ percent: number; amount: number; text: string } | null>(null)
-const holdingRows = ref<HoldingRow[]>([])
 const backtest = ref<BacktestResult | null>(null)
 const loading = ref(false)
 const updatedAt = ref<Date | null>(null)
+let pendingReload = false
 
 const topNLabel = computed(() => TOP_N_OPTIONS.find((option) => option.value === topN.value)?.label ?? 'Top 5')
-const summaryText = computed(() => `${rows.value.length} 只 · 推荐 ${topNLabel.value} · 评分前 3 高亮`)
+const summaryText = computed(() => `自选 ${stockStore.watchList.length} 只 · 可评分 ${rows.value.filter((row) => row.composite !== null).length} 只 · 已录持仓 ${comparison.value.heldCount} 只 · ${topNLabel.value}`)
+const comparison = computed(() => {
+  const prices: Record<string, number | undefined> = {}
+  for (const code of stockStore.watchList) {
+    prices[code] = stockStore.stocks.get(code)?.price
+  }
+  return compareRecordedHoldings(
+    rows.value,
+    stockStore.stockPositions,
+    prices,
+    topN.value,
+    targetMode.value,
+    displayName
+  )
+})
+const holdingRows = computed(() => comparison.value.rows)
 const importedNavPoints = computed(() => {
   const nav = importedReport.value?.nav ?? []
   if (nav.length < 2) {
@@ -145,18 +149,12 @@ const updatedText = computed(() => (updatedAt.value
   : ''))
 
 
-/** 目标权重：Top-N 选择 + 等权/评分加权（与 a-share-quant selector 一致） */
-function targetWeights(poolRows: FactorRow[], mode: 'equal' | 'score'): Map<string, number> {
-  return selectTopN(poolRows, topN.value, mode).weights
-}
-
 function switchTopN(value: TopNOption): void {
   if (topN.value === value) {
     return
   }
   topN.value = value
   updatePersistedSlice('quantTopN', value)
-  void reload()
 }
 
 function onImportReportFile(event: Event): void {
@@ -195,20 +193,15 @@ function hardReload(): void {
   void reload()
 }
 
-function onTotalAssetsInput(value: string): void {
-  totalAssetsInput.value = value
-  saveTotalAssets()
-}
-
 async function reload(): Promise<void> {
   const codes = [...stockStore.watchList]
   if (codes.length === 0) {
     rows.value = []
-    holdingRows.value = []
     backtest.value = null
     return
   }
   if (loading.value) {
+    pendingReload = true
     return
   }
 
@@ -218,84 +211,17 @@ async function reload(): Promise<void> {
     const usable = Object.fromEntries(
       Object.entries(bundle.adjusted).filter(([, points]) => points.length >= 6)
     )
-    const rawKlines = bundle.raw
 
     const factorRows = computeFactorRows(usable)
     rows.value = factorRows.map((row) => ({ ...row, name: displayName(row.code) }))
     backtest.value = runEqualWeightBacktest(usable)
-
-    // 持仓对照：填了总资金按总资产口径（含现金与未持仓票）；否则按股票持仓内部占比
-    const positions = stockStore.stockPositions
-    // 估值必须用原始价（P0 修复：hfq 价的复权倍数不同，权重会失真）
-    const priced = Object.keys(usable).map((code) => ({
-      code,
-      price: rawKlines[code]?.[rawKlines[code].length - 1]?.close ?? usable[code][usable[code].length - 1]?.close ?? 0
-    }))
-    const priceMap = new Map(priced.map((item) => [item.code, item.price]))
-    const totalAssets = Number(totalAssetsInput.value) * 10_000
-
-    if (totalAssets > 0) {
-      const priced_ = Object.keys(usable).map((code) => {
-        const price = priceMap.get(code) ?? 0
-        const shares = positions[code]?.shares ?? 0
-        return { code, name: displayName(code), value: shares * price }
-      })
-      const invested = priced_.reduce((total, item) => total + item.value, 0)
-      const weights = targetWeights(rows.value, targetMode.value)
-      holdingRows.value = priced_
-        .map((item) => {
-          const currentWeight = item.value / totalAssets
-          const target = weights.get(item.code) ?? 0
-          const drift = currentWeight - target
-          return {
-            code: item.code,
-            name: item.name,
-            targetPercent: Math.min(100, target * 100),
-            currentPercent: Math.min(100, currentWeight * 100),
-            drift,
-            driftAmount: drift * totalAssets,
-            held: item.value > 1
-          }
-        })
-        .sort((left, right) => Math.abs(right.drift) - Math.abs(left.drift))
-      const cashWeight = Math.max(0, 1 - invested / totalAssets)
-      cashRow.value = {
-        percent: cashWeight * 100,
-        amount: cashWeight * totalAssets,
-        text: `占 ${(cashWeight * 100).toFixed(1)}%`
-      }
-    } else {
-      cashRow.value = null
-      const heldValue = Object.entries(positions).reduce((total, [code, position]) => {
-        const price = priceMap.get(code) ?? 0
-        return total + position.shares * price
-      }, 0)
-
-      // 未填总资金：按股票持仓内部占比对照；未持仓的自选也列出建仓目标（无金额基数）
-      const weightsInner = targetWeights(rows.value, targetMode.value)
-      holdingRows.value = Object.keys(usable)
-        .map((code) => {
-          const price = priceMap.get(code) ?? 0
-          const shares = positions[code]?.shares ?? 0
-          const currentWeight = heldValue > 0 ? (shares * price) / heldValue : 0
-          const target = weightsInner.get(code) ?? 0
-          const drift = currentWeight - target
-          return {
-            code,
-            name: displayName(code),
-            targetPercent: Math.min(100, target * 100),
-            currentPercent: Math.min(100, currentWeight * 100),
-            drift,
-            driftAmount: heldValue > 0 ? drift * heldValue : null,
-            held: shares > 0
-          }
-        })
-        .sort((left, right) => Math.abs(right.drift) - Math.abs(left.drift))
-    }
-
     updatedAt.value = new Date()
   } finally {
     loading.value = false
+    if (pendingReload) {
+      pendingReload = false
+      void reload()
+    }
   }
 }
 
@@ -309,13 +235,9 @@ function switchTargetMode(mode: 'equal' | 'score'): void {
   }
   targetMode.value = mode
   updatePersistedSlice('quantTargetMode', mode)
-  void reload()
 }
 
-function saveTotalAssets(): void {
-  const value = Number(totalAssetsInput.value)
-  updatePersistedSlice('quantTotalAssets', Number.isFinite(value) && value > 0 ? value : null)
-}
+watch(() => [...stockStore.watchList], () => { void reload() })
 
 onMounted(async () => {
   const savedMode = readPersistedSlice('quantTargetMode')
@@ -345,10 +267,6 @@ onMounted(async () => {
     } catch {
       // 内置报告不可用时静默跳过
     }
-  }
-  const saved = readPersistedSlice('quantTotalAssets')
-  if (typeof saved === 'number' && saved > 0) {
-    totalAssetsInput.value = String(saved)
   }
   void reload()
 })

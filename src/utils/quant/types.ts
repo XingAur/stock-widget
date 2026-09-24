@@ -34,6 +34,4 @@ export interface BacktestResult {
 export interface QuantKlineBundle {
   /** 后复权（因子计算用） */
   adjusted: Record<string, KlinePoint[]>
-  /** 原始未复权（真实持仓估值用） */
-  raw: Record<string, KlinePoint[]>
 }

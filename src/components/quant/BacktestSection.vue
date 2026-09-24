@@ -1,6 +1,6 @@
 <template>
   <section class="quant-section">
-    <h4>组合回测<span>（等权持有 · A股规则 · 约{{ years }}年）</span></h4>
+    <h4>自选池历史示意<span>（当前名单等权 · 约{{ years }}年）</span></h4>
     <div v-if="backtest" class="quant-bt">
       <svg v-if="backtest.nav.length > 1" class="quant-nav" viewBox="0 0 240 60" preserveAspectRatio="none">
         <polyline
@@ -24,7 +24,7 @@
           <strong class="down">{{ percent(backtest.maxDrawdown) }}</strong>
         </div>
       </div>
-      <p class="quant-hint">回测基于后复权日K与等权重平衡（含佣金/印花税/滑点/涨跌停约束），历史表现不代表未来。</p>
+      <p class="quant-hint">按当前自选名单与后复权日K模拟等权，不代表已录持仓收益。成交规则是简化假设；历史表现不代表未来。</p>
     </div>
     <div v-else class="quant-hint">数据不足或加载中</div>
   </section>

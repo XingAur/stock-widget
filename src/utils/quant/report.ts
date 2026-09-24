@@ -8,6 +8,7 @@ export interface ImportedReport {
   nav: { date: string; value: number }[]
   interval: { start: string; end: string } | null
   dataHash?: string
+  sourcePoolSize?: number
 }
 
 const MAX_NAV_POINTS = 5_000
@@ -36,7 +37,10 @@ export function parseReport(payload: unknown): ImportedReport | null {
       value: Number((point as Record<string, unknown>).value ?? 0)
     })),
     interval: (raw.interval ?? null) as { start: string; end: string } | null,
-    dataHash: raw.data_hash !== undefined ? String(raw.data_hash) : undefined
+    dataHash: raw.data_hash !== undefined ? String(raw.data_hash) : undefined,
+    sourcePoolSize: Number.isInteger(raw.source_pool_size) && (raw.source_pool_size as number) > 0
+      ? raw.source_pool_size as number
+      : undefined
   }
 }
 
