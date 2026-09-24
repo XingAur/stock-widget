@@ -1,5 +1,5 @@
 <template>
-  <div class="quant-view" :class="{ wide: Boolean(importedReport) }">
+  <div class="quant-view" :class="{ wide: rows.length > 0 }">
     <div class="quant-header">
       <span class="quant-title">量化 · 自选池</span>
       <span class="quant-sub">{{ summaryText }}</span>

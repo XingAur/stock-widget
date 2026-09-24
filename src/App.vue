@@ -96,7 +96,7 @@ import { useStockStore } from './stores/stock'
 import type { AssetType } from './api/stock'
 import { getAssetTitle, getNextAssetType } from './utils/assets'
 import { focusFirstModalControl, trapModalFocus } from './utils/modalFocus'
-import { isTauriRuntime, readPersistedSlice } from './utils/persistence'
+import { isTauriRuntime } from './utils/persistence'
 import { lastWatchlistViewType, rememberWatchlistView } from './utils/market'
 import { logError, logInfo } from './utils/logger'
 import { startWindowDrag } from './utils/windowDrag'
@@ -395,10 +395,7 @@ watch(() => stockStore.activeAssetType, (nextAssetType) => {
     void closeDetail()
   }
   if (nextAssetType === 'quant') {
-    const savedReport = readPersistedSlice('importedQuantReport')
-    if (savedReport && typeof savedReport === 'object') {
-      void syncWindowSize(false, 'right', true)
-    }
+    void syncWindowSize(false, 'right', true)
   } else {
     void syncWindowSize(hasDetail.value, detailPosition.value)
   }
