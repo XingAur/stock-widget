@@ -38,7 +38,7 @@
       </div>
 
       <template v-else>
-        <div class="quant-column">
+        <div class="quant-column column-left">
           <FactorRankSection :rows="rows" />
           <HoldingsDriftSection
             :rows="holdingRows"
@@ -49,9 +49,9 @@
             @update-assets="onTotalAssetsInput"
           />
         </div>
-        <div v-if="importedReport" class="quant-column">
+        <div class="quant-column column-right">
           <BacktestSection :backtest="backtest" />
-          <section class="quant-section">
+          <section v-if="importedReport" class="quant-section">
             <h4>研究报告<span>{{ importedReport.strategyId }} · {{ importedReport.evidenceStatus }} · {{ isUserImported ? '用户导入' : '内置' }}</span></h4>
             <div class="quant-metrics">
               <div v-for="metric in importedMetrics" :key="metric.label" class="metric">
@@ -67,11 +67,8 @@
                 stroke-width="1.5"
               />
             </svg>
-            <p class="quant-hint">区间 {{ importedReport.interval?.start ?? '?' }} ~ {{ importedReport.interval?.end ?? '?' }}；由文件导入，与本机回测独立展示。</p>
+            <p class="quant-hint">区间 {{ importedReport.interval?.start ?? '?' }} ~ {{ importedReport.interval?.end ?? '?' }}；{{ isUserImported ? '由文件导入' : '随版本内置' }}，与本机回测独立展示。</p>
           </section>
-        </div>
-        <div v-else class="quant-column">
-          <BacktestSection :backtest="backtest" />
         </div>
       </template>
     </div>
@@ -369,9 +366,11 @@ onMounted(async () => {
 .quant-refresh{width:22px;height:22px;margin-left:1px;display:inline-flex;align-items:center;justify-content:center;border:none;border-radius:6px;background:transparent;color:var(--text-muted);cursor:pointer;font-size:11px}
 .quant-refresh:hover{color:var(--text-primary);background:rgba(255,255,255,.06)}
 .quant-body{flex:1;min-height:0;overflow-y:auto;padding:0 10px 8px;display:flex;flex-direction:column;gap:12px}
-.quant-view.wide .quant-body{flex-direction:row;align-items:flex-start;overflow-y:auto}
+.quant-view.wide .quant-body{flex-direction:row;overflow:hidden;gap:8px}
 .quant-column{flex:1 1 0;min-width:0;display:flex;flex-direction:column;gap:12px}
 .quant-view:not(.wide) .quant-column{flex:1}
+.quant-view.wide .column-left{overflow-y:auto;padding-right:4px}
+.quant-view.wide .column-right{overflow-y:auto;padding-left:4px}
 .quant-nav{width:100%;height:56px;display:block;margin-bottom:6px}
 .nav-up{stroke:#ff7474}
 .nav-down{stroke:#3ad283}
