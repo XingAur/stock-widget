@@ -105,3 +105,30 @@ describe('runEqualWeightBacktest', () => {
     expect(Number.isFinite(result.annualizedReturn)).toBe(true)
   })
 })
+
+import { parseReport, formatReportMetrics } from './quant/report'
+
+describe('report import', () => {
+  it('parses a versioned report and caps nav length', () => {
+    const payload = {
+      report_version: 1,
+      strategy_id: 'S1',
+      metrics: { total_return: 4.9333, annualized_return: null, max_drawdown: -0.354 },
+      evidence_status: 'exploratory',
+      nav: Array.from({ length: 30 }, (_, i) => ({ date: `2026-01-${i + 1}`, value: 1_000_000 + i })),
+      interval: { start: '2024-01-02', end: '2026-09-22' }
+    }
+    const report = parseReport(payload)
+    expect(report).not.toBeNull()
+    expect(report!.nav).toHaveLength(30)
+    const metrics = formatReportMetrics(report!)
+    expect(metrics[0]).toEqual({ label: '总收益', value: '493.3%' })
+    expect(metrics[1].value).toBe('短样本')
+  })
+
+  it('rejects unknown versions and non-objects', () => {
+    expect(parseReport({ report_version: 2 })).toBeNull()
+    expect(parseReport(null)).toBeNull()
+    expect(parseReport('x')).toBeNull()
+  })
+})
