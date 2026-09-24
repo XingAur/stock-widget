@@ -122,11 +122,10 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import type { KlinePoint } from '../api/stock'
 import { useStockStore } from '../stores/stock'
 import { lastWatchlistViewType } from '../utils/market'
 import { readPersistedSlice, updatePersistedSlice } from '../utils/persistence'
-import { computeFactorRows, loadQuantKlines, runEqualWeightBacktest, type BacktestResult, type FactorRow } from '../utils/quant'
+import { computeFactorRows, loadQuantKlineBundle, runEqualWeightBacktest, type BacktestResult, type FactorRow } from '../utils/quant'
 
 interface HoldingRow {
   code: string
@@ -271,10 +270,11 @@ async function reload(): Promise<void> {
 
   loading.value = true
   try {
-    const klines: Record<string, KlinePoint[]> = {}
-    const loaded = await loadQuantKlines(codes)
-    Object.assign(klines, loaded)
-    const usable = Object.fromEntries(Object.entries(klines).filter(([, points]) => points.length >= 6))
+    const bundle = await loadQuantKlineBundle(codes)
+    const usable = Object.fromEntries(
+      Object.entries(bundle.adjusted).filter(([, points]) => points.length >= 6)
+    )
+    const rawKlines = bundle.raw
 
     const factorRows = computeFactorRows(usable)
     rows.value = factorRows.map((row) => ({ ...row, name: displayName(row.code) }))
@@ -282,9 +282,10 @@ async function reload(): Promise<void> {
 
     // 持仓对照：填了总资金按总资产口径（含现金与未持仓票）；否则按股票持仓内部占比
     const positions = stockStore.stockPositions
+    // 估值必须用原始价（P0 修复：hfq 价的复权倍数不同，权重会失真）
     const priced = Object.keys(usable).map((code) => ({
       code,
-      price: usable[code][usable[code].length - 1]?.close ?? 0
+      price: rawKlines[code]?.[rawKlines[code].length - 1]?.close ?? usable[code][usable[code].length - 1]?.close ?? 0
     }))
     const priceMap = new Map(priced.map((item) => [item.code, item.price]))
     const totalAssets = Number(totalAssetsInput.value) * 10_000

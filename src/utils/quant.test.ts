@@ -29,10 +29,16 @@ describe('factors', () => {
     expect(momentum20([100, 101])).toBeNull()
   })
 
-  it('reversal5 measures the 6-bar ratio', () => {
+  it('reversal5 measures the 6-bar ratio with a NEGATIVE sign (fix: matches Python)', () => {
     const flat = Array.from({ length: 6 }, () => 10)
     expect(reversal5(flat)).toBeCloseTo(0, 10)
     expect(reversal5([10, 11])).toBeNull()
+    // 涨了 20% 的票：反转分应为 -0.2（超跌反弹假设，与 a-share-quant 一致）
+    const rose = Array.from({ length: 6 }, (_, i) => 100 + i * 4)
+    expect(reversal5(rose)).toBeCloseTo(-(120 / 100 - 1), 10)
+    // 跌了的票：反转分为正
+    const fell = Array.from({ length: 6 }, (_, i) => 120 - i * 4)
+    expect(reversal5(fell)).toBeCloseTo(-(100 / 120 - 1), 10)
   })
 
   it('volatility20 computes rolling std of returns', () => {

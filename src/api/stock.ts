@@ -140,7 +140,7 @@ export interface IndexData {
   sparkline: number[]
 }
 
-async function invokeSafe<T>(command: string, args: Record<string, unknown> | undefined, fallback: T): Promise<T> {
+export async function invokeSafe<T>(command: string, args: Record<string, unknown> | undefined, fallback: T): Promise<T> {
   try {
     return await invoke<T>(command, args)
   } catch (error) {
@@ -207,7 +207,7 @@ function getKlineTimestamp(value: string): number {
   return Number.isFinite(parsed) ? parsed : 0
 }
 
-function normalizeKlinePoints(points: KlinePoint[]): KlinePoint[] {
+export function normalizeKlinePoints(points: KlinePoint[]): KlinePoint[] {
   return [...points].sort((left, right) => getKlineTimestamp(left.time) - getKlineTimestamp(right.time))
 }
 

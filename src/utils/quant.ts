@@ -36,12 +36,14 @@ export function momentum20(closes: number[]): number | null {
   return window[window.length - 1] / window[0] - 1
 }
 
+/** 反转因子（与 a-share-quant classic.py 一致）：-(P[t]/P[t-5]-1)。
+ * 近 5 日跌得越多分越高（超跌反弹假设）。旧实现漏了负号，方向相反。 */
 export function reversal5(closes: number[]): number | null {
   const window = lastN(closes, REV_WINDOW)
   if (!window || window[0] <= 0) {
     return null
   }
-  return window[window.length - 1] / window[0] - 1
+  return -(window[window.length - 1] / window[0] - 1)
 }
 
 export function volatility20(closes: number[]): number | null {
@@ -353,7 +355,7 @@ export function runEqualWeightBacktest(
 /* ------------------------------------------------------------------ */
 /* K 线当日缓存：历史 K 线收盘后不变，当日内重复进入量化页不重复请求 */
 
-import { fetchQuantKline } from '../api/stock'
+import { fetchQuantKline, invokeSafe, normalizeKlinePoints, type KlinePoint as ApiKlinePoint } from '../api/stock'
 
 const klineCache = new Map<string, { day: string; points: KlinePoint[] }>()
 
@@ -362,15 +364,27 @@ function todayKey(): string {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
 }
 
-export async function loadQuantKlines(codes: string[]): Promise<Record<string, KlinePoint[]>> {
+export interface QuantKlineBundle {
+  /** 后复权（因子计算用） */
+  adjusted: Record<string, KlinePoint[]>
+  /** 原始未复权（真实持仓估值用，修 hfq 估值 bug） */
+  raw: Record<string, KlinePoint[]>
+}
+
+const rawCache = new Map<string, { day: string; points: KlinePoint[] }>()
+
+export async function loadQuantKlineBundle(codes: string[]): Promise<QuantKlineBundle> {
   const today = todayKey()
-  const result: Record<string, KlinePoint[]> = {}
+  const adjusted: Record<string, KlinePoint[]> = {}
+  const raw: Record<string, KlinePoint[]> = {}
   const missing: string[] = []
 
   for (const code of codes) {
-    const cached = klineCache.get(code)
-    if (cached && cached.day === today) {
-      result[code] = cached.points
+    const cachedAdj = klineCache.get(code)
+    const cachedRaw = rawCache.get(code)
+    if (cachedAdj && cachedAdj.day === today && cachedRaw && cachedRaw.day === today) {
+      adjusted[code] = cachedAdj.points
+      raw[code] = cachedRaw.points
     } else {
       missing.push(code)
     }
@@ -378,14 +392,24 @@ export async function loadQuantKlines(codes: string[]): Promise<Record<string, K
 
   if (missing.length > 0) {
     const fetched = await Promise.all(
-      missing.map(async (code) => [code, await fetchQuantKline(code)] as const)
+      missing.map(async (code) => {
+        const [hfq, rawPoints] = await Promise.all([
+          fetchQuantKline(code),
+          invokeSafe<ApiKlinePoint[]>('fetch_kline_series', { code, ktype: 'day', adjust: 'qfq', count: 6 }, []).then((points) => normalizeKlinePoints(points))
+        ])
+        return [code, hfq, rawPoints] as const
+      })
     )
-    for (const [code, points] of fetched) {
-      if (points.length > 0) {
-        klineCache.set(code, { day: today, points })
-        result[code] = points
+    for (const [code, hfq, rawPoints] of fetched) {
+      if (hfq.length > 0) {
+        klineCache.set(code, { day: today, points: hfq })
+        adjusted[code] = hfq
+      }
+      if (rawPoints.length > 0) {
+        rawCache.set(code, { day: today, points: rawPoints })
+        raw[code] = rawPoints
       }
     }
   }
-  return result
+  return { adjusted, raw }
 }
