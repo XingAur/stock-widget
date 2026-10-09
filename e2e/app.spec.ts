@@ -161,6 +161,47 @@ test.describe('添加反馈（额外缺陷：失败静默）', () => {
 })
 
 test.describe('详情面板（长时间使用负载优化）', () => {
+  test('屏幕右侧向左打开详情后，关闭恢复小组件原位置并显示昨收零线', async ({ page }) => {
+    await addStockThroughSearch(page, '600000', '浦发银行')
+    await page.setViewportSize({ width: 900, height: 700 })
+    const card = page.locator('.stock-card', { hasText: '浦发银行' })
+    await expect(card.locator('.sparkline-zero-line')).toHaveCount(1)
+    await expect(card.locator('.sparkline-zero-label')).toHaveCount(0)
+    const original = await page.evaluate(() => ({ ...(window as any).__e2eState.windowBounds }))
+    await card.click()
+    await expect(page.locator('.detail-panel')).toBeVisible()
+    await expect(page.locator('.workspace')).toHaveClass(/detail-left/)
+    await expect(page.locator('.minute-chart-svg')).toBeVisible()
+    await expect(page.locator('.chart-zero-line')).toHaveCount(1)
+    await expect(page.locator('.chart-zero-line')).toHaveCSS('stroke-width', '1.2px')
+    await expect(page.locator('.chart-zero-label')).toHaveCount(0)
+    await page.screenshot({ path: 'test-results/stock-detail-zero-reference.png' })
+    await expect.poll(() => page.evaluate(() => (window as any).__e2eState.windowBounds.x)).toBe(original.x - 620 * original.scale)
+    await card.click()
+    await expect(page.locator('.detail-panel')).toHaveCount(0)
+    await expect.poll(() => page.evaluate(() => (window as any).__e2eState.windowBounds)).toEqual(original)
+  })
+
+  test('基金列表和业绩详情只显示基准虚线', async ({ page }) => {
+    await page.evaluate(() => localStorage.setItem('__e2e_persisted_state__', JSON.stringify({
+      schemaVersion: 1,
+      activeAssetType: 'fund',
+      fundWatchList: ['161725']
+    })))
+    await simulateAppRestart(page)
+    const card = page.locator('.fund-card')
+    await expect(card.locator('.sparkline-zero-line')).toHaveCount(1)
+    await expect(card.locator('.sparkline-zero-label')).toHaveCount(0)
+    await page.setViewportSize({ width: 900, height: 600 })
+    await card.click()
+    await page.locator('.fund-tabs button', { hasText: '业绩走势' }).click()
+    await expect(page.locator('.fund-chart-card svg')).toBeVisible()
+    await expect(page.locator('.fund-chart-card .zero-line')).toHaveCount(1)
+    await expect(page.locator('.fund-chart-card .zero-line')).toHaveCSS('stroke-width', '1.2px')
+    await expect(page.locator('.fund-chart-card .zero-label')).toHaveCount(0)
+    await page.screenshot({ path: 'test-results/fund-performance-zero-reference.png' })
+  })
+
   test('打开详情面板正常渲染，且 K 线只加载一次', async ({ page }) => {
     await addStockThroughSearch(page, '600000', '浦发银行')
     await page.setViewportSize({ width: 900, height: 480 })
@@ -309,8 +350,8 @@ test.describe('量化页（A+徽标入口）', () => {
 
     // 回测：净值曲线与指标卡（mock K 线单边上涨 → 总收益为正）
     await expect(page.locator('.quant-nav polyline').first()).toHaveAttribute('points', /.+/)
-    const metrics = page.locator('section.quant-section:has-text("自选池历史示意") .metric')
-    await expect(metrics.filter({ hasText: '总收益' }).first().locator('strong')).toHaveClass(/up/)
+    const metrics = page.locator('.quant-bt .metric')
+    await expect(metrics.first().locator('strong')).toHaveClass(/up/)
 
     // 返回自选
     await page.locator('.quant-back').click()

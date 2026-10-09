@@ -37,7 +37,8 @@ export const initScript = `
   const state = {
     calls: [],
     dragCount: 0,
-    stocks: []
+    stocks: [],
+    windowBounds: { x: 1560, y: 128, width: 350, height: 600, scale: 1.25 }
   };
   state.stocks = ${JSON.stringify([tauriStock('600000', '浦发银行'), tauriStock('000001', '平安银行', 12), tauriStock('600030', '中信证券', 22.69)])};
 
@@ -65,6 +66,33 @@ export const initScript = `
     invoke: async function (cmd, args) {
       state.calls.push(cmd);
       switch (cmd) {
+        case 'plugin:window|scale_factor':
+          return state.windowBounds.scale;
+        case 'plugin:window|outer_position':
+          return { x: state.windowBounds.x, y: state.windowBounds.y };
+        case 'plugin:window|inner_size':
+        case 'plugin:window|outer_size':
+          return { width: state.windowBounds.width, height: state.windowBounds.height };
+        case 'plugin:window|current_monitor':
+          return { name: 'test monitor', scaleFactor: state.windowBounds.scale, position: {x: 0, y: 0}, size: {width: 1920, height: 1080}, workArea: {position: {x: 0, y: 0}, size: {width: 1920, height: 1040}} };
+        case 'plugin:window|set_min_size':
+          return null;
+        case 'plugin:window|set_size': {
+          const value = JSON.parse(JSON.stringify(args.value));
+          const size = value.Logical || value.Physical;
+          const scale = value.Logical ? state.windowBounds.scale : 1;
+          state.windowBounds.width = Math.round(size.width * scale);
+          state.windowBounds.height = Math.round(size.height * scale);
+          return null;
+        }
+        case 'plugin:window|set_position': {
+          const value = JSON.parse(JSON.stringify(args.value));
+          const position = value.Physical || value.Logical;
+          const scale = value.Logical ? state.windowBounds.scale : 1;
+          state.windowBounds.x = Math.round(position.x * scale);
+          state.windowBounds.y = Math.round(position.y * scale);
+          return null;
+        }
         case 'load_app_state':
           return lastPersisted();
         case 'persist_app_state':
@@ -98,6 +126,10 @@ export const initScript = `
           const wanted = (args.codes || []).map(String);
           return fundDb.filter((fund) => wanted.includes(fund.code));
         }
+        case 'fetch_fund_history':
+          return [{date: '2026-09-20', nav: 0.8, accumulatedNav: 0.8, changePercent: 0}, {date: '2026-09-21', nav: 0.82, accumulatedNav: 0.82, changePercent: 2.5}, {date: '2026-09-22', nav: 0.85, accumulatedNav: 0.85, changePercent: 3.66}];
+        case 'fetch_index_history':
+          return ['2026-09-20', '2026-09-21', '2026-09-22'].map(function (time, index) { return {time: time, open: 100 + index, close: 100 + index, high: 102 + index, low: 98 + index, volume: 1000}; });
         case 'open_release_page':
           return null;
         case 'append_log':

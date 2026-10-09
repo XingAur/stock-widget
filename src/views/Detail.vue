@@ -125,6 +125,7 @@
                   />
                   <polyline class="chart-line chart-line-latest" :points="minuteChartModel.latestPath" />
                   <polyline class="chart-line chart-line-avg" :points="minuteChartModel.avgPath" />
+                  <line v-if="minuteChartModel.zeroY !== null" class="chart-zero-line" :x1="CHART_PADDING.left" :x2="minuteChartModel.viewWidth - CHART_PADDING.right" :y1="minuteChartModel.zeroY" :y2="minuteChartModel.zeroY" />
                   <template v-if="minuteHover">
                     <line class="hover-line" :x1="minuteHover.x" :x2="minuteHover.x" :y1="CHART_PADDING.top" :y2="minuteChartModel.geometry.volumeBottom" />
                     <line class="hover-line" :x1="CHART_PADDING.left" :x2="minuteChartModel.viewWidth - CHART_PADDING.right" :y1="minuteHover.latestY" :y2="minuteHover.latestY" />
@@ -447,6 +448,7 @@ interface MinuteChartModel {
   maxPrice: number
   latestPrice: number
   avgPrice: number
+  zeroY: number | null
   latestPath: string
   avgPath: string
   areaPath: string
@@ -702,7 +704,10 @@ const minuteChartModel = computed<MinuteChartModel | null>(() => {
     return cumulativeVolume > 0 ? cumulativeAmount / cumulativeVolume : point.price
   })
 
-  const [minPrice, maxPrice] = getRange([...points.map((point) => point.price), ...avgPrices])
+  const zeroPrice = detail.value && Number.isFinite(detail.value.prevClose) && detail.value.prevClose > 0
+    ? detail.value.prevClose
+    : null
+  const [minPrice, maxPrice] = getRange([...points.map((point) => point.price), ...avgPrices, ...(zeroPrice === null ? [] : [zeroPrice])])
   const viewWidth = minuteChartViewWidth.value
   const geometry = createMinuteChartGeometry(minuteChartPanelHeight.value)
   const volumeCeiling = getRobustVolumeCeiling(points.map((point) => point.volume))
@@ -733,6 +738,7 @@ const minuteChartModel = computed<MinuteChartModel | null>(() => {
     maxPrice,
     latestPrice: points[points.length - 1].price,
     avgPrice: avgPrices[avgPrices.length - 1],
+    zeroY: zeroPrice === null ? null : getMinuteY(zeroPrice, minPrice, maxPrice, geometry),
     latestPath: createMinutePolyline(points.map((point) => point.price), minPrice, maxPrice, viewWidth, geometry),
     avgPath: createMinutePolyline(avgPrices, minPrice, maxPrice, viewWidth, geometry),
     areaPath: createMinuteAreaPath(points.map((point) => point.price), minPrice, maxPrice, viewWidth, geometry),
@@ -1457,6 +1463,7 @@ onUnmounted(() => {
 .chart-line{fill:none;stroke-width:1.8;stroke-linejoin:round;stroke-linecap:round}
 .chart-line-latest{stroke:#1d9bf0}
 .chart-line-avg{stroke:#f59e0b;stroke-dasharray:4 3;opacity:.85}
+.chart-zero-line{stroke:var(--text-secondary);stroke-width:1.2;stroke-dasharray:6 4;opacity:.9;vector-effect:non-scaling-stroke}
 .ma5-line{stroke:#5d7cf6}
 .ma10-line{stroke:#b8d72f}
 .ma20-line{stroke:#6d6ea6}

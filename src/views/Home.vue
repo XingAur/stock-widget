@@ -94,14 +94,8 @@
               <div class="stock-name">{{ stock.name }}</div>
               <div class="stock-code">{{ stock.code }}</div>
             </div>
-            <div v-if="settingsStore.settings.showSparklines && getSparklinePoints(stock.code)" class="stock-sparkline-wrap">
-              <svg class="stock-sparkline" viewBox="0 0 120 24" preserveAspectRatio="none" aria-hidden="true">
-                <polyline
-                  class="stock-sparkline-line"
-                  :class="{ up: stock.changePercent >= 0, down: stock.changePercent < 0 }"
-                  :points="getSparklinePoints(stock.code)"
-                />
-              </svg>
+            <div v-if="settingsStore.settings.showSparklines && (stockStore.getSparkline(stock.code)?.length ?? 0) >= 2" class="stock-sparkline-wrap">
+              <WatchlistSparkline :prices="stockStore.getSparkline(stock.code) ?? []" :reference="stock.prevClose > 0 ? stock.prevClose : null" :tone="stock.changePercent >= 0 ? 'up' : 'down'" label="当日分时走势，虚线表示昨收价" />
             </div>
           </div>
 
@@ -176,6 +170,7 @@
             <div class="fund-title">{{ fund.name }}</div>
             <div class="fund-code-line">
               <span class="stock-code">{{ fund.code }}</span>
+              <WatchlistFundSparkline v-if="settingsStore.settings.showSparklines" :code="fund.code" :nav-date="fund.navDate" />
             </div>
           </div>
 
@@ -376,7 +371,8 @@ import {
 } from '../api/stock'
 import { useSettingsStore } from '../stores/settings'
 import { useStockStore } from '../stores/stock'
-import { createSparklinePoints } from '../utils/chart'
+import WatchlistSparkline from '../components/watchlist/WatchlistSparkline.vue'
+import WatchlistFundSparkline from '../components/watchlist/WatchlistFundSparkline.vue'
 import { resolveFundDisplayQuote, localDateKey, type FundDisplayQuote } from '../utils/fundQuote'
 import { deriveFundPosition } from '../utils/fundLedger'
 import { focusFirstModalControl, trapModalFocus } from '../utils/modalFocus'
@@ -545,10 +541,6 @@ function formatChange(percent: number): string {
 
 function formatTime(date: Date): string {
   return `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}:${date.getSeconds().toString().padStart(2, '0')}`
-}
-
-function getSparklinePoints(code: string): string {
-  return createSparklinePoints(stockStore.getSparkline(code))
 }
 
 function resetSearchState() {
@@ -1260,7 +1252,7 @@ onUnmounted(() => {
 .stock-info{display:flex;flex-direction:column;gap:2px;min-width:0;flex-shrink:0}
 .stock-name{font-size:13px;font-weight:700;line-height:1.05;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:116px}
 .stock-code{font-size:11px;color:var(--text-muted);letter-spacing:0}
-.stock-sparkline-wrap{min-width:0;flex:1;height:18px;max-width:110px;overflow:hidden}
+.stock-sparkline-wrap{min-width:0;flex:1;height:24px;max-width:110px;overflow:hidden}
 .stock-sparkline{display:block;width:100%;height:100%}
 .stock-sparkline-line{fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;opacity:.92}
 .stock-sparkline-line.up{stroke:#ff7b7b}

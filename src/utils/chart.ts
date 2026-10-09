@@ -152,3 +152,24 @@ export function createSparklinePoints(prices: number[] | undefined, width = 120,
     })
     .join(' ')
 }
+
+/** 基准值必须进入价格范围，0% 的位置与折线共用同一坐标变换。 */
+export function createReferenceSparkline(
+  prices: readonly number[],
+  reference: number | null,
+  width = 120,
+  height = 24
+): { points: string; referenceY: number | null } {
+  const values = prices.filter(Number.isFinite)
+  if (values.length < 2) return { points: '', referenceY: null }
+  const hasReference = reference !== null && Number.isFinite(reference)
+  const [min, max] = getRange(hasReference ? [...values, reference as number] : values)
+  const y = (value: number) => 2 + (max - value) / (max - min) * (height - 4)
+  const left = 2
+  return {
+    points: values.map((value, index) =>
+      `${(left + index / (values.length - 1) * (width - left - 2)).toFixed(2)},${y(value).toFixed(2)}`
+    ).join(' '),
+    referenceY: hasReference ? y(reference as number) : null
+  }
+}

@@ -87,6 +87,7 @@ import { defineAsyncComponent, computed, nextTick, onMounted, onUnmounted, ref, 
 import { invoke } from '@tauri-apps/api/core'
 import { LogicalSize, PhysicalPosition } from '@tauri-apps/api/dpi'
 import { currentMonitor, getCurrentWindow } from '@tauri-apps/api/window'
+import { anchoredWindowX } from './utils/windowGeometry'
 import TitleBar from './components/TitleBar.vue'
 import HomeView from './views/Home.vue'
 import MarketView from './views/MarketView.vue'
@@ -122,6 +123,8 @@ interface DetailSelection {
 const selectedDetail = ref<DetailSelection | null>(null)
 const selectedCode = computed(() => selectedDetail.value?.code ?? '')
 const detailPosition = ref<'left' | 'right'>('right')
+let activeExpansionDirection: 'left' | 'right' | null = null
+let windowResizeQueue: Promise<void> = Promise.resolve()
 const showSettings = ref(false)
 const settingsDialogRef = ref<HTMLElement | null>(null)
 const hasDetail = computed(() => Boolean(selectedDetail.value))
@@ -356,27 +359,37 @@ async function syncWindowSize(
   targetDetailPosition = detailPosition.value,
   wide = false
 ) {
-  const appWindow = getCurrentWindow()
   const targetWidth = wide ? QUANT_WIDE_SIZE.width : nextHasDetail ? EXPANDED_SIZE.width : COMPACT_SIZE.width
-
-  try {
-    await appWindow.setMinSize(new LogicalSize(COMPACT_SIZE.width, COMPACT_SIZE.height))
-    const scaleFactor = await appWindow.scaleFactor()
-    const currentSize = await appWindow.innerSize()
-    const currentLogicalSize = currentSize.toLogical(scaleFactor)
-    const currentPosition = await appWindow.outerPosition()
-    const targetPhysicalWidth = new LogicalSize(targetWidth, currentLogicalSize.height).toPhysical(scaleFactor).width
-    const widthDelta = targetPhysicalWidth - currentSize.width
-    const shouldAnchorWidgetSide = targetDetailPosition === 'left' && (nextHasDetail || wide)
-
-    if (shouldAnchorWidgetSide && widthDelta !== 0) {
-      await appWindow.setPosition(new PhysicalPosition(currentPosition.x - widthDelta, currentPosition.y))
+  windowResizeQueue = windowResizeQueue.then(async () => {
+    try {
+      const appWindow = getCurrentWindow()
+      await appWindow.setMinSize(new LogicalSize(COMPACT_SIZE.width, COMPACT_SIZE.height))
+      const scaleFactor = await appWindow.scaleFactor()
+      const currentSize = await appWindow.innerSize()
+      const currentLogicalSize = currentSize.toLogical(scaleFactor)
+      const currentPosition = await appWindow.outerPosition()
+      const targetPhysicalWidth = new LogicalSize(targetWidth, currentLogicalSize.height).toPhysical(scaleFactor).width
+      const widthDelta = targetPhysicalWidth - currentSize.width
+      const direction = widthDelta < 0
+        ? activeExpansionDirection ?? targetDetailPosition
+        : targetDetailPosition
+      const targetX = anchoredWindowX(currentPosition.x, currentSize.width, targetPhysicalWidth, direction)
+      // 收起时先缩小，避免把尚未收起的大窗暂时移出屏幕。
+      if (widthDelta < 0) {
+        await appWindow.setSize(new LogicalSize(targetWidth, currentLogicalSize.height))
+      }
+      if (targetX !== currentPosition.x) {
+        await appWindow.setPosition(new PhysicalPosition(targetX, currentPosition.y))
+      }
+      if (widthDelta >= 0) {
+        await appWindow.setSize(new LogicalSize(targetWidth, currentLogicalSize.height))
+      }
+      activeExpansionDirection = targetWidth > COMPACT_SIZE.width ? direction : null
+    } catch (error) {
+      console.error('Sync window size error:', error)
     }
-
-    await appWindow.setSize(new LogicalSize(targetWidth, currentLogicalSize.height))
-  } catch (error) {
-    console.error('Sync window size error:', error)
-  }
+  })
+  await windowResizeQueue
 }
 
 async function handleClose() {

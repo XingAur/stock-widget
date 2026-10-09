@@ -4,6 +4,7 @@ import {
   createMinuteChartGeometry,
   createMovingAverage,
   createSparklinePoints,
+  createReferenceSparkline,
   getRobustVolumeCeiling,
   getPeriodBucket,
   getRange
@@ -53,5 +54,22 @@ describe('chart helpers', () => {
     expect(getRobustVolumeCeiling([])).toBe(1)
     expect(getRobustVolumeCeiling([10, 20, 30, 40])).toBe(30)
     expect(getRobustVolumeCeiling([10, 12, 14, 16, 18, 20, 1000])).toBe(20)
+  })
+
+  it('keeps an all-positive or all-negative sparkline on the correct side of its reference', () => {
+    for (const prices of [[11, 12, 13], [7, 8, 9]]) {
+      const model = createReferenceSparkline(prices, 10)
+      expect(model.referenceY).not.toBeNull()
+      expect(model.referenceY as number).toBeGreaterThan(0)
+      expect(model.referenceY as number).toBeLessThan(24)
+      const ys = model.points.split(' ').map((point) => Number(point.split(',')[1]))
+      expect(ys.every((y) => prices[0] > 10 ? y < (model.referenceY as number) : y > (model.referenceY as number))).toBe(true)
+    }
+  })
+
+  it('handles flat data and omits a reference when there is no valid baseline', () => {
+    expect(createReferenceSparkline([10, 10], 10).referenceY).toBe(12)
+    expect(createReferenceSparkline([10, 11], null).referenceY).toBeNull()
+    expect(createReferenceSparkline([10], 10).points).toBe('')
   })
 })

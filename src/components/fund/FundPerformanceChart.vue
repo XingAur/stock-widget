@@ -55,6 +55,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { FundNavPoint } from '../../api/stock'
+import { getRange } from '../../utils/chart'
 import {
   createLinePath,
   filterFundNavPointsByRange,
@@ -86,14 +87,14 @@ const ranges: Array<{ value: FundChartRange; label: string }> = [
 ]
 const gridRatios = [0, 0.33, 0.66, 1]
 const historyRows = computed(() => filterFundNavPointsByRange(props.history, props.range).reverse())
-const domainMin = computed(() => {
-  if (!props.model) return -1
-  return Math.min(props.model.minValue, props.costReturn ?? Infinity, 0)
-})
-const domainMax = computed(() => {
-  if (!props.model) return 1
-  return Math.max(props.model.maxValue, props.costReturn ?? -Infinity, 0)
-})
+const domain = computed(() => getRange([
+  ...(props.model?.fund ?? []).map((point) => point.value),
+  ...(props.model?.benchmark ?? []).map((point) => point.value),
+  ...(props.costReturn === null ? [] : [props.costReturn]),
+  0
+]))
+const domainMin = computed(() => domain.value[0])
+const domainMax = computed(() => domain.value[1])
 const fundPath = computed(() => props.model
   ? createLinePath(props.model.fund, 520, 190, 28, domainMin.value, domainMax.value)
   : '')
@@ -177,7 +178,7 @@ function valueClass(value: number | null): string {
 .chart-state.error { color: #f59e55; }
 .cache-warning { margin-top: -2px; color: #f59e55; font-size: 10px; }
 .grid-line { stroke: var(--divider-color); stroke-width: 1; }
-.zero-line { stroke: var(--text-muted); stroke-width: .8; stroke-dasharray: 4 5; opacity: .5; }
+.zero-line { stroke: var(--text-secondary); stroke-width: 1.2; stroke-dasharray: 6 4; opacity: .9; vector-effect: non-scaling-stroke; }
 .series-line, .cost-line { fill: none; vector-effect: non-scaling-stroke; stroke-linecap: round; stroke-linejoin: round; }
 .series-line { stroke-width: 2; }
 .series-line.fund { stroke: #5b8cff; }

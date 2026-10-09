@@ -22,6 +22,7 @@
         <line v-for="ratio in [0, .5, 1]" :key="ratio" class="grid-line" x1="24" x2="510" :y1="18 + ratio * 108" :y2="18 + ratio * 108" />
         <path class="income-area" :d="areaPath" />
         <path class="income-line" :d="linePath" />
+        <line class="income-zero-line" x1="24" x2="496" :y1="zeroY" :y2="zeroY" />
         <text class="axis-label" x="2" y="21">{{ formatCompact(maxValue) }}</text>
         <text class="axis-label" x="2" y="129">{{ formatCompact(minValue) }}</text>
         <text class="axis-label" x="24" y="146">{{ shortDate(series[0]?.date) }}</text>
@@ -56,6 +57,7 @@
 import { computed } from 'vue'
 import type { FundDailySnapshot } from '../../utils/fundLedger'
 import { createIncomeSeries, createLinePath, type FundChartRange } from '../../utils/fundChart'
+import { getRange } from '../../utils/chart'
 
 const props = withDefaults(defineProps<{
   snapshots: FundDailySnapshot[]
@@ -76,8 +78,10 @@ const ranges: Array<{ value: FundChartRange; label: string }> = [
   { value: 'all', label: '全部' }
 ]
 const series = computed(() => createIncomeSeries(props.snapshots, props.range))
-const minValue = computed(() => Math.min(...series.value.map((item) => item.value), 0))
-const maxValue = computed(() => Math.max(...series.value.map((item) => item.value), 0))
+const domain = computed(() => getRange([...series.value.map((item) => item.value), 0]))
+const minValue = computed(() => domain.value[0])
+const maxValue = computed(() => domain.value[1])
+const zeroY = computed(() => 24 + maxValue.value / (maxValue.value - minValue.value) * 96)
 const linePath = computed(() => createLinePath(series.value, 520, 144, 24, minValue.value, maxValue.value))
 const areaPath = computed(() => linePath.value
   ? `${linePath.value} L 496 126 L 24 126 Z`
@@ -122,6 +126,7 @@ function profitClass(value: number): string {
 .grid-line { stroke: var(--divider-color); stroke-width: 1; }
 .income-area { fill: url(#income-fill); }
 .income-line { fill: none; stroke: #5b8cff; stroke-width: 2; vector-effect: non-scaling-stroke; stroke-linecap: round; stroke-linejoin: round; }
+.income-zero-line { stroke: var(--text-secondary); stroke-width: 1.2; stroke-dasharray: 6 4; opacity: .9; vector-effect: non-scaling-stroke; }
 .axis-label { fill: var(--text-muted); font-size: 10px; }
 .axis-label.end { text-anchor: end; }
 .range-switch { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; margin: 1px 0 9px; }
