@@ -2,13 +2,120 @@ import { expect, test, type Page } from '@playwright/test'
 import {
   installTauriMock,
   simulateAppRestart,
-  waitForPersistedState
+  waitForPersistedState,
+  tauriStock
 } from './tauri-mock'
 
 test.beforeEach(async ({ page }) => {
   await installTauriMock(page)
   await page.goto('/')
   await page.waitForSelector('.app-shell')
+})
+
+test.describe('列表密度与排序控件', () => {
+  test.use({ viewport: { width: 280, height: 544 }, deviceScaleFactor: 1.25 })
+
+  const stockSamples = [
+    ['002558', '巨人网络', 22.82, 4.01], ['002074', '国轩高科', 30.41, -2.84],
+    ['603773', '沃格光电', 76.8, -4.83], ['000823', '超声电子', 21.33, -6.08],
+    ['600206', '有研新材', 47.95, 7.41], ['001296', '长江材料', 19.28, -0.05],
+    ['001258', '立新能源', 10.08, -0.3], ['605058', '澳弘电子', 53.35, 10],
+    ['603538', '美诺华', 28.45, -3.43]
+  ].map(([code, name, price, change]) => ({
+    ...tauriStock(String(code), String(name), Number(price)), changePercent: Number(change),
+    prevClose: Number(price) / (1 + Number(change) / 100)
+  }))
+  const fundSamples = [
+    ['023651', '富国上证科创板芯片ETF发起式联接C', -0.0002, 1.8195],
+    ['013315', '嘉实中证科创创业50ETF联接C', -0.0001, 1.0536],
+    ['009995', '嘉实创新先锋混合C', -1.4, 1.9873],
+    ['028375', '泰信资源精选混合发起式C', -0.22, 0.8989],
+    ['019633', '国泰半导体设备ETF发起联接C', -2.78, 2.5319],
+    ['021510', '宏利半导体产业混合C', -0.28, 2.2706],
+    ['008887', '华夏国证半导体芯片ETF联接C', -0.02, 1.758]
+  ].map(([code, name, changePercent, nav]) => ({
+    code: String(code), name: String(name), changePercent: Number(changePercent), nav: Number(nav),
+    navDate: '2026-09-22', estimateNav: null, estimateChangePercent: null, estimateTime: ''
+  }))
+
+  async function seedList(page: Page, theme: 'light' | 'dark', asset: 'stock' | 'fund') {
+    await page.evaluate(({ stocks, funds, theme, asset }) => {
+      localStorage.setItem('__e2e_stock_quotes__', JSON.stringify(stocks))
+      localStorage.setItem('__e2e_fund_quotes__', JSON.stringify(funds))
+      localStorage.setItem('__e2e_persisted_state__', JSON.stringify({
+        schemaVersion: 1, activeAssetType: asset,
+        watchList: stocks.map((item) => item.code), fundWatchList: funds.map((item) => item.code),
+        settings: { theme, backgroundOpacity: 1, fontFamily: '"Microsoft YaHei", "PingFang SC", sans-serif' }
+      }))
+    }, { stocks: stockSamples, funds: fundSamples, theme, asset })
+    await simulateAppRestart(page)
+    await expect(page.locator('html')).toHaveAttribute('data-theme', theme)
+    await expect(page.locator('html')).toHaveCSS('opacity', '1')
+  }
+
+  test('股票线条变细，悬停手柄不挤动名称和折线', async ({ page }) => {
+    for (const theme of ['light', 'dark'] as const) {
+      await seedList(page, theme, 'stock')
+      const first = page.locator('.stock-card').first()
+      await expect(page.locator('.stock-card')).toHaveCount(stockSamples.length)
+      await expect(first.locator('.sparkline-line')).toHaveCSS('stroke-width', '1.1px')
+      await page.mouse.move(200, 20)
+      await expect(first.locator('.drag-handle')).toHaveCSS('opacity', '0')
+      const beforeName = await first.locator('.stock-name').boundingBox()
+      const beforeChart = await first.locator('.watchlist-sparkline').boundingBox()
+      await first.hover()
+      await expect(first.locator('.drag-handle')).toHaveCSS('opacity', '1')
+      expect(await first.locator('.stock-name').boundingBox()).toEqual(beforeName)
+      expect(await first.locator('.watchlist-sparkline').boundingBox()).toEqual(beforeChart)
+      await page.mouse.move(200, 20)
+      await expect(first.locator('.drag-handle')).toHaveCSS('opacity', '0')
+      await page.screenshot({ path: `.cache/watchlist-review/stock-${theme}.png`, animations: 'disabled' })
+    }
+  })
+
+  test('基金字号和行高收紧，零涨幅显示中性且悬停不发生位移', async ({ page }) => {
+    for (const theme of ['light', 'dark'] as const) {
+      await seedList(page, theme, 'fund')
+      const first = page.locator('.fund-card').first()
+      await expect(page.locator('.fund-card')).toHaveCount(fundSamples.length)
+      await expect(first.locator('.fund-change-value')).toHaveText('0.00%')
+      await expect(first.locator('.fund-change-value')).not.toHaveClass(/up|down/)
+      await expect(first.locator('.fund-change-value')).toHaveCSS('font-size', '13px')
+      await expect(first.locator('.fund-change-value')).toHaveCSS('font-weight', '650')
+      await expect(first.locator('.fund-title')).toHaveAttribute('title', fundSamples[0].name)
+      await expect(first.locator('.sparkline-zero-line')).toHaveCount(1)
+      const before = await first.locator('.fund-title').boundingBox()
+      await first.hover()
+      await expect(first.locator('.drag-handle')).toHaveCSS('opacity', '1')
+      expect(await first.locator('.fund-title').boundingBox()).toEqual(before)
+      await page.mouse.move(200, 20)
+      await expect(first.locator('.drag-handle')).toHaveCSS('opacity', '0')
+      await page.screenshot({ path: `.cache/watchlist-review/fund-${theme}.png`, animations: 'disabled' })
+    }
+  })
+
+  test('浮动手柄可以排序且不会打开详情或拖动窗口', async ({ page }) => {
+    await seedList(page, 'light', 'stock')
+    const first = page.locator('.stock-card').first()
+    const second = page.locator('.stock-card').nth(1)
+    await first.hover()
+    const handle = first.locator('.drag-handle')
+    await expect(handle).toHaveCSS('opacity', '1')
+    await handle.focus()
+    await page.keyboard.press('Enter')
+    await expect(page.locator('.detail-panel')).toHaveCount(0)
+    const from = await handle.boundingBox()
+    const to = await second.boundingBox()
+    if (!from || !to) throw new Error('排序控件未渲染')
+    await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 8 })
+    await page.mouse.up()
+    const saved = await waitForPersistedState(page, (state) => (state.watchList as string[])[0] === '002074')
+    expect((saved.watchList as string[]).slice(0, 2)).toEqual(['002074', '002558'])
+    await expect(page.locator('.detail-panel')).toHaveCount(0)
+    expect(await readDragCount(page)).toBe(0)
+  })
 })
 
 async function addStockThroughSearch(page: Page, code: string, name: string) {

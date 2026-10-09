@@ -81,6 +81,8 @@
             class="drag-handle"
             type="button"
             title="拖动排序"
+            @keydown.enter.stop
+            @keydown.space.stop
             @click.stop
             @pointerdown.stop.prevent="startDrag($event, 'stock', stock.code, index)"
           >
@@ -91,7 +93,7 @@
 
           <div class="stock-main">
             <div class="stock-info">
-              <div class="stock-name">{{ stock.name }}</div>
+              <div class="stock-name" :title="stock.name">{{ stock.name }}</div>
               <div class="stock-code">{{ stock.code }}</div>
             </div>
             <div v-if="settingsStore.settings.showSparklines && (stockStore.getSparkline(stock.code)?.length ?? 0) >= 2" class="stock-sparkline-wrap">
@@ -100,7 +102,7 @@
           </div>
 
           <div class="stock-side">
-            <div class="change-pill" :class="{ up: stock.changePercent >= 0, down: stock.changePercent < 0 }">
+            <div class="change-pill" :class="getSignedChangeTone(stock.changePercent)">
               {{ formatChange(stock.changePercent) }}
             </div>
             <div class="stock-price">{{ stock.price.toFixed(2) }}</div>
@@ -158,6 +160,8 @@
             class="drag-handle"
             type="button"
             title="拖动排序"
+            @keydown.enter.stop
+            @keydown.space.stop
             @click.stop
             @pointerdown.stop.prevent="startDrag($event, 'fund', fund.code, index)"
           >
@@ -167,7 +171,7 @@
           </button>
 
           <div class="fund-main-list">
-            <div class="fund-title">{{ fund.name }}</div>
+            <div class="fund-title" :title="fund.name">{{ fund.name }}</div>
             <div class="fund-code-line">
               <span class="stock-code">{{ fund.code }}</span>
               <WatchlistFundSparkline v-if="settingsStore.settings.showSparklines" :code="fund.code" :nav-date="fund.navDate" />
@@ -355,6 +359,7 @@
 </template>
 
 <script setup lang="ts">
+import '../styles/watchlistDensity.css'
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { Globe, ImagePlus, X } from 'lucide-vue-next'
 import { invoke } from '@tauri-apps/api/core'
@@ -535,8 +540,7 @@ const contextActions = computed(() => [
 ])
 
 function formatChange(percent: number): string {
-  const sign = percent >= 0 ? '+' : ''
-  return `${sign}${percent.toFixed(2)}%`
+  return formatSignedOptionalPercent(percent)
 }
 
 function formatTime(date: Date): string {

@@ -52,10 +52,19 @@ describe('format helpers', () => {
   it('keeps missing change values visually neutral', () => {
     expect(getSignedChangeTone(1.2)).toBe('up')
     expect(getSignedChangeTone(-1.2)).toBe('down')
-    expect(getSignedChangeTone(0)).toBe('up')
+    expect(getSignedChangeTone(0)).toBe('')
     expect(getSignedChangeTone(undefined)).toBe('')
     expect(getSignedChangeTone(null)).toBe('')
     expect(getSignedChangeTone(Number.NaN)).toBe('')
+  })
+
+  it('formats values that round to zero without a sign and with neutral color', () => {
+    for (const value of [0, -0, 0.004, -0.004]) {
+      expect(formatSignedPercent(value)).toBe('0.00%')
+      expect(getSignedChangeTone(value)).toBe('')
+    }
+    expect(formatSignedPercent(-0.01)).toBe('-0.01%')
+    expect(getSignedChangeTone(-0.01)).toBe('down')
   })
 
   it('compacts account money without losing its sign', () => {

@@ -24,7 +24,8 @@ export function getSignedChangeTone(value: number | undefined | null): '' | 'up'
     return ''
   }
 
-  return value >= 0 ? 'up' : 'down'
+  const rounded = Number(value.toFixed(2))
+  return rounded === 0 ? '' : rounded > 0 ? 'up' : 'down'
 }
 
 export function formatOptionalDate(value: string | undefined | null): string {
@@ -32,8 +33,10 @@ export function formatOptionalDate(value: string | undefined | null): string {
 }
 
 export function formatSignedPercent(value: number): string {
-  const sign = value >= 0 ? '+' : ''
-  return `${sign}${value.toFixed(2)}%`
+  if (!Number.isFinite(value)) return '--'
+  const rounded = Number(value.toFixed(2))
+  if (rounded === 0) return '0.00%'
+  return `${rounded > 0 ? '+' : ''}${rounded.toFixed(2)}%`
 }
 
 export function formatCompactMoney(value: number, signed = false): string {

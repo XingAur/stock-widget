@@ -41,6 +41,8 @@ export const initScript = `
     windowBounds: { x: 1560, y: 128, width: 350, height: 600, scale: 1.25 }
   };
   state.stocks = ${JSON.stringify([tauriStock('600000', '浦发银行'), tauriStock('000001', '平安银行', 12), tauriStock('600030', '中信证券', 22.69)])};
+  const customStocks = window.localStorage.getItem('__e2e_stock_quotes__');
+  if (customStocks) state.stocks = JSON.parse(customStocks);
 
   function stockByCode(code) {
     return state.stocks.filter(function (stock) { return stock.code === code; });
@@ -120,14 +122,21 @@ export const initScript = `
           return [];
         }
         case 'fetch_funds': {
-          const fundDb = [
+          const fundDb = JSON.parse(window.localStorage.getItem('__e2e_fund_quotes__') || 'null') || [
             { code: '161725', name: '招商中证白酒指数(LOF)A', nav: 0.85, navDate: '2026-09-22', changePercent: 1.2, estimateNav: null, estimateChangePercent: null, estimateTime: '', sector: '白酒' }
           ];
           const wanted = (args.codes || []).map(String);
           return fundDb.filter((fund) => wanted.includes(fund.code));
         }
-        case 'fetch_fund_history':
+        case 'fetch_fund_history': {
+          const customFunds = JSON.parse(window.localStorage.getItem('__e2e_fund_quotes__') || 'null');
+          const fund = customFunds && customFunds.find(function (item) { return item.code === args.code; });
+          if (fund) return Array.from({length: 21}, function (_, index) {
+            const nav = fund.nav * (1.02 - index * 0.001 + Math.sin(index * 0.65) * 0.004 * (1 - index / 20));
+            return {date: '2026-09-' + String(index + 2).padStart(2, '0'), nav: nav, accumulatedNav: nav, changePercent: 0};
+          });
           return [{date: '2026-09-20', nav: 0.8, accumulatedNav: 0.8, changePercent: 0}, {date: '2026-09-21', nav: 0.82, accumulatedNav: 0.82, changePercent: 2.5}, {date: '2026-09-22', nav: 0.85, accumulatedNav: 0.85, changePercent: 3.66}];
+        }
         case 'fetch_index_history':
           return ['2026-09-20', '2026-09-21', '2026-09-22'].map(function (time, index) { return {time: time, open: 100 + index, close: 100 + index, high: 102 + index, low: 98 + index, volume: 1000}; });
         case 'open_release_page':
@@ -150,11 +159,19 @@ export const initScript = `
             '浦发银行 600000 8,800.00 +120.00',
             '招商中证白酒指数(LOF)A 2,254.00 25.92% 11.08%'
           ];
-        case 'fetch_minute_data':
+        case 'fetch_minute_data': {
+          const quote = customStocks && state.stocks.find(function (stock) { return stock.code === args.code; });
+          if (quote) return Array.from({length: 60}, function (_, index) {
+            const progress = index / 59;
+            const price = quote.prevClose + (quote.price - quote.prevClose) * progress + Math.sin(index * 1.3) * quote.prevClose * 0.0015 * (1 - progress);
+            const minute = 570 + index;
+            return {time: String(Math.floor(minute / 60)).padStart(2, '0') + ':' + String(minute % 60).padStart(2, '0'), price: price, volume: 100, averagePrice: quote.prevClose + (quote.price - quote.prevClose) * progress / 2};
+          });
           return [
             { time: '09:30', price: 10, volume: 100, averagePrice: 10 },
             { time: '09:31', price: 10.1, volume: 30, averagePrice: 10.05 }
           ];
+        }
         case 'fetch_kline_data':
           return [];
         case 'fetch_kline_series': {
