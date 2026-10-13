@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core'
 
-export const PERSIST_SCHEMA_VERSION = 1
+export const PERSIST_SCHEMA_VERSION = 2
 export const PERSIST_SHADOW_KEY = 'appStateShadow'
 const PERSIST_DEBOUNCE_MS = 300
 
@@ -19,6 +19,7 @@ export type PersistedStateKey =
 
 export interface PersistedAppState {
   schemaVersion: number
+  revision?: number
   watchList?: string[]
   fundWatchList?: string[]
   fundNames?: Record<string, string>
@@ -46,16 +47,30 @@ export function parsePersistedState(raw: string | null | undefined): PersistedAp
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
       return null
     }
-    if ((parsed as PersistedAppState).schemaVersion !== PERSIST_SCHEMA_VERSION) {
-      return null
-    }
-
-    return parsed as PersistedAppState
+    return migratePersistedState(parsed)
   } catch {
     return null
   }
 }
 
+export function migratePersistedState(parsed: unknown): PersistedAppState | null {
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return null
+  }
+  const record = parsed as Record<string, unknown>
+  const version = Number(record.schemaVersion)
+  if (version !== 1 && version !== 2) {
+    return null
+  }
+  const revision = Number(record.revision)
+  return {
+    ...(record as unknown as PersistedAppState),
+    schemaVersion: PERSIST_SCHEMA_VERSION,
+    revision: Number.isFinite(revision) ? revision : 0
+  }
+}
+
+let persistRevision = 0
 let cachedRead: Promise<PersistedAppState | null> | null = null
 
 function readShadowCopy(): string | null {
@@ -92,7 +107,10 @@ let persistInFlight = false
 let persistDirtyAfterFlight = false
 
 export function buildPersistPayload(): PersistedAppState {
-  const payload: Record<string, unknown> = { schemaVersion: PERSIST_SCHEMA_VERSION }
+  const payload: Record<string, unknown> = {
+    schemaVersion: PERSIST_SCHEMA_VERSION,
+    revision: persistRevision
+  }
   for (const [key, value] of slices) {
     payload[key] = value
   }
@@ -105,8 +123,9 @@ export function updatePersistedSlice(key: PersistedStateKey | string, value: unk
 }
 
 export function adoptPersistedSlices(payload: PersistedAppState): void {
+  persistRevision = Number(payload.revision) || 0
   for (const [key, value] of Object.entries(payload)) {
-    if (key !== 'schemaVersion') {
+    if (key !== 'schemaVersion' && key !== 'revision') {
       slices.set(key, value)
     }
   }
@@ -130,6 +149,7 @@ function schedulePersist(): void {
 }
 
 export async function flushPersistedState(): Promise<void> {
+  persistRevision += 1
   const raw = JSON.stringify(buildPersistPayload())
   try {
     localStorage.setItem(PERSIST_SHADOW_KEY, raw)
@@ -161,6 +181,7 @@ export async function flushPersistedState(): Promise<void> {
 
 export function resetPersistenceForTests(): void {
   cachedRead = null
+  persistRevision = 0
   slices.clear()
   if (saveTimer !== null) {
     clearTimeout(saveTimer)

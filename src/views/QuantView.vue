@@ -50,7 +50,7 @@
             :missing-held-quotes="comparison.missingHeldQuotes"
             @switch-mode="switchTargetMode"
           />
-          <BacktestSection :backtest="backtest" />
+          <BacktestSection :backtest="backtest" :strategy="strategyBacktest" :strategy-label="topNLabel" :ic-mean="icMean" />
           <section v-if="importedReport" class="quant-section">
             <h4>研究报告<span>{{ importedReport.strategyId }} · {{ importedReport.evidenceStatus }} · {{ isUserImported ? '用户导入' : '内置' }}</span></h4>
             <div class="quant-metrics">
@@ -99,7 +99,7 @@ const importFileRef = ref<HTMLInputElement | null>(null)
 import { parseReport, formatReportMetrics, type ImportedReport } from '../utils/quant/report'
 import builtinReportUrl from '../../public/builtin-report.json?url'
 import { readPersistedSlice, updatePersistedSlice } from '../utils/persistence'
-import { computeFactorRows, loadQuantKlineBundle, runEqualWeightBacktest, type BacktestResult, type FactorRow } from '../utils/quant'
+import { computeFactorRows, loadQuantKlineBundle, runEqualWeightBacktest, runFactorTopNBacktest, summarizeRankIc, type BacktestResult, type FactorRow } from '../utils/quant'
 
 const stockStore = useStockStore()
 const rows = ref<(FactorRow & { name: string })[]>([])
@@ -108,6 +108,9 @@ const topN = ref<TopNOption>(5)
 const importedReport = ref<ImportedReport | null>(null)
 const isUserImported = ref(false)
 const backtest = ref<BacktestResult | null>(null)
+const strategyBacktest = ref<BacktestResult | null>(null)
+const icMean = ref<number | null>(null)
+let lastUsable: Record<string, import('../api/stock').KlinePoint[]> = {}
 const loading = ref(false)
 const updatedAt = ref<Date | null>(null)
 let pendingReload = false
@@ -155,6 +158,9 @@ function switchTopN(value: TopNOption): void {
   }
   topN.value = value
   updatePersistedSlice('quantTopN', value)
+  if (Object.keys(lastUsable).length) {
+    strategyBacktest.value = runFactorTopNBacktest(lastUsable, value)
+  }
 }
 
 function onImportReportFile(event: Event): void {
@@ -198,6 +204,9 @@ async function reload(): Promise<void> {
   if (codes.length === 0) {
     rows.value = []
     backtest.value = null
+    strategyBacktest.value = null
+    icMean.value = null
+    lastUsable = {}
     return
   }
   if (loading.value) {
@@ -214,7 +223,10 @@ async function reload(): Promise<void> {
 
     const factorRows = computeFactorRows(usable)
     rows.value = factorRows.map((row) => ({ ...row, name: displayName(row.code) }))
+    lastUsable = usable
     backtest.value = runEqualWeightBacktest(usable)
+    strategyBacktest.value = runFactorTopNBacktest(usable, topN.value)
+    icMean.value = summarizeRankIc(usable).icMean
     updatedAt.value = new Date()
   } finally {
     loading.value = false

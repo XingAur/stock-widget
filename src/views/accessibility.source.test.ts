@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 const settings = readFileSync(new URL('./Settings.vue', import.meta.url), 'utf8')
 const app = readFileSync(new URL('../App.vue', import.meta.url), 'utf8')
 const home = readFileSync(new URL('./Home.vue', import.meta.url), 'utf8')
+const watchlistPositionDialog = readFileSync(new URL('../components/watchlist/WatchlistPositionDialog.vue', import.meta.url), 'utf8')
 const fundDetail = readFileSync(new URL('./FundDetail.vue', import.meta.url), 'utf8')
 const fundPositionDialog = readFileSync(new URL('../components/fund/FundPositionDialog.vue', import.meta.url), 'utf8')
 const fundTransactionList = readFileSync(new URL('../components/fund/FundTransactionList.vue', import.meta.url), 'utf8')
@@ -24,7 +25,7 @@ describe('position dialog accessibility source', () => {
   it('marks all overlays as modal dialogs', () => {
     expect(app).toContain('aria-label="应用设置"')
     expect(app).toContain('aria-modal="true"')
-    expect(home).toContain('aria-modal="true"')
+    expect(watchlistPositionDialog).toContain('aria-modal="true"')
     expect(fundPositionDialog).toContain('aria-modal="true"')
     expect(fundTransactionList).toContain('aria-modal="true"')
   })

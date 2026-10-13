@@ -20,23 +20,20 @@ mod imp {
     }
 
     fn create_engine() -> Result<OcrEngine, String> {
-        unsafe {
-            let zh = Language::CreateLanguage(&HSTRING::from("zh-CN"))
-                .map_err(|error| format!("初始化中文语言失败：{error}"))?;
-            if let Ok(engine) = OcrEngine::TryCreateFromLanguage(&zh) {
-                return Ok(engine);
-            }
-            OcrEngine::TryCreateFromUserProfileLanguages().map_err(|_| {
-                "系统未安装可用的 OCR 语言包，请在 Windows 设置中添加中文语言".to_string()
-            })
+        let zh = Language::CreateLanguage(&HSTRING::from("zh-CN"))
+            .map_err(|error| format!("初始化中文语言失败：{error}"))?;
+        if let Ok(engine) = OcrEngine::TryCreateFromLanguage(&zh) {
+            return Ok(engine);
         }
+        OcrEngine::TryCreateFromUserProfileLanguages().map_err(|_| {
+            "系统未安装可用的 OCR 语言包，请在 Windows 设置中添加中文语言".to_string()
+        })
     }
 
     pub fn ocr_image_bytes(bytes: &[u8]) -> OcrResult {
         ensure_winrt_apartment();
 
-        unsafe {
-            let stream = InMemoryRandomAccessStream::new()
+        let stream = InMemoryRandomAccessStream::new()
                 .map_err(|error| format!("创建图片流失败：{error}"))?;
             let writer = DataWriter::CreateDataWriter(&stream)
                 .map_err(|error| format!("创建写入器失败：{error}"))?;
@@ -105,7 +102,6 @@ mod imp {
                 }
             }
             Ok(texts)
-        }
     }
 }
 

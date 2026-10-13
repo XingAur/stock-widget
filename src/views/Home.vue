@@ -25,311 +25,91 @@
         <span>{{ emptyHint }}</span>
       </div>
 
-      <div v-if="showAccountSummary" class="fund-account-summary">
-        <div class="fund-account-card">
-          <span>账户资金</span>
-          <strong :title="formatAccountSummaryMoney(activeAccountSummary?.accountAssets)">
-            {{ formatCompactAccountMoney(activeAccountSummary?.accountAssets) }}
-          </strong>
-        </div>
-        <div class="fund-account-card">
-          <span>当日预计收益</span>
-          <strong
-            :class="getPositionToneClass(activeAccountSummary?.estimatedDailyProfit ?? 0)"
-            :title="formatAccountSummaryMoney(activeAccountSummary?.estimatedDailyProfit, true)"
-          >
-            {{ formatCompactAccountMoney(activeAccountSummary?.estimatedDailyProfit, true) }}
-          </strong>
-        </div>
-        <div class="fund-account-card">
-          <span>账户总收益</span>
-          <strong
-            :class="getPositionToneClass(activeAccountSummary?.totalProfit ?? 0)"
-            :title="formatAccountSummaryMoney(activeAccountSummary?.totalProfit, true)"
-          >
-            {{ formatCompactAccountMoney(activeAccountSummary?.totalProfit, true) }}
-          </strong>
-        </div>
-      </div>
+      <WatchlistAccountSummary v-if="showAccountSummary" :cards="accountSummaryCards" />
 
       <template v-if="stockStore.activeAssetType === 'stock'">
-        <div
+        <WatchlistStockCard
           v-for="(stock, index) in stockStore.stockList"
           :key="stock.code"
-          class="stock-card"
-          :class="{
-            selected: isStockCardSelected(stock.code),
-            dragging: isDragging('stock', stock.code),
-            'drag-over': isDragOver('stock', index),
-            'with-position': hasStockPositionDetail(stock)
-          }"
-          role="button"
-          tabindex="0"
-          :title="`打开 ${stock.name} 详情`"
-          data-drag-card="true"
-          data-asset-type="stock"
-          :data-index="index"
-          @click.stop="handleOpenDetail(stock.code)"
-          @keydown.enter.prevent="handleOpenDetail(stock.code)"
-          @keydown.space.prevent="handleOpenDetail(stock.code)"
-          @mouseenter="handleStockHover(stock.code)"
-          @mouseleave="handleStockLeave(stock.code)"
-          @pointerenter="handleDragEnter('stock', index)"
-          @contextmenu.prevent.stop="openContextMenu($event, 'stock', stock.code, index)"
-        >
-          <button
-            class="drag-handle"
-            type="button"
-            title="拖动排序"
-            @keydown.enter.stop
-            @keydown.space.stop
-            @click.stop
-            @pointerdown.stop.prevent="startDrag($event, 'stock', stock.code, index)"
-          >
-            <span></span>
-            <span></span>
-            <span></span>
-          </button>
-
-          <div class="stock-main">
-            <div class="stock-info">
-              <div class="stock-name" :title="stock.name">{{ stock.name }}</div>
-              <div class="stock-code">{{ stock.code }}</div>
-            </div>
-            <div v-if="settingsStore.settings.showSparklines && (stockStore.getSparkline(stock.code)?.length ?? 0) >= 2" class="stock-sparkline-wrap">
-              <WatchlistSparkline :prices="stockStore.getSparkline(stock.code) ?? []" :reference="stock.prevClose > 0 ? stock.prevClose : null" :tone="stock.changePercent >= 0 ? 'up' : 'down'" label="当日分时走势，虚线表示昨收价" />
-            </div>
-          </div>
-
-          <div class="stock-side">
-            <div class="change-pill" :class="getSignedChangeTone(stock.changePercent)">
-              {{ formatChange(stock.changePercent) }}
-            </div>
-            <div class="stock-price">{{ stock.price.toFixed(2) }}</div>
-          </div>
-
-          <div
-            v-if="hasStockPositionDetail(stock)"
-            class="position-strip"
-            :class="getPositionToneClass(getStockPositionMetrics(stock)?.profit)"
-          >
-            <span>成本 {{ formatPositionMoney(getStockPositionMetrics(stock)?.costAmount) }}</span>
-            <span>市值 {{ formatPositionMoney(getStockPositionMetrics(stock)?.currentValue) }}</span>
-            <strong>盈亏 {{ formatPositionMoney(getStockPositionMetrics(stock)?.profit) }} / {{ formatPositionPercent(getStockPositionMetrics(stock)?.profitPercent) }}</strong>
-          </div>
-
-          <button
-            class="remove-btn"
-            type="button"
-            title="删除"
-            @click.stop="handleRemoveAsset('stock', stock.code)"
-          >
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-              <line x1="18" y1="6" x2="6" y2="18" />
-              <line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
-          </button>
-        </div>
+          :stock="stock"
+          :index="index"
+          :selected="isStockCardSelected(stock.code)"
+          :dragging="isDragging('stock', stock.code)"
+          :drag-over="isDragOver('stock', index)"
+          :show-sparkline="settingsStore.settings.showSparklines"
+          :prices="stockStore.getSparkline(stock.code) ?? []"
+          @open="handleOpenDetail(stock.code)"
+          @hover="handleStockHover(stock.code)"
+          @leave="handleStockLeave(stock.code)"
+          @drag-enter="handleDragEnter('stock', index)"
+          @contextmenu="openContextMenu($event, 'stock', stock.code, index)"
+          @start-drag="startDrag($event, 'stock', stock.code, index)"
+          @remove="handleRemoveAsset('stock', stock.code)"
+        />
       </template>
-
-      <template v-else>
-        <div
+      <template v-if="stockStore.activeAssetType === 'fund'">
+        <WatchlistFundCard
           v-for="(fund, index) in stockStore.fundList"
           :key="fund.code"
-          class="stock-card fund-card"
-          :class="{
-            selected: isFundCardSelected(fund.code),
-            dragging: isDragging('fund', fund.code),
-            'drag-over': isDragOver('fund', index),
-            'with-position': hasFundPositionDetail(fund)
-          }"
-          role="button"
-          tabindex="0"
-          data-drag-card="true"
-          data-asset-type="fund"
-          :data-index="index"
-          @click.stop="handleSelectFund(fund.code)"
-          @keydown.enter.prevent="handleSelectFund(fund.code)"
-          @keydown.space.prevent="handleSelectFund(fund.code)"
-          @mouseenter="handleFundHover(fund.code)"
-          @mouseleave="handleFundLeave(fund.code)"
-          @pointerenter="handleDragEnter('fund', index)"
-          @contextmenu.prevent.stop="openContextMenu($event, 'fund', fund.code, index)"
-        >
-          <button
-            class="drag-handle"
-            type="button"
-            title="拖动排序"
-            @keydown.enter.stop
-            @keydown.space.stop
-            @click.stop
-            @pointerdown.stop.prevent="startDrag($event, 'fund', fund.code, index)"
-          >
-            <span></span>
-            <span></span>
-            <span></span>
-          </button>
-
-          <div class="fund-main-list">
-            <div class="fund-title" :title="fund.name">{{ fund.name }}</div>
-            <div class="fund-code-line">
-              <span class="stock-code">{{ fund.code }}</span>
-              <WatchlistFundSparkline v-if="settingsStore.settings.showSparklines" :code="fund.code" :nav-date="fund.navDate" />
-            </div>
-          </div>
-
-          <div class="fund-quote-side">
-            <div
-              class="fund-change-value"
-              :class="getSignedChangeTone(getFundDisplayQuote(fund).changePercent)"
-            >
-              {{ formatSignedOptionalPercent(getFundDisplayQuote(fund).changePercent) }}
-            </div>
-            <div class="fund-estimate-value">{{ formatOptionalNumber(getFundDisplayQuote(fund).nav, 4) }}</div>
-            <div
-              class="fund-quote-meta"
-              :class="{ estimate: getFundDisplayQuote(fund).source === 'estimate' }"
-            >{{ getFundQuoteMeta(fund) }}</div>
-          </div>
-
-          <div
-            v-if="hasFundPositionDetail(fund)"
-            class="position-strip"
-            :class="getPositionToneClass(getFundPositionMetrics(fund)?.profit)"
-          >
-            <span>持有 {{ formatPositionMoney(getFundPositionMetrics(fund)?.currentValue) }}</span>
-            <span>成本 {{ formatPositionMoney(getFundPositionMetrics(fund)?.costAmount) }}</span>
-            <strong>盈亏 {{ formatPositionMoney(getFundPositionMetrics(fund)?.profit) }} / {{ formatPositionPercent(getFundPositionMetrics(fund)?.profitPercent) }}</strong>
-          </div>
-
-          <button
-            class="remove-btn"
-            type="button"
-            title="删除"
-            @click.stop="handleRemoveAsset('fund', fund.code)"
-          >
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-              <line x1="18" y1="6" x2="6" y2="18" />
-              <line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
-          </button>
-        </div>
+          :fund="fund"
+          :index="index"
+          :selected="isFundCardSelected(fund.code)"
+          :dragging="isDragging('fund', fund.code)"
+          :drag-over="isDragOver('fund', index)"
+          :has-position="hasFundPositionDetail(fund)"
+          :show-sparkline="settingsStore.settings.showSparklines"
+          :quote="getFundDisplayQuote(fund)"
+          :meta="getFundQuoteMeta(fund)"
+          :metrics="getFundPositionMetrics(fund)"
+          @open="handleSelectFund(fund.code)"
+          @hover="handleFundHover(fund.code)"
+          @leave="handleFundLeave(fund.code)"
+          @drag-enter="handleDragEnter('fund', index)"
+          @contextmenu="openContextMenu($event, 'fund', fund.code, index)"
+          @start-drag="startDrag($event, 'fund', fund.code, index)"
+          @remove="handleRemoveAsset('fund', fund.code)"
+        />
       </template>
     </div>
 
     <div class="bottom-bar">
-      <div class="search-shell">
-        <div v-if="searchError" class="search-error" role="alert">{{ searchError }}</div>
-        <svg class="search-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="11" cy="11" r="7" />
-          <line x1="20" y1="20" x2="16.65" y2="16.65" />
-        </svg>
+      <WatchlistSearchBar
+        :query="searchQuery"
+        :placeholder="searchPlaceholder"
+        :error="searchError"
+        :show-results="showSearch"
+        :results="searchResults"
+        @update:query="searchQuery = $event"
+        @input="handleSearch"
+        @focus="showSearch = true"
+        @blur="handleBlur"
+        @enter="handleEnter"
+        @select="handleSelect"
+      />
 
-        <input
-          v-model="searchQuery"
-          type="text"
-          :placeholder="searchPlaceholder"
-          @input="handleSearch"
-          @focus="showSearch = true"
-          @blur="handleBlur"
-          @keydown.enter.prevent="handleEnter"
-        />
-
-        <div v-if="showSearch && searchResults.length > 0" class="search-results search-results-top">
-          <button
-            v-for="item in searchResults"
-            :key="item.code"
-            class="search-item"
-            type="button"
-            @mousedown.prevent="handleSelect(item.code)"
-          >
-            <span class="search-name">{{ item.name }}</span>
-            <span class="search-code">{{ item.code }}</span>
-          </button>
-        </div>
-      </div>
-
-      <div class="bottom-actions">
-        <button class="import-btn" type="button" title="图片导入持仓" @click.stop="openImportPicker">
-          <ImagePlus :size="14" aria-hidden="true" />
-        </button>
-        <input
-          ref="importFileInputRef"
-          class="import-file-input"
-          type="file"
-          accept="image/*"
-          @change="handleImportFile"
-        />
-        <button class="market-btn" type="button" title="市场助手" @click.stop="openMarketView">
-          <Globe :size="14" aria-hidden="true" />
-        </button>
-        <span
-          v-if="stockStore.activeRefreshError"
-          class="refresh-status"
-          :class="{ stale: stockStore.activeDataStale }"
-          role="status"
-          aria-live="polite"
-          :title="stockStore.activeRefreshError"
-        >
-          {{ stockStore.activeDataStale ? '延迟' : '失败' }}
-        </span>
-        <button class="refresh-btn" type="button" title="刷新" @click.stop="handleRefresh">
-          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="23 4 23 10 17 10" />
-            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
-          </svg>
-        </button>
-        <span class="update-time">{{ stockStore.lastUpdate ? formatTime(stockStore.lastUpdate) : '--:--:--' }}</span>
-      </div>
+      <WatchlistStatusBar
+        ref="statusBarRef"
+        :refresh-error="stockStore.activeRefreshError"
+        :stale="stockStore.activeDataStale"
+        :freshness-level="stockStore.quoteFreshness.level"
+        :freshness-title="stockStore.quoteFreshness.label || undefined"
+        :freshness-text="freshnessText"
+        @import="openImportPicker"
+        @file="handleImportFile"
+        @market="openMarketView"
+        @refresh="handleRefresh"
+      />
     </div>
 
-    <div v-if="positionDialog.visible" class="position-overlay" @click.self="closePositionDialog">
-      <form
-        ref="positionDialogElement"
-        class="position-dialog"
-        role="dialog"
-        aria-modal="true"
-        :aria-label="positionDialog.assetType === 'stock' ? '录入股票持仓' : '录入基金持有'"
-        @submit.prevent="savePositionDialog"
-        @click.stop
-        @keydown="handlePositionDialogKeydown"
-      >
-        <header class="position-dialog-header">
-          <h3>{{ positionDialog.assetType === 'stock' ? '录入股票持仓' : '录入基金持有' }}</h3>
-          <button class="position-close-btn" type="button" aria-label="关闭持仓录入" title="关闭" @click="closePositionDialog"><X :size="15" aria-hidden="true" /></button>
-        </header>
-
-        <div v-if="positionDialog.assetType === 'stock'" class="position-fields">
-          <label class="position-field">
-            <span>成本价</span>
-            <input v-model="positionDialog.stockCostPrice" type="number" min="0" step="0.001" inputmode="decimal" />
-          </label>
-          <label class="position-field">
-            <span>股数</span>
-            <input v-model="positionDialog.stockShares" type="number" min="0" step="1" inputmode="decimal" />
-          </label>
-        </div>
-
-        <div v-else class="position-fields">
-          <label class="position-field">
-            <span>持有金额</span>
-            <input v-model="positionDialog.fundHoldingAmount" type="number" min="0" step="0.01" inputmode="decimal" />
-          </label>
-          <label class="position-field">
-            <span>收益</span>
-            <input v-model="positionDialog.fundProfit" type="number" step="0.01" inputmode="decimal" />
-          </label>
-        </div>
-
-        <p v-if="positionDialog.error" class="position-error">{{ positionDialog.error }}</p>
-
-        <footer class="position-dialog-actions">
-          <button class="position-secondary-btn" type="button" @click="clearPositionDialog">清除</button>
-          <button class="position-primary-btn" type="submit">保存</button>
-        </footer>
-      </form>
-    </div>
-
+    <WatchlistPositionDialog
+      v-if="positionDialog.visible"
+      ref="positionDialogRef"
+      :dialog="positionDialog"
+      @close="closePositionDialog"
+      @save="savePositionDialog"
+      @clear="clearPositionDialog"
+      @keydown="handlePositionDialogKeydown"
+    />
     <ImportDialog
       v-if="importDialog.visible"
       :visible="importDialog.visible"
@@ -338,32 +118,28 @@
       @imported="handleImported"
     />
 
-    <div
-      v-if="contextMenu.visible"
-      class="context-menu"
-      :style="{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }"
-      @click.stop
-    >
-      <button
-        v-for="action in contextActions"
-        :key="action.key"
-        class="context-menu-item"
-        type="button"
-        :disabled="action.disabled"
-        @click="handleContextAction(action.key)"
-      >
-        {{ action.label }}
-      </button>
-    </div>
+    <WatchlistContextMenu
+      :visible="contextMenu.visible"
+      :x="contextMenu.x"
+      :y="contextMenu.y"
+      :actions="contextActions"
+      @action="onContextMenuAction"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import '../styles/watchlistDensity.css'
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
-import { Globe, ImagePlus, X } from 'lucide-vue-next'
 import { invoke } from '@tauri-apps/api/core'
 import ImportDialog from '../components/ImportDialog.vue'
+import WatchlistStockCard from '../components/watchlist/WatchlistStockCard.vue'
+import WatchlistFundCard from '../components/watchlist/WatchlistFundCard.vue'
+import WatchlistSearchBar from '../components/watchlist/WatchlistSearchBar.vue'
+import WatchlistContextMenu from '../components/watchlist/WatchlistContextMenu.vue'
+import WatchlistAccountSummary from '../components/watchlist/WatchlistAccountSummary.vue'
+import WatchlistPositionDialog from '../components/watchlist/WatchlistPositionDialog.vue'
+import WatchlistStatusBar from '../components/watchlist/WatchlistStatusBar.vue'
 import { logError } from '../utils/logger'
 import {
   searchFunds,
@@ -371,27 +147,20 @@ import {
   type AssetType,
   type FundQuote,
   type FundSearchResult,
-  type SearchResult,
-  type Stock
+  type SearchResult
 } from '../api/stock'
 import { useSettingsStore } from '../stores/settings'
 import { useStockStore } from '../stores/stock'
-import WatchlistSparkline from '../components/watchlist/WatchlistSparkline.vue'
-import WatchlistFundSparkline from '../components/watchlist/WatchlistFundSparkline.vue'
 import { resolveFundDisplayQuote, localDateKey, type FundDisplayQuote } from '../utils/fundQuote'
 import { deriveFundPosition } from '../utils/fundLedger'
 import { focusFirstModalControl, trapModalFocus } from '../utils/modalFocus'
 import {
-  formatCompactMoney,
-  formatOptionalNumber,
-  formatSignedOptionalPercent,
-  getSignedChangeTone
+  formatCompactMoney
 } from '../utils/format'
 import {
   calculateFundAccountSummary,
   calculateFundPositionMetrics,
   calculateStockAccountSummary,
-  calculateStockPositionMetrics,
   getProfitTone,
   type FundAccountSummary,
   type FundPositionForSummary,
@@ -475,7 +244,7 @@ const positionDialog = ref<PositionDialogState>({
   fundProfit: '',
   error: ''
 })
-const positionDialogElement = ref<HTMLElement | null>(null)
+const positionDialogRef = ref<{ formEl?: HTMLElement | null } | null>(null)
 
 let searchTimer: ReturnType<typeof setTimeout> | null = null
 let blurTimer: ReturnType<typeof setTimeout> | null = null
@@ -520,6 +289,29 @@ const activeAccountSummary = computed<StockAccountSummary | FundAccountSummary |
   stockStore.activeAssetType === 'stock' ? stockAccountSummary.value : fundAccountSummary.value
 )
 const showAccountSummary = computed(() => Boolean(activeAccountSummary.value))
+const accountSummaryCards = computed(() => {
+  const summary = activeAccountSummary.value
+  return [
+    {
+      label: '账户资金',
+      value: formatCompactAccountMoney(summary?.accountAssets),
+      title: formatAccountSummaryMoney(summary?.accountAssets),
+      toneClass: ''
+    },
+    {
+      label: '当日预计收益',
+      value: formatCompactAccountMoney(summary?.estimatedDailyProfit, true),
+      title: formatAccountSummaryMoney(summary?.estimatedDailyProfit, true),
+      toneClass: getPositionToneClass(summary?.estimatedDailyProfit ?? 0)
+    },
+    {
+      label: '账户总收益',
+      value: formatCompactAccountMoney(summary?.totalProfit, true),
+      title: formatAccountSummaryMoney(summary?.totalProfit, true),
+      toneClass: getPositionToneClass(summary?.totalProfit ?? 0)
+    }
+  ]
+})
 
 const contextListLength = computed(() =>
   contextMenu.value.assetType === 'stock'
@@ -539,13 +331,16 @@ const contextActions = computed(() => [
   { key: 'move-bottom' as const, label: '置底', disabled: contextMenu.value.index === -1 || contextMenu.value.index >= contextListLength.value - 1 }
 ])
 
-function formatChange(percent: number): string {
-  return formatSignedOptionalPercent(percent)
-}
-
 function formatTime(date: Date): string {
   return `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}:${date.getSeconds().toString().padStart(2, '0')}`
 }
+
+const freshnessText = computed(() => {
+  if (stockStore.activeAssetType === 'stock' && stockStore.quoteFreshness.label) {
+    return stockStore.quoteFreshness.label
+  }
+  return stockStore.lastUpdate ? formatTime(stockStore.lastUpdate) : '--:--:--'
+})
 
 function resetSearchState() {
   searchResults.value = []
@@ -603,6 +398,10 @@ function openContextMenu(event: MouseEvent, assetType: AssetType, code: string, 
   }
 }
 
+function onContextMenuAction(key: string) {
+  handleContextAction(key as ContextActionKey)
+}
+
 function handleContextAction(action: ContextActionKey) {
   const { assetType, code, index } = contextMenu.value
   if (!code || index < 0) {
@@ -648,10 +447,6 @@ function handleContextAction(action: ContextActionKey) {
   }
 
   closeContextMenu()
-}
-
-function getStockPositionMetrics(stock: Stock): PositionMetrics | null {
-  return calculateStockPositionMetrics(stockStore.stockPositions[stock.code], stock.price)
 }
 
 function getFundPositionMetrics(fund: FundQuote): PositionMetrics | null {
@@ -720,10 +515,6 @@ function isFundCardSelected(code: string): boolean {
   return code === props.selectedCode || code === hoveredFundCode.value
 }
 
-function hasStockPositionDetail(stock: Stock): boolean {
-  return isStockCardSelected(stock.code) && Boolean(getStockPositionMetrics(stock))
-}
-
 function hasFundPositionDetail(fund: FundQuote): boolean {
   return isFundCardSelected(fund.code) && Boolean(getFundPositionMetrics(fund))
 }
@@ -748,10 +539,6 @@ function handleFundLeave(code: string) {
   }
 }
 
-function formatPositionMoney(value: number | undefined): string {
-  return formatOptionalNumber(value, 2)
-}
-
 function formatAccountSummaryMoney(value: number | null | undefined, signed = false): string {
   if (value === undefined || value === null || !Number.isFinite(value)) {
     return '--'
@@ -772,10 +559,6 @@ function formatAccountSummaryMoney(value: number | null | undefined, signed = fa
 function formatCompactAccountMoney(value: number | null | undefined, signed = false): string {
   if (value === undefined || value === null) return '--'
   return formatCompactMoney(value, signed)
-}
-
-function formatPositionPercent(value: number | undefined): string {
-  return formatSignedOptionalPercent(value)
 }
 
 function getPositionToneClass(value: number | undefined): string {
@@ -803,7 +586,7 @@ function openPositionDialog(assetType: AssetType, code: string) {
     error: ''
   }
   positionDialogTrigger = document.activeElement instanceof HTMLElement ? document.activeElement : null
-  void nextTick(() => focusFirstModalControl(positionDialogElement.value))
+  void nextTick(() => focusFirstModalControl(positionDialogRef.value?.formEl ?? null))
 }
 
 function closePositionDialog() {
@@ -820,7 +603,7 @@ function handlePositionDialogKeydown(event: KeyboardEvent) {
     closePositionDialog()
     return
   }
-  trapModalFocus(event, positionDialogElement.value)
+  trapModalFocus(event, positionDialogRef.value?.formEl ?? null)
 }
 
 function savePositionDialog() {
@@ -1105,13 +888,13 @@ function openMarketView() {
   stockStore.setActiveAssetType('market')
 }
 
-const importFileInputRef = ref<HTMLInputElement | null>(null)
+const statusBarRef = ref<{ pickFile?: () => void } | null>(null)
 const importDialog = ref<{ visible: boolean; lines: string[] }>({ visible: false, lines: [] })
 let importOcrBusy = false
 
 function openImportPicker(): void {
   closeContextMenu()
-  importFileInputRef.value?.click()
+  statusBarRef.value?.pickFile?.()
 }
 
 async function handleImportFile(event: Event): Promise<void> {
@@ -1230,7 +1013,7 @@ onUnmounted(() => {
 .refresh-status.stale{border-color:rgba(245,158,11,.28);background:rgba(245,158,11,.08);color:#fbbf57}
 .refresh-btn{width:26px;height:26px;display:inline-flex;align-items:center;justify-content:center;border:none;border-radius:8px;background:transparent;color:var(--text-muted);cursor:pointer;transition:color .15s ease,background .15s ease}
 .refresh-btn:hover{color:var(--text-primary);background:rgba(255,255,255,.05)}
-.update-time{font-size:11px;color:var(--text-muted)}
+.update-time{font-size:11px;color:var(--text-muted)}.update-time.delayed{color:#fbbf57}.update-time.stale{color:#f59e0b}
 .stock-list{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:6px;padding:6px 10px 0}
 .fund-account-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-bottom:2px}
 .fund-account-card{min-width:0;padding:8px 7px;border:1px solid rgba(255,255,255,.07);border-radius:8px;background:rgba(255,255,255,.04);box-shadow:inset 0 1px 0 rgba(255,255,255,.035)}
@@ -1256,7 +1039,7 @@ onUnmounted(() => {
 .stock-info{display:flex;flex-direction:column;gap:2px;min-width:0;flex-shrink:0}
 .stock-name{font-size:13px;font-weight:700;line-height:1.05;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:116px}
 .stock-code{font-size:11px;color:var(--text-muted);letter-spacing:0}
-.stock-sparkline-wrap{min-width:0;flex:1;height:24px;max-width:110px;overflow:hidden}
+.stock-sparkline-wrap{min-width:0;flex:1;height:18px;max-width:110px;overflow:hidden}
 .stock-sparkline{display:block;width:100%;height:100%}
 .stock-sparkline-line{fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;opacity:.92}
 .stock-sparkline-line.up{stroke:#ff7b7b}

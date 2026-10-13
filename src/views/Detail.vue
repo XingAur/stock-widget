@@ -19,42 +19,19 @@
     <div v-if="loading && !detail" class="detail-empty">加载中...</div>
 
     <div v-else-if="detail" class="detail-body">
-      <header class="stock-header">
-        <div class="stock-title">
-          <h2>{{ detail.name }}</h2>
-          <div class="stock-subtitle">{{ code }} {{ exchangeLabel }}</div>
-        </div>
-
-        <div class="price-panel">
-          <div class="price-value">{{ detail.price.toFixed(2) }}</div>
-          <div class="price-pill" :class="{ up: detail.changePercent >= 0, down: detail.changePercent < 0 }">
-            {{ formatSignedPercent(detail.changePercent) }}
-          </div>
-        </div>
-      </header>
-
-      <section class="stats-grid">
-        <div v-for="item in overviewItems" :key="item.label" class="stat-item" :class="{ compact: item.compact }">
-          <span class="stat-label">{{ item.label }}</span>
-          <span class="stat-value" v-html="item.value"></span>
-        </div>
-      </section>
+      <DetailQuoteHeader
+        :name="detail.name"
+        :code="code"
+        :exchange-label="exchangeLabel"
+        :price-text="detail.price.toFixed(2)"
+        :change-text="formatSignedPercent(detail.changePercent)"
+        :tone="detail.changePercent >= 0 ? 'up' : 'down'"
+        :items="overviewItems"
+      />
 
       <section class="chart-card">
-        <div class="tab-bar">
-          <button
-            v-for="tab in tabs"
-            :key="tab.key"
-            class="tab-btn"
-            :class="{ active: activeTab === tab.key }"
-            type="button"
-            @click="switchTab(tab.key)"
-          >
-            {{ tab.label }}
-          </button>
-        </div>
-
-        <div class="chart-meta">
+        <DetailChartToolbar :tabs="tabs" :active-tab="activeTab" @switch="onChartTabSwitch">
+        <div class="chart-meta-slot">
           <template v-if="activeTab === 'minute' && minuteChartModel">
             <span class="legend-item"><span class="legend-dot latest" />最新 {{ minuteChartModel.latestPrice.toFixed(2) }}</span>
             <span class="legend-item"><span class="legend-dot avg" />均价 {{ minuteChartModel.avgPrice.toFixed(2) }}</span>
@@ -66,6 +43,7 @@
             <span class="legend-item"><span class="legend-dot dot-ma20"></span>MA20 {{ formatMA(klineChartModel.latestMA20) }}</span>
           </template>
         </div>
+        </DetailChartToolbar>
 
         <div class="chart-area">
           <div v-if="chartLoading" class="chart-empty">加载图表中...</div>
@@ -125,7 +103,9 @@
                   />
                   <polyline class="chart-line chart-line-latest" :points="minuteChartModel.latestPath" />
                   <polyline class="chart-line chart-line-avg" :points="minuteChartModel.avgPath" />
-                  <line v-if="minuteChartModel.zeroY !== null" class="chart-zero-line" :x1="CHART_PADDING.left" :x2="minuteChartModel.viewWidth - CHART_PADDING.right" :y1="minuteChartModel.zeroY" :y2="minuteChartModel.zeroY" />
+                  <template v-if="minuteChartModel.zeroY !== null">
+                    <line class="chart-zero-line" :x1="CHART_PADDING.left" :x2="minuteChartModel.viewWidth - CHART_PADDING.right" :y1="minuteChartModel.zeroY" :y2="minuteChartModel.zeroY" />
+                  </template>
                   <template v-if="minuteHover">
                     <line class="hover-line" :x1="minuteHover.x" :x2="minuteHover.x" :y1="CHART_PADDING.top" :y2="minuteChartModel.geometry.volumeBottom" />
                     <line class="hover-line" :x1="CHART_PADDING.left" :x2="minuteChartModel.viewWidth - CHART_PADDING.right" :y1="minuteHover.latestY" :y2="minuteHover.latestY" />
@@ -185,28 +165,13 @@
                 </div>
                 </div>
 
-                <aside class="orderbook-panel">
-                  <div class="orderbook-section">
-                    <div v-for="row in sellOrderBookRows" :key="row.label" class="orderbook-row" :class="[row.side, orderBookToneClass]">
-                      <i class="orderbook-depth sell" :style="{ width: `${row.depthPercent}%` }" />
-                      <span class="orderbook-level">{{ row.label }}</span>
-                      <strong class="orderbook-price">{{ row.priceText }}</strong>
-                      <span class="orderbook-volume">{{ row.volumeText }}</span>
-                    </div>
-                  </div>
-                  <div class="orderbook-divider" aria-hidden="true">
-                    <i class="buy" :style="{ width: `${orderBookBalance.buyPercent}%` }" />
-                    <i class="sell" :style="{ width: `${orderBookBalance.sellPercent}%` }" />
-                  </div>
-                  <div class="orderbook-section">
-                    <div v-for="row in buyOrderBookRows" :key="row.label" class="orderbook-row" :class="[row.side, orderBookToneClass]">
-                      <i class="orderbook-depth buy" :style="{ width: `${row.depthPercent}%` }" />
-                      <span class="orderbook-level">{{ row.label }}</span>
-                      <strong class="orderbook-price">{{ row.priceText }}</strong>
-                      <span class="orderbook-volume">{{ row.volumeText }}</span>
-                    </div>
-                  </div>
-              </aside>
+                <DetailOrderBook
+                  :sell-rows="sellOrderBookRows"
+                  :buy-rows="buyOrderBookRows"
+                  :tone="orderBookToneClass"
+                  :buy-percent="orderBookBalance.buyPercent"
+                  :sell-percent="orderBookBalance.sellPercent"
+                />
             </div>
 
             <div v-if="!minuteChartModel" class="chart-empty">暂无图表数据</div>
@@ -388,6 +353,9 @@
 
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import DetailQuoteHeader from '../components/detail/DetailQuoteHeader.vue'
+import DetailOrderBook from '../components/detail/DetailOrderBook.vue'
+import DetailChartToolbar from '../components/detail/DetailChartToolbar.vue'
 import {
   fetchIndices,
   fetchKlineData,
@@ -448,6 +416,7 @@ interface MinuteChartModel {
   maxPrice: number
   latestPrice: number
   avgPrice: number
+  zeroPrice: number | null
   zeroY: number | null
   latestPath: string
   avgPath: string
@@ -738,6 +707,7 @@ const minuteChartModel = computed<MinuteChartModel | null>(() => {
     maxPrice,
     latestPrice: points[points.length - 1].price,
     avgPrice: avgPrices[avgPrices.length - 1],
+    zeroPrice,
     zeroY: zeroPrice === null ? null : getMinuteY(zeroPrice, minPrice, maxPrice, geometry),
     latestPath: createMinutePolyline(points.map((point) => point.price), minPrice, maxPrice, viewWidth, geometry),
     avgPath: createMinutePolyline(avgPrices, minPrice, maxPrice, viewWidth, geometry),
@@ -1319,6 +1289,10 @@ async function loadAll() {
 async function reloadKlines() {
   lastKlineLoadedAt = Date.now()
   await preloadKlines()
+}
+
+function onChartTabSwitch(key: string) {
+  void switchTab(key as TabKey)
 }
 
 async function switchTab(tab: TabKey) {

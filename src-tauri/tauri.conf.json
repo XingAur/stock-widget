@@ -21,7 +21,7 @@
         "resizable": true,
         "decorations": false,
         "transparent": true,
-        "additionalBrowserArgs": "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection,CalculateNativeWinOcclusion --disable-backgrounding-occluded-windows --disable-renderer-backgrounding",
+        "additionalBrowserArgs": "--disable-features=msWebOOUI,msPdfOOUI,CalculateNativeWinOcclusion --disable-backgrounding-occluded-windows --disable-renderer-backgrounding",
         "alwaysOnTop": false,
         "center": false,
         "x": 100,

@@ -125,6 +125,7 @@ describe('stock store refresh', () => {
       store.startAutoRefresh()
       await vi.advanceTimersByTimeAsync(30_000)
       expect(fetchStocks).toHaveBeenCalled()
+      expect(fetchMinuteData).not.toHaveBeenCalled()
     } finally {
       store.stopAutoRefresh()
       vi.useRealTimers()

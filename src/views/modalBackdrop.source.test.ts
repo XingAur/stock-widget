@@ -15,7 +15,7 @@ function cssRule(source: string, selector: string): string {
 describe('modal backdrops', () => {
   it.each([
     ['../App.vue', '.settings-overlay'],
-    ['./Home.vue', '.position-overlay'],
+    ['../components/watchlist/WatchlistPositionDialog.vue', '.position-overlay'],
     ['./FundDetail.vue', '.action-overlay']
   ])('%s %s keeps the background sharp', (path, selector) => {
     const rule = cssRule(read(path), selector)

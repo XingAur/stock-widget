@@ -8,6 +8,8 @@ import {
   momentum20,
   reversal5,
   runEqualWeightBacktest,
+  runFactorTopNBacktest,
+  summarizeRankIc,
   volatility20
 } from './quant'
 
@@ -103,6 +105,37 @@ describe('runEqualWeightBacktest', () => {
     expect(result.nav.length).toBeGreaterThan(40)
     expect(Number.isFinite(result.maxDrawdown)).toBe(true)
     expect(Number.isFinite(result.annualizedReturn)).toBe(true)
+  })
+
+  it('still buys at open when only the close hits the limit',
+    () => {
+      const dates = Array.from({ length: 8 }, () => 10)
+      const opens = [...dates.slice(0, 7), 10.02]
+      const closes = [...dates.slice(0, 7), 11]
+      const result = runEqualWeightBacktest({
+        sh600001: kline(closes, opens)
+      })
+      expect(result.nav.length).toBe(8)
+      expect(result.finalEquity).not.toBe(DEFAULT_BACKTEST_CONFIG.initialCash)
+    }
+  )
+
+  it('does not let future prices change past Top-N scores',
+    () => {
+      const winner = kline(Array.from({ length: 40 }, (_, i) => 100 + i))
+      const loser = kline(Array.from({ length: 40 }, (_, i) => 80 - i * 0.2))
+      const baseline = runFactorTopNBacktest({ sh600519: winner, sz000001: loser }, 3)
+      const leaked = winner.map((point, index) => index === winner.length - 1 ? { ...point, close: point.close * 6 } : point)
+      const withFuture = runFactorTopNBacktest({ sh600519: leaked, sz000001: loser }, 3)
+      expect(withFuture.nav.slice(0, -1)).toEqual(baseline.nav.slice(0, -1))
+    }
+  )
+
+  it('computes a rank IC on a trending two-name pool', () => {
+    const winner = kline(Array.from({ length: 40 }, (_, i) => 100 + i))
+    const loser = kline(Array.from({ length: 40 }, (_, i) => 80 - i * 0.2))
+    const summary = summarizeRankIc({ sh600519: winner, sz000001: loser })
+    expect(summary.days).toBeGreaterThan(0)
   })
 })
 

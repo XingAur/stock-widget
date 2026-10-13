@@ -48,6 +48,13 @@ describe('persistence payload', () => {
     expect(parsePersistedState(JSON.stringify({ schemaVersion: 99 }))).toBeNull()
   })
 
+  it('migrates v1 snapshots to v2 with a revision', () => {
+    const payload = parsePersistedState(JSON.stringify({ schemaVersion: 1, watchList: ['600000'] }))
+    expect(payload?.schemaVersion).toBe(2)
+    expect(payload?.watchList).toEqual(['600000'])
+    expect(payload?.revision).toBe(0)
+  })
+
   it('rejects corrupted payloads instead of throwing', () => {
     expect(parsePersistedState('not json')).toBeNull()
     expect(parsePersistedState('')).toBeNull()

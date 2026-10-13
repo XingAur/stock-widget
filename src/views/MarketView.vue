@@ -111,6 +111,7 @@ const error = ref('')
 const lastUpdate = ref<Date | null>(null)
 
 let refreshTimer: number | null = null
+let loadSeq = 0
 
 const activeGroup = computed(() => findMarketGroup(activeMarket.value))
 const modeOptions = computed(() => marketViewModeOptions(activeGroup.value.hasSectors, activeMarket.value === 'cn'))
@@ -128,13 +129,14 @@ function formatTime(date: Date): string {
 }
 
 async function load(): Promise<void> {
-  if (loading.value) {
-    return
-  }
-
+  const seq = ++loadSeq
+  const key = currentDataKey.value
   loading.value = true
   try {
-    const data = await fetchGlobalIndices(currentDataKey.value)
+    const data = await fetchGlobalIndices(key)
+    if (seq !== loadSeq || key !== currentDataKey.value) {
+      return
+    }
     if (data.length === 0) {
       if (indices.value.length === 0) {
         error.value = '行情服务暂未返回数据'
@@ -146,9 +148,14 @@ async function load(): Promise<void> {
     error.value = ''
     lastUpdate.value = new Date()
   } catch (caught) {
+    if (seq !== loadSeq) {
+      return
+    }
     error.value = caught instanceof Error ? caught.message : String(caught)
   } finally {
-    loading.value = false
+    if (seq === loadSeq) {
+      loading.value = false
+    }
   }
 }
 
@@ -168,7 +175,7 @@ function switchMarket(market: MarketKey): void {
 }
 
 function switchView(mode: MarketViewMode): void {
-  if (viewMode.value === mode || loading.value) {
+  if (viewMode.value === mode) {
     return
   }
 

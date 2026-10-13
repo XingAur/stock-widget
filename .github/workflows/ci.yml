@@ -22,10 +22,13 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
         with:
-          components: rustfmt
+          components: rustfmt, clippy
 
       - name: Install frontend dependencies
         run: npm ci
+
+      - name: Check versions
+        run: npm run check:versions
 
       - name: Test frontend
         run: npm run test
@@ -41,6 +44,16 @@ jobs:
         working-directory: src-tauri
         run: cargo check
 
+      - name: Clippy
+        working-directory: src-tauri
+        run: cargo clippy --all-targets -- -D warnings
+
       - name: Test Rust
         working-directory: src-tauri
         run: cargo test
+
+      - name: Install Playwright
+        run: npx playwright install --with-deps chromium
+
+      - name: E2E
+        run: npm run test:e2e

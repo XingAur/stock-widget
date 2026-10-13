@@ -22,6 +22,9 @@ import {
   type FundTransactionInput
 } from '../utils/fundLedger'
 import { logError } from '../utils/logger'
+import { shouldRefreshSparkline } from '../utils/tradingSession'
+import { mapPool } from '../utils/taskPool'
+import { worstQuoteFreshness } from '../utils/quoteFreshness'
 import { moveItem } from '../utils/list'
 import {
   PERSIST_SHADOW_KEY,
@@ -211,6 +214,8 @@ export const useStockStore = defineStore('stock', () => {
   const fundRefreshError = ref('')
 
   let refreshTimer: number | null = null
+  let sparklineTimer: number | null = null
+  const sparklineFetchedAt = new Map<string, number>()
 
   const loading = computed(() => stockLoading.value || fundLoading.value)
   const lastUpdate = computed(() => (
@@ -222,6 +227,9 @@ export const useStockStore = defineStore('stock', () => {
   const activeDataStale = computed(() => Boolean(
     activeRefreshError.value
     && (activeAssetType.value === 'stock' ? stocks.value.size : funds.value.size)
+  ))
+  const quoteFreshness = computed(() => worstQuoteFreshness(
+    [...stocks.value.values()].map((stock) => stock.time)
   ))
 
   watch(watchList, (nextWatchList) => {
@@ -399,11 +407,15 @@ export const useStockStore = defineStore('stock', () => {
     }
   }
 
-  async function refreshAll() {
+  async function refreshAll(options: { sparklines?: boolean } = {}) {
     const tasks: Promise<void>[] = []
+    const loadSparklines = options.sparklines ?? true
 
     if (watchList.value.length > 0) {
-      tasks.push(refreshStocks(), fetchAllSparklines())
+      tasks.push(refreshStocks())
+      if (loadSparklines) {
+        tasks.push(fetchAllSparklines(true))
+      }
     } else {
       stocks.value = new Map()
       sparklines.value = new Map()
@@ -428,14 +440,24 @@ export const useStockStore = defineStore('stock', () => {
       if (!isPageVisible()) {
         return
       }
-      void refreshAll()
+      void refreshAll({ sparklines: false })
     }, 30000)
+    sparklineTimer = window.setInterval(() => {
+      if (!isPageVisible() || !shouldRefreshSparkline()) {
+        return
+      }
+      void fetchAllSparklines()
+    }, 90_000)
   }
 
   function stopAutoRefresh() {
     if (refreshTimer) {
       clearInterval(refreshTimer)
       refreshTimer = null
+    }
+    if (sparklineTimer) {
+      clearInterval(sparklineTimer)
+      sparklineTimer = null
     }
   }
 
@@ -730,15 +752,38 @@ export const useStockStore = defineStore('stock', () => {
     if (minuteData.length === 0) {
       return
     }
-
+    sparklineFetchedAt.set(code, Date.now())
     const prices = minuteData.map((item) => item.price)
     const nextSparklines = new Map(sparklines.value)
     nextSparklines.set(code, prices)
     sparklines.value = nextSparklines
   }
 
-  async function fetchAllSparklines() {
-    await Promise.all(watchList.value.map((code) => fetchSparkline(code)))
+  async function fetchAllSparklines(force = false) {
+    const codes = watchList.value
+    if (codes.length === 0) {
+      return
+    }
+    const now = Date.now()
+    const due = force
+      ? codes
+      : codes.filter((code) => now - (sparklineFetchedAt.get(code) ?? 0) >= 60_000)
+    if (due.length === 0) {
+      return
+    }
+    const snapshots = await mapPool(due, 4, async (code) => {
+      const minuteData = await fetchMinuteData(code)
+      return { code, prices: minuteData.map((item) => item.price) }
+    })
+    const nextSparklines = new Map(sparklines.value)
+    for (const snapshot of snapshots) {
+      if (!snapshot.prices.length) {
+        continue
+      }
+      sparklineFetchedAt.set(snapshot.code, Date.now())
+      nextSparklines.set(snapshot.code, snapshot.prices)
+    }
+    sparklines.value = nextSparklines
   }
 
   const getSparkline = computed(() => (code: string) => sparklines.value.get(code))
@@ -776,6 +821,7 @@ export const useStockStore = defineStore('stock', () => {
     fundRefreshError,
     activeRefreshError,
     activeDataStale,
+    quoteFreshness,
     stockList,
     fundList,
     init,

@@ -1,8 +1,15 @@
 <template>
   <section class="quant-section">
-    <h4>自选池历史示意<span>（当前名单等权 · 约{{ years }}年）</span></h4>
+    <h4>回测对照<span>等权基准 vs {{ strategyLabel }} · 约{{ years }}年</span></h4>
     <div v-if="backtest" class="quant-bt">
       <svg v-if="backtest.nav.length > 1" class="quant-nav" viewBox="0 0 240 60" preserveAspectRatio="none">
+        <polyline
+          v-if="strategyPoints"
+          :points="strategyPoints"
+          class="nav-strategy"
+          fill="none"
+          stroke-width="1.5"
+        />
         <polyline
           :points="navPoints"
           :class="backtest.totalReturn >= 0 ? 'nav-up' : 'nav-down'"
@@ -12,19 +19,19 @@
       </svg>
       <div class="quant-metrics">
         <div class="metric">
-          <span>总收益</span>
+          <span>等权收益</span>
           <strong :class="tone(backtest.totalReturn)">{{ percent(backtest.totalReturn) }}</strong>
         </div>
         <div class="metric">
-          <span>年化</span>
-          <strong :class="tone(backtest.annualizedReturn)">{{ percent(backtest.annualizedReturn) }}</strong>
+          <span>{{ strategyLabel }}收益</span>
+          <strong :class="tone(strategy?.totalReturn)">{{ percent(strategy?.totalReturn) }}</strong>
         </div>
         <div class="metric">
-          <span>最大回撤</span>
+          <span>等权回撤</span>
           <strong class="down">{{ percent(backtest.maxDrawdown) }}</strong>
         </div>
       </div>
-      <p class="quant-hint">按当前自选名单与后复权日K模拟等权，不代表已录持仓收益。成交规则是简化假设；历史表现不代表未来。</p>
+      <p class="quant-hint">浅线等权基准，深线为周频 Top-N（信号用上一交易日及之前数据，次日开盘成交）。当前名单是固定自选池，不是点时沪深300。{{ icText }}成本已计入；换手 {{ turnoverText }}。</p>
     </div>
     <div v-else class="quant-hint">数据不足或加载中</div>
   </section>
@@ -34,12 +41,17 @@
 import { computed } from 'vue'
 import type { BacktestResult } from '../../utils/quant/types'
 
-const props = defineProps<{ backtest: BacktestResult | null }>()
+const props = defineProps<{
+  backtest: BacktestResult | null
+  strategy?: BacktestResult | null
+  strategyLabel?: string
+  icMean?: number | null
+}>()
 
+const strategyLabel = computed(() => props.strategyLabel || 'Top-N')
 const years = computed(() => (props.backtest ? Math.max(1, Math.round(props.backtest.nav.length / 244 * 10) / 10) : 0))
 
-const navPoints = computed(() => {
-  const nav = props.backtest?.nav ?? []
+function polyline(nav: { value: number }[]): string {
   if (nav.length < 2) {
     return ''
   }
@@ -50,7 +62,15 @@ const navPoints = computed(() => {
   return nav
     .map((point, index) => `${(index / (nav.length - 1)) * 240},${60 - ((point.value - min) / span) * 56 - 2}`)
     .join(' ')
+}
+
+const icText = computed(() => (typeof props.icMean === 'number' && Number.isFinite(props.icMean) ? 'Rank IC ' + (props.icMean >= 0 ? '+' : '') + props.icMean.toFixed(3) + '。' : ''))
+const turnoverText = computed(() => {
+  const value = props.strategy?.turnover
+  return typeof value === 'number' && Number.isFinite(value) ? (value * 100).toFixed(1) + '%' : '--'
 })
+const navPoints = computed(() => polyline(props.backtest?.nav ?? []))
+const strategyPoints = computed(() => polyline(props.strategy?.nav ?? []))
 
 function percent(value: number | null | undefined): string {
   if (value === null || value === undefined || !Number.isFinite(value)) {
@@ -73,11 +93,12 @@ function tone(value: number | null | undefined): string {
 .quant-nav{width:100%;height:56px;display:block;margin-bottom:6px}
 .nav-up{stroke:#ff7474}
 .nav-down{stroke:#3ad283}
+.nav-strategy{stroke:rgba(29,155,240,.85)}
 .quant-metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
 .metric{display:flex;flex-direction:column;gap:2px;padding:6px 7px;border:1px solid rgba(255,255,255,.07);border-radius:8px;background:rgba(255,255,255,.03)}
 .metric span{font-size:9px;color:var(--text-muted)}
 .metric strong{font-size:12px;font-variant-numeric:tabular-nums;color:var(--text-primary)}
 .metric strong.up{color:#ff7474}
 .metric strong.down{color:#3ad283}
-.quant-hint{margin:6px 0 0;font-size:10px;line-height:1.5;color:var(--text-muted)}
+.quant-hint{margin:8px 2px 0;font-size:10px;line-height:1.45;color:var(--text-muted)}
 </style>

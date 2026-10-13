@@ -25,7 +25,7 @@ fn today_date_key() -> String {
         .duration_since(UNIX_EPOCH)
         .map(|elapsed| elapsed.as_millis() as i64)
         .unwrap_or_default();
-    super::unix_millis_to_china_date(millis).unwrap_or_default()
+    crate::eastmoney::unix_millis_to_china_date(millis).unwrap_or_default()
 }
 
 fn cleanup_expired_logs(dir: &PathBuf) {

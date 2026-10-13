@@ -5,8 +5,10 @@ export { MOM_WEIGHT, REV_WEIGHT, momentum20, reversal5, volatility20, computeFac
 export {
   DEFAULT_BACKTEST_CONFIG,
   runEqualWeightBacktest,
+  runFactorTopNBacktest,
   isLimitUpDay,
   isLimitDownDay,
   limitRatioOf,
 } from './quant/backtest'
 export { loadQuantKlineBundle } from './quant/cache'
+export { summarizeRankIc } from './quant/ic'

@@ -29,6 +29,9 @@ export interface BacktestResult {
   annualizedReturn: number
   maxDrawdown: number
   finalEquity: number
+  sharpe: number | null
+  calmar: number | null
+  turnover: number
 }
 
 export interface QuantKlineBundle {
