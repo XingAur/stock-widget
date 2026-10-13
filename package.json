@@ -9,6 +9,7 @@
     "test": "vitest run",
     "test:e2e": "playwright test",
     "check:versions": "node scripts/check-versions.mjs",
+    "sync:ui": "node scripts/sync-coolove-ui.mjs",
     "check": "npm run check:versions && npm run test && npm run build",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",

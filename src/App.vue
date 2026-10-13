@@ -35,10 +35,10 @@
       </section>
     </main>
 
-    <div v-if="showSettings" class="settings-overlay" @click.self="closeSettings">
+    <div v-if="showSettings" class="cl-backdrop cl-backdrop--contained settings-overlay" @click.self="closeSettings">
       <div
         ref="settingsDialogRef"
-        class="settings-dialog"
+        class="cl-dialog cl-dialog--tall settings-dialog"
         role="dialog"
         aria-modal="true"
         aria-label="应用设置"
@@ -49,33 +49,52 @@
       </div>
     </div>
 
-    <div v-if="updateState.visible" class="update-overlay" @click.self="closeUpdateDialog">
-      <div class="update-dialog" role="dialog" aria-modal="true" aria-label="软件更新">
-        <h3>软件更新</h3>
+    <div v-if="updateState.visible" class="cl-backdrop cl-backdrop--contained update-overlay" @click.self="closeUpdateDialog">
+      <div class="cl-dialog cl-dialog--sm update-dialog" role="dialog" aria-modal="true" aria-label="软件更新">
+        <div class="cl-dialog__head">
+          <h3 class="cl-dialog__title">软件更新</h3>
+        </div>
         <template v-if="updateState.checking">
-          <p class="update-status">正在检查更新…</p>
+          <div class="cl-dialog__body update-status"><span class="cl-spinner"></span>正在检查更新…</div>
         </template>
         <template v-else-if="updateState.error">
-          <p class="update-status update-error">{{ updateState.error }}</p>
-          <div class="update-actions">
-            <button class="update-btn secondary" type="button" @click="closeUpdateDialog">关闭</button>
-            <button class="update-btn" type="button" @click="openReleasePage">手动打开下载页</button>
+          <div class="cl-dialog__body">
+            <p class="update-status update-error">{{ updateState.error }}</p>
+          </div>
+          <div class="cl-dialog__foot update-actions">
+            <button class="cl-btn cl-btn--ghost update-btn secondary" type="button" @click="closeUpdateDialog">关闭</button>
+            <button class="cl-btn cl-btn--primary update-btn" type="button" @click="openReleasePage">手动打开下载页</button>
           </div>
         </template>
         <template v-else-if="updateInfo?.hasUpdate">
-          <p class="update-status">发现新版本 <strong>v{{ updateInfo.latestVersion }}</strong>（当前 v{{ updateInfo.currentVersion }}）</p>
-          <p class="update-notes">{{ updateInfo.notes }}</p>
-          <p v-if="updateState.downloading" class="update-status">正在下载更新包…</p>
-          <div class="update-actions">
-            <button class="update-btn secondary" type="button" :disabled="updateState.downloading" @click="closeUpdateDialog">稍后再说</button>
-            <button class="update-btn" type="button" :disabled="updateState.downloading || !updateInfo.downloadUrl" @click="startUpdate">
+          <div class="cl-dialog__body">
+            <p class="update-status">发现新版本 <strong class="update-version">v{{ updateInfo.latestVersion }}</strong>（当前 v{{ updateInfo.currentVersion }}）</p>
+            <p class="update-notes cl-scroll">{{ updateInfo.notes }}</p>
+            <div v-if="updateState.downloading" class="update-download">
+              <span class="update-status">正在下载更新包…</span>
+              <div class="cl-progress cl-progress--sm cl-progress--indeterminate"><div class="cl-progress__bar"></div></div>
+            </div>
+          </div>
+          <div class="cl-dialog__foot update-actions">
+            <button class="cl-btn cl-btn--ghost update-btn secondary" type="button" :disabled="updateState.downloading" @click="closeUpdateDialog">稍后再说</button>
+            <button
+              class="cl-btn cl-btn--primary update-btn"
+              :class="{ 'is-loading': updateState.downloading }"
+              type="button"
+              :disabled="updateState.downloading || !updateInfo.downloadUrl"
+              @click="startUpdate"
+            >
               {{ updateState.downloading ? '下载中…' : '立即升级' }}
             </button>
           </div>
         </template>
         <template v-else>
-          <p class="update-status">已是最新版本 v{{ updateInfo?.currentVersion }}</p>
-          <button class="update-btn" type="button" @click="closeUpdateDialog">好的</button>
+          <div class="cl-dialog__body">
+            <p class="update-status">已是最新版本 v{{ updateInfo?.currentVersion }}</p>
+          </div>
+          <div class="cl-dialog__foot update-actions">
+            <button class="cl-btn cl-btn--primary update-btn" type="button" @click="closeUpdateDialog">好的</button>
+          </div>
         </template>
       </div>
     </div>
@@ -498,6 +517,7 @@ onUnmounted(() => {
   flex-direction: column;
 }
 
+/* 整个窗口只有 #app 一层玻璃（.cl-window），内部区域不再叠加底色 */
 .workspace {
   flex: 1;
   min-height: 0;
@@ -505,7 +525,6 @@ onUnmounted(() => {
   display: flex;
   flex-direction: row;
   overflow: hidden;
-  background: var(--window-bg);
 }
 
 .workspace.detail-left {
@@ -518,139 +537,59 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  border-right: 1px solid var(--border-color);
-  background: var(--window-bg);
+}
+
+.workspace.detail-right .sidebar {
+  border-right: 1px solid var(--divider-color);
+}
+
+.workspace.detail-left .sidebar {
+  border-left: 1px solid var(--divider-color);
 }
 
 .detail-panel {
   height: 100%;
   flex: 1 1 auto;
   min-width: 620px;
-  background: var(--window-bg);
-}
-
-.detail-panel.panel-right {
-  border-left: 1px solid var(--border-color);
-}
-
-.detail-panel.panel-left {
-  border-right: 1px solid var(--border-color);
-}
-
-.settings-overlay {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
-  background: rgba(0, 0, 0, 0.5);
-  z-index: 100;
-}
-
-.settings-dialog {
-  width: min(440px, 100%);
-  height: min(640px, 100%);
-  overflow: hidden;
-  border: 1px solid var(--border-color);
-  border-radius: 22px;
-  background: var(--solid-bg);
-  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
-}
-
-.update-overlay {
-  position: absolute;
-  inset: 0;
-  z-index: 120;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 18px;
-  background: rgba(0, 0, 0, 0.5);
-}
-
-.update-dialog {
-  width: 100%;
-  padding: 16px;
-  border: 1px solid var(--border-color);
-  border-radius: 14px;
-  background: var(--solid-bg);
-  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.45);
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.update-dialog h3 {
-  margin: 0;
-  font-size: 15px;
-  color: var(--text-primary);
 }
 
 .update-status {
   margin: 0;
-  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--fs-sm);
   line-height: 1.5;
   color: var(--text-secondary);
 }
 
-.update-status strong {
-  color: #5da8ff;
+.update-version {
+  color: var(--accent-text);
 }
 
 .update-error {
-  color: #ff9c9c;
+  color: var(--c-err-text);
 }
 
 .update-notes {
-  margin: 0;
+  margin: 10px 0 0;
   max-height: 180px;
-  overflow-y: auto;
   padding: 8px 10px;
   border: 1px solid var(--border-color);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.03);
-  font-size: 11px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+  font-size: var(--fs-xs);
   line-height: 1.6;
   color: var(--text-muted);
   white-space: pre-line;
+  user-select: text;
 }
 
-.update-actions {
+.update-download {
+  margin-top: 10px;
   display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-}
-
-.update-btn {
-  height: 30px;
-  padding: 0 14px;
-  border: none;
-  border-radius: 8px;
-  background: rgba(45, 124, 246, 0.82);
-  color: #fff;
-  font-size: 12px;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.update-btn:hover {
-  background: rgba(45, 124, 246, 0.94);
-}
-
-.update-btn.secondary {
-  background: rgba(255, 255, 255, 0.06);
-  color: var(--text-secondary);
-}
-
-.update-btn.secondary:hover {
-  background: rgba(255, 255, 255, 0.1);
-  color: var(--text-primary);
-}
-
-.update-btn:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
+  flex-direction: column;
+  gap: 6px;
 }
 
 @media (max-width: 860px) {
@@ -663,18 +602,19 @@ onUnmounted(() => {
     width: 100%;
     min-width: 0;
     flex: none;
-    border-right: none;
   }
 
-  .detail-panel,
-  .detail-panel.panel-right,
-  .detail-panel.panel-left {
+  .workspace.detail-left .sidebar,
+  .workspace.detail-right .sidebar {
+    border: none;
+  }
+
+  /* 窄窗口里详情盖在列表上，需要一层底色遮住下面的卡片 */
+  .detail-panel {
     position: absolute;
     inset: 0;
     min-width: 0;
-    border: none;
-    background: var(--window-bg);
+    background: var(--solid-bg);
   }
 }
-
 </style>

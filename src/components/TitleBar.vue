@@ -1,35 +1,36 @@
 <template>
   <!-- 拖动统一由 App.vue 根节点的全局 mousedown 处理（事件冒泡到此），
        这里不再单独绑定，避免同一按下触发两次 start_drag 导致顶部拖动失效 -->
-  <header class="title-bar">
-    <div class="window-controls">
-      <button class="traffic-btn traffic-close" type="button" title="Close" @click.stop="$emit('close')">
-        <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round">
+  <header class="cl-titlebar title-bar">
+    <div class="cl-traffic window-controls">
+      <button class="cl-traffic__btn cl-traffic__btn--close traffic-btn traffic-close" type="button" title="Close" @click.stop="$emit('close')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round">
           <line x1="18" y1="6" x2="6" y2="18" />
           <line x1="6" y1="6" x2="18" y2="18" />
         </svg>
       </button>
-      <button class="traffic-btn traffic-minimize" type="button" title="Minimize" @click.stop="$emit('minimize')">
-        <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round">
+      <button class="cl-traffic__btn cl-traffic__btn--min traffic-btn traffic-minimize" type="button" title="Minimize" @click.stop="$emit('minimize')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round">
           <line x1="5" y1="12" x2="19" y2="12" />
         </svg>
       </button>
-      <button class="traffic-btn traffic-settings" type="button" title="Settings" @click.stop="$emit('settings')">
-        <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+      <button class="cl-traffic__btn cl-traffic__btn--settings traffic-btn traffic-settings" type="button" title="Settings" @click.stop="$emit('settings')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="12" cy="12" r="3" />
           <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
         </svg>
       </button>
       <button
-        class="brand-badge"
-        :class="{ active: quantActive }"
+        class="cl-brand brand-badge"
+        :class="{ 'is-active': quantActive }"
+        :aria-pressed="quantActive ? 'true' : 'false'"
         type="button"
         title="量化（因子评分 / 持仓对照 / 组合回测）"
         @click.stop="$emit('toggleQuant')"
       >
         A+
       </button>
-      <button class="app-title" type="button" title="切换股票/基金" @click.stop="$emit('toggleAssetType')">
+      <button class="cl-titlebar__title app-title" type="button" title="切换股票/基金" @click.stop="$emit('toggleAssetType')">
         {{ displayTitle }}
       </button>
     </div>
@@ -57,109 +58,16 @@ const displayTitle = computed(() => props.title.replace(/^A\+/, '').trim() || pr
 </script>
 
 <style scoped>
-.title-bar {
-  height: 30px;
-  display: flex;
-  align-items: center;
-  padding: 0 10px;
-  background: rgba(255, 255, 255, 0.02);
-  user-select: none;
-}
-
+/* 外观全部来自 coolove-ui（cl-titlebar / cl-traffic / cl-brand），这里只保留 A+ 徽标与标题的间距 */
 .window-controls {
-  display: inline-flex;
-  align-items: center;
   gap: 8px;
 }
 
-.traffic-btn {
-  width: 14px;
-  height: 14px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  border-radius: 50%;
-  cursor: pointer;
-  transition: filter 0.15s ease;
-  padding: 0;
-}
-
-.traffic-btn svg {
-  opacity: 0;
-  transition: opacity 0.15s ease;
-}
-
-.window-controls:hover .traffic-btn svg {
-  opacity: 1;
-}
-
-.traffic-close {
-  background: #ff5f57;
-}
-
-.traffic-minimize {
-  background: #febc2e;
-}
-
-.traffic-settings {
-  background: #28c840;
-}
-
-.traffic-close:hover {
-  filter: brightness(0.85);
-}
-
-.traffic-minimize:hover {
-  filter: brightness(0.85);
-}
-
-.traffic-settings:hover {
-  filter: brightness(0.85);
-}
-
 .brand-badge {
-  height: 20px;
-  padding: 0 7px;
   margin-right: -6px;
-  border: none;
-  border-radius: 6px;
-  background: rgba(45, 124, 246, 0.14);
-  color: var(--text-secondary);
-  font-size: 11px;
-  font-weight: 900;
-  letter-spacing: 0.02em;
-  cursor: pointer;
-  transition: color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
-}
-
-.brand-badge:hover {
-  color: #5da8ff;
-  background: rgba(45, 124, 246, 0.22);
-}
-
-.brand-badge.active {
-  color: #f8fbff;
-  background: rgba(45, 124, 246, 0.78);
-  box-shadow: 0 0 8px rgba(45, 124, 246, 0.5);
 }
 
 .app-title {
   margin-left: 2px;
-  padding: 2px 4px;
-  border: none;
-  border-radius: 6px;
-  background: transparent;
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  color: var(--text-secondary);
-  cursor: pointer;
-  transition: color 0.15s ease, background 0.15s ease;
-}
-
-.app-title:hover {
-  color: var(--text-primary);
-  background: rgba(255, 255, 255, 0.05);
 }
 </style>

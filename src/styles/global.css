@@ -1,38 +1,7 @@
-:root {
-  --bg-opacity: 0.92;
-  --window-bg: rgba(10, 13, 18, var(--bg-opacity));
-  --card-bg: rgba(255, 255, 255, 0.04);
-  --card-bg-hover: rgba(255, 255, 255, 0.06);
-  --border-color: rgba(255, 255, 255, 0.08);
-  --divider-color: rgba(255, 255, 255, 0.08);
-  --text-primary: #ffffff;
-  --text-secondary: rgba(255, 255, 255, 0.72);
-  --text-muted: rgba(255, 255, 255, 0.42);
-  --success: #22c55e;
-  --danger: #ef4444;
-  --accent: #1d9bf0;
-  --input-bg: rgba(255, 255, 255, 0.05);
-  --solid-bg: rgb(13, 17, 22); /* 弹窗/浮层底色，永远不透明，不跟随背景不透明度 */
-  --font-family: "Microsoft YaHei", "PingFang SC", "Segoe UI", sans-serif;
-  --radius: 14px;
-  --radius-sm: 8px;
-}
-
-[data-theme="light"] {
-  --window-bg: rgba(255, 255, 255, var(--bg-opacity));
-  --card-bg: rgba(243, 244, 246, 0.5);
-  --card-bg-hover: rgba(0, 0, 0, 0.05);
-  --border-color: rgba(0, 0, 0, 0.1);
-  --divider-color: rgba(0, 0, 0, 0.1);
-  --text-primary: #111827;
-  --text-secondary: rgba(0, 0, 0, 0.7);
-  --text-muted: rgba(0, 0, 0, 0.5);
-  --success: #22c55e;
-  --danger: #ef4444;
-  --accent: #2563eb;
-  --input-bg: rgba(0, 0, 0, 0.05);
-  --solid-bg: rgb(243, 244, 246);
-}
+/*
+ * 设计 token 与组件样式来自 coolove-ui（src/coolove-ui/coolove-ui.css，main.ts 先于本文件引入）。
+ * 这里只保留 A+ 助手自己的全局规则；旧变量名（--window-bg、--solid-bg、--card-bg 等）由 coolove-ui 兼容提供。
+ */
 
 [data-theme="light"] .detail-view,
 [data-theme="light"] .detail-view *,
@@ -137,7 +106,6 @@ html, body {
   background: transparent;
   overflow: hidden;
   user-select: none;
-  color-scheme: dark;
 }
 
 input,
@@ -145,17 +113,10 @@ textarea {
   user-select: text;
 }
 
+/* 窗口玻璃（底色 × 不透明度、模糊、圆角、阴影）由 index.html 上的 .cl-window 提供，这里只定尺寸 */
 #app {
   width: 100vw;
   height: 100vh;
-  display: flex;
-  flex-direction: column;
-  background: var(--window-bg);
-  backdrop-filter: blur(26px);
-  -webkit-backdrop-filter: blur(26px);
-  border-radius: 22px;
-  overflow: hidden;
-  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.4);
 }
 
 ::-webkit-scrollbar {

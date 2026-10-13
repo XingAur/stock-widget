@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, watch } from 'vue'
 import { readPersistedState, updatePersistedSlice } from '../utils/persistence'
+import { applyCooloveTheme } from '../coolove-ui/useCooloveTheme'
 
 const SETTINGS_STORAGE_KEY = 'settings'
 
@@ -127,52 +128,14 @@ export const useSettingsStore = defineStore('settings', () => {
   }
 
   function applySettings() {
-    document.documentElement.setAttribute('data-theme', settings.value.theme)
-    document.documentElement.style.setProperty('--bg-opacity', String(settings.value.backgroundOpacity))
-
-    if (settings.value.theme === 'custom') {
-      applyCustomTheme()
-    } else {
-      clearCustomTheme()
-      // 弹窗/浮层底色固定不透明，避免调低背景不透明度后弹窗看不清
-      const solidBg = settings.value.theme === 'light'
-        ? 'rgb(243, 244, 246)'
-        : 'rgb(13, 17, 22)'
-      document.documentElement.style.setProperty('--solid-bg', solidBg)
-    }
-
-    document.documentElement.style.setProperty('--font-family', settings.value.fontFamily)
-  }
-
-  function applyCustomTheme() {
-    const hex = settings.value.customBgColor.replace('#', '')
-    const r = parseInt(hex.slice(0, 2), 16)
-    const g = parseInt(hex.slice(2, 4), 16)
-    const b = parseInt(hex.slice(4, 6), 16)
-    const opacity = settings.value.backgroundOpacity
-
-    document.documentElement.style.setProperty('--window-bg', `rgba(${r}, ${g}, ${b}, ${opacity})`)
-    document.documentElement.style.setProperty('--card-bg', `rgba(${r}, ${g}, ${b}, ${Math.min(1, opacity + 0.15)})`)
-    document.documentElement.style.setProperty('--card-bg-hover', `rgba(${r}, ${g}, ${b}, ${Math.min(1, opacity + 0.3)})`)
-    document.documentElement.style.setProperty('--text-primary', settings.value.customFontColor)
-    document.documentElement.style.setProperty('--text-secondary', `${settings.value.customFontColor}b3`)
-    document.documentElement.style.setProperty('--text-muted', `${settings.value.customFontColor}80`)
-    document.documentElement.style.setProperty('--border-color', `${settings.value.customFontColor}1a`)
-    document.documentElement.style.setProperty('--divider-color', `${settings.value.customFontColor}1a`)
-    document.documentElement.style.setProperty('--input-bg', `${settings.value.customFontColor}0d`)
-    document.documentElement.style.setProperty('--solid-bg', `rgb(${r}, ${g}, ${b})`)
-  }
-
-  function clearCustomTheme() {
-    document.documentElement.style.removeProperty('--window-bg')
-    document.documentElement.style.removeProperty('--card-bg')
-    document.documentElement.style.removeProperty('--card-bg-hover')
-    document.documentElement.style.removeProperty('--text-primary')
-    document.documentElement.style.removeProperty('--text-secondary')
-    document.documentElement.style.removeProperty('--text-muted')
-    document.documentElement.style.removeProperty('--border-color')
-    document.documentElement.style.removeProperty('--divider-color')
-    document.documentElement.style.removeProperty('--input-bg')
+    // 主题、透明度、自定义配色统一交给 coolove-ui：派生色（卡片、边框、次要文字、浮层底色）由 CSS 计算
+    applyCooloveTheme({
+      theme: settings.value.theme,
+      opacity: settings.value.backgroundOpacity,
+      customBg: settings.value.customBgColor,
+      customFg: settings.value.customFontColor,
+      fontFamily: settings.value.fontFamily
+    })
   }
 
   function updateSettings<K extends keyof Settings>(key: K, value: Settings[K]) {
