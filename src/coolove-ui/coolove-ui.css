@@ -1,5 +1,5 @@
 /*!
- * Coolove UI v0.4.0 —— 从 A+ 助手（stock-widget）提炼的可调透明度玻璃风格组件库
+ * Coolove UI v0.4.1 —— 从 A+ 助手（stock-widget）提炼的可调透明度玻璃风格组件库
  *
  * 核心理念（沿用原项目）：
  *   1. 窗口底色 = 主题底色 × --bg-opacity，配合 backdrop-filter 模糊，形成可调透明度的玻璃质感
@@ -1917,6 +1917,15 @@ button.cl-tag:hover { background: var(--surface-3); color: var(--text-primary); 
 .cl-scroll::-webkit-scrollbar { width: 6px; }
 .cl-scroll::-webkit-scrollbar-thumb { border-radius: 3px; background: transparent; }
 .cl-scroll:hover::-webkit-scrollbar-thumb { background: var(--surface-4); }
+
+/* ============================================================
+ * 12.5 状态色优先级
+ * 组件会给数值设默认文字色（如 .cl-stat--md .cl-stat__value 为次要文字色），
+ * 写在组件内的 .cl-rise / .cl-fall 必须压过这些默认值。这里统一放在样式表末尾、
+ * 特异性 0,2,0：同级默认规则写在前面，所以状态色总能生效。
+ * ============================================================ */
+:is(.cl-stat, .cl-card, .cl-table, .cl-kv, .cl-tooltip-card, .cl-panel, .cl-legend, .cl-search, .cl-menu, .cl-dialog) .cl-rise { color: var(--rise); }
+:is(.cl-stat, .cl-card, .cl-table, .cl-kv, .cl-tooltip-card, .cl-panel, .cl-legend, .cl-search, .cl-menu, .cl-dialog) .cl-fall { color: var(--fall); }
 
 /* ============================================================
  * 13. 动画

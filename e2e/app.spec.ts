@@ -204,6 +204,25 @@ test.describe('状态持久化（问题 1/2：删除与清空在重启后保持�
   })
 })
 
+test.describe('右键菜单', () => {
+  test('靠窗口右下角打开时，菜单按实际尺寸收进窗口', async ({ page }) => {
+    await addStockThroughSearch(page, '600000', '浦发银行')
+    const card = page.locator('.stock-card', { hasText: '浦发银行' })
+    const box = await card.boundingBox()
+    if (!box) throw new Error('card not rendered')
+    await card.click({ button: 'right', position: { x: box.width - 4, y: box.height / 2 } })
+
+    const menu = page.locator('.context-menu')
+    await expect(menu).toBeVisible()
+    const viewport = page.viewportSize()!
+    const rect = await menu.boundingBox()
+    expect(rect).not.toBeNull()
+    expect(rect!.x).toBeGreaterThanOrEqual(0)
+    expect(rect!.x + rect!.width).toBeLessThanOrEqual(viewport.width)
+    expect(rect!.y + rect!.height).toBeLessThanOrEqual(viewport.height)
+  })
+})
+
 test.describe('窗口拖动（问题 3：空白处即可拖动）', () => {
   test('标题栏与列表空白处按下会触发窗口拖动', async ({ page }) => {
     const dragCountBefore = await readDragCount(page)
@@ -338,6 +357,9 @@ test.describe('市场助手（全球市场数据页）', () => {
     await expect(bank).toBeVisible()
     await expect(bank.locator('.market-card-members')).toHaveText(/涨 38/)
     await expect(page.locator('.market-status')).toHaveText(/A股盘中/)
+
+    // 涨幅数字要真正显示为“涨”色，不能被磁贴的默认文字色盖掉
+    await expect(bank.locator('.market-card-percent')).toHaveCSS('color', await trendColor(page, 'rise'))
   })
 
   test('A股三段切换（行业|概念|指数），美股两段，纯指数市场无切换', async ({ page }) => {
@@ -355,6 +377,7 @@ test.describe('市场助手（全球市场数据页）', () => {
     await expect(shIndex).toBeVisible()
     await expect(shIndex).toHaveClass(/up/)
     await expect(page.locator('.market-card', { hasText: '深证成指' })).toHaveClass(/down/)
+    await expect(page.locator('.market-card', { hasText: '深证成指' }).locator('.market-card-percent')).toHaveCSS('color', await trendColor(page, 'fall'))
 
     // 切回行业
     await page.locator('.market-mode-btn', { hasText: '行业' }).click()
@@ -425,6 +448,18 @@ test.describe('图片导入持仓', () => {
   })
 })
 
+/** 读取当前主题下 --rise / --fall 解析出的实际颜色，用于断言文字确实显示为涨跌色 */
+async function trendColor(page: Page, tone: 'rise' | 'fall'): Promise<string> {
+  return page.evaluate((name) => {
+    const probe = document.createElement('span')
+    probe.style.color = `var(--${name})`
+    document.body.appendChild(probe)
+    const color = getComputedStyle(probe).color
+    probe.remove()
+    return color
+  }, tone)
+}
+
 async function readDragCount(page: Page): Promise<number> {
   return page.evaluate(() => (window as unknown as { __e2eState: { dragCount: number } }).__e2eState.dragCount)
 }
@@ -454,11 +489,14 @@ test.describe('量化页（A+徽标入口）', () => {
     const row = page.locator('.quant-row', { hasText: '浦发银行' })
     await expect(row).toBeVisible()
     await expect(row.locator('.quant-mom')).toHaveText(/%$/)
+    // 动量为正时显示“涨”色（默认灰色不能盖过状态色）
+    await expect(row.locator('.quant-mom.up')).toHaveCSS('color', await trendColor(page, 'rise'))
 
     // 回测：净值曲线与指标卡（mock K 线单边上涨 → 总收益为正）
     await expect(page.locator('.quant-nav polyline').first()).toHaveAttribute('points', /.+/)
     const metrics = page.locator('.quant-bt .metric')
     await expect(metrics.first().locator('strong')).toHaveClass(/up/)
+    await expect(metrics.first().locator('strong')).toHaveCSS('color', await trendColor(page, 'rise'))
 
     // 返回自选
     await page.locator('.quant-back').click()

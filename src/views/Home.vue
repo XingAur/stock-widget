@@ -204,8 +204,10 @@ interface PositionDialogState {
   error: string
 }
 
-const MENU_WIDTH = 132
-const MENU_ITEM_HEIGHT = 34
+// 打开前的预估尺寸（coolove-ui .cl-menu：最小宽 148px、每项 32px、上下内边距 6px）；
+// 菜单渲染后由 WatchlistContextMenu 按实际尺寸再收进窗口
+const MENU_WIDTH = 148
+const MENU_ITEM_HEIGHT = 32
 const MENU_OFFSET = 8
 const DRAG_THRESHOLD = 6
 const EDGE_SCROLL_ZONE = 28
