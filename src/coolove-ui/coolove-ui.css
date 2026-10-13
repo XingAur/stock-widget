@@ -1130,6 +1130,12 @@ button.cl-tag:hover { background: var(--surface-3); color: var(--text-primary); 
 .cl-card.is-dragging { opacity: 0.55; cursor: grabbing; }
 .cl-card.is-drop-target { border-color: var(--accent-ring); background: var(--accent-soft); }
 .cl-card--static { cursor: default; }
+/* 紧凑数据行：排名、持仓对照这类一行一条的列表（不设最小高度） */
+.cl-card--row { min-height: 0; gap: 7px; padding: 5px 7px; font-size: var(--fs-sm); }
+.cl-card--row + .cl-card--row { margin-top: 3px; }
+.cl-list > .cl-card--row + .cl-card--row { margin-top: 0; }
+/* 高亮行：前几名、当前选中策略等，强调色底 + 左侧细条 */
+.cl-card.is-active { background: var(--accent-soft); box-shadow: inset 2px 0 0 var(--accent); }
 .cl-card--tall { min-height: 54px; }
 
 .cl-card__main { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; }
@@ -1270,6 +1276,12 @@ button.cl-tag:hover { background: var(--surface-3); color: var(--text-primary); 
 }
 .cl-stat--compact .cl-stat__label { font-size: 10px; line-height: 1; letter-spacing: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cl-stat--compact .cl-stat__value { font-size: var(--fs-sm); font-weight: 900; line-height: 1.05; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* 中号指标卡：行情板块/指数磁贴（标题 12px、数值 17px），数值前可放 .cl-stat__arrow */
+.cl-stat--md { gap: 4px; padding: 9px 10px; border-radius: calc(10px * var(--r)); border-color: rgb(var(--ink) / 0.07); background: rgb(var(--ink) / 0.03); }
+.cl-stat--md .cl-stat__label { font-size: var(--fs-sm); font-weight: 700; line-height: 1.1; letter-spacing: 0; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cl-stat--md .cl-stat__value { display: flex; align-items: baseline; gap: 3px; font-size: 17px; font-weight: 900; color: var(--text-secondary); }
+.cl-stat--md .cl-stat__delta { display: flex; gap: 6px; font-size: 10px; font-weight: 500; line-height: 1; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cl-stat__arrow { font-size: 10px; transform: translateY(-1px); }
 
 /* 键值列表 */
 .cl-kv { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; font-size: var(--fs-sm); }
@@ -1842,6 +1854,14 @@ button.cl-tag:hover { background: var(--surface-3); color: var(--text-primary); 
 .cl-divider { height: 1px; margin: 12px 0; border: none; background: var(--divider-color); }
 .cl-eyebrow { font-size: 10px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-muted); }
 .cl-eyebrow--accent { color: var(--accent-text); }
+
+/* 小节标题：标题 + 灰色副标题，右侧可放操作（分段选择、按钮），自动靠右 */
+.cl-section-head { display: flex; align-items: center; gap: 6px; min-width: 0; margin: 0 0 6px; font-size: var(--fs-xs); font-weight: 700; color: var(--text-secondary); }
+.cl-section-head__sub { min-width: 0; font-size: 9px; font-weight: 400; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cl-section-head > :is(.cl-segmented, .cl-btn, .cl-iconbtn, .cl-section-head__end) { margin-left: auto; flex-shrink: 0; }
+.cl-section-head--lg { font-size: var(--fs-md); color: var(--text-primary); }
+/* 说明文字：图表、指标下方的小号注释 */
+.cl-hint { margin: 6px 0 0; font-size: 10px; line-height: 1.5; color: var(--text-muted); }
 
 /* 图标/字符方块：交易类型、文件类型等，--tile-c 决定颜色 */
 .cl-tile {

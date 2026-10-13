@@ -1,16 +1,16 @@
 <template>
   <section class="quant-section">
-    <h4>
+    <h4 class="cl-section-head">
       持仓对照
-      <div class="target-switch" role="group" aria-label="目标权重模式">
-        <button type="button" :class="{ active: targetMode === 'equal' }" @click="$emit('switchMode', 'equal')">等权</button>
-        <button type="button" :class="{ active: targetMode === 'score' }" @click="$emit('switchMode', 'score')">评分加权</button>
+      <div class="cl-segmented cl-segmented--xs target-switch" role="group" aria-label="目标权重模式">
+        <button class="cl-segmented__item" type="button" :class="{ 'is-active': targetMode === 'equal' }" :aria-pressed="targetMode === 'equal'" @click="$emit('switchMode', 'equal')">等权</button>
+        <button class="cl-segmented__item" type="button" :class="{ 'is-active': targetMode === 'score' }" :aria-pressed="targetMode === 'score'" @click="$emit('switchMode', 'score')">评分加权</button>
       </div>
     </h4>
-    <div v-if="holdingCount === 0" class="quant-hint">尚未录入股票持仓：右键自选卡片可填写成本与股数。入选标的仅显示目标比例。</div>
-    <div v-else-if="missingHeldQuotes > 0" class="quant-hint">{{ missingHeldQuotes }} 只已录持仓缺有效报价，暂不计算金额和权重偏离。</div>
-    <div v-else class="quant-hint">按已录入的 {{ holdingCount }} 只股票持仓市值 {{ amountText(holdingValue) }} 对照；不包含未录入的现金或其他资产。</div>
-    <div v-for="row in rows" :key="row.code" class="quant-hold">
+    <div v-if="holdingCount === 0" class="cl-hint quant-hint">尚未录入股票持仓：右键自选卡片可填写成本与股数。入选标的仅显示目标比例。</div>
+    <div v-else-if="missingHeldQuotes > 0" class="cl-hint quant-hint">{{ missingHeldQuotes }} 只已录持仓缺有效报价，暂不计算金额和权重偏离。</div>
+    <div v-else class="cl-hint quant-hint">按已录入的 {{ holdingCount }} 只股票持仓市值 {{ amountText(holdingValue) }} 对照；不包含未录入的现金或其他资产。</div>
+    <div v-for="row in rows" :key="row.code" class="cl-card cl-card--static cl-card--row quant-hold">
       <span class="quant-name" :title="row.name">{{ row.name }}</span>
       <div class="quant-bars">
         <div class="quant-bar target" :style="{ width: `${row.targetPercent}%` }" />
@@ -70,26 +70,3 @@ function driftText(drift: number | null, held: boolean): string {
   return `${relation} ${Math.abs(drift * 100).toFixed(1)}%`
 }
 </script>
-
-<style scoped>
-.quant-section h4{margin:0 0 6px;font-size:11px;font-weight:700;color:var(--text-secondary);display:flex;align-items:center}
-.target-switch{display:inline-flex;margin-left:6px;padding:1px;border:1px solid rgba(255,255,255,.12);border-radius:6px}
-.target-switch button{height:14px;padding:0 6px;border:none;border-radius:4px;background:transparent;color:var(--text-muted);font-size:9px;font-weight:700;cursor:pointer}
-.target-switch button.active{color:#f8fbff;background:rgba(45,124,246,.75)}
-.quant-assets{display:inline-flex;align-items:center;gap:3px;margin-left:auto;font-size:9px;font-weight:400;color:var(--text-muted)}
-.quant-assets input{width:44px;height:18px;padding:0 4px;border:1px solid rgba(255,255,255,.14);border-radius:5px;background:rgba(255,255,255,.05);color:var(--text-primary);font-size:10px;outline:none}
-.quant-assets input:focus{border-color:rgba(93,168,255,.55)}
-.quant-hint{margin:6px 0 0;font-size:10px;line-height:1.5;color:var(--text-muted)}
-.quant-hold{display:flex;align-items:center;gap:7px;padding:5px 7px;border-radius:8px;background:rgba(255,255,255,.03)}
-.quant-hold+.quant-hold{margin-top:3px}
-.quant-hold.cash{background:rgba(255,255,255,.02)}
-.quant-name{flex:1;min-width:0;font-size:12px;font-weight:600;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.quant-bars{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
-.quant-bar{height:4px;border-radius:2px}
-.quant-bar.target{background:rgba(93,168,255,.55)}
-.quant-bar.current{background:rgba(255,255,255,.22)}
-.quant-drift{flex:0 0 64px;display:flex;flex-direction:column;align-items:flex-end;gap:1px;font-size:10px;font-weight:700;text-align:right;white-space:nowrap;color:var(--text-muted)}
-.quant-drift i{font-style:normal;font-size:9px;font-weight:500;color:var(--text-muted);opacity:.8}
-.quant-drift.up{color:#ff7474}
-.quant-drift.down{color:#3ad283}
-</style>

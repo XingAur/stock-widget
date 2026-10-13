@@ -1,11 +1,12 @@
 <template>
   <div class="market-view">
-    <div class="market-tabs">
+    <div class="cl-segmented cl-segmented--block market-tabs" role="group" aria-label="市场">
       <button
         v-for="group in MARKET_GROUPS"
         :key="group.key"
-        class="market-tab"
-        :class="{ active: activeMarket === group.key }"
+        class="cl-segmented__item market-tab"
+        :class="{ 'is-active': activeMarket === group.key }"
+        :aria-pressed="activeMarket === group.key"
         type="button"
         @click="switchMarket(group.key)"
       >
@@ -14,67 +15,69 @@
     </div>
 
     <div class="market-status-line">
-      <span class="market-status" :class="{ open: isMarketOpen }" role="status">
-        <i></i>{{ statusText }}
+      <span class="cl-badge market-status" :class="{ 'cl-badge--success open': isMarketOpen }" role="status">
+        <span class="cl-dot" :class="{ 'cl-dot--live': isMarketOpen }"></span>{{ statusText }}
       </span>
-      <div v-if="modeOptions.length > 0" class="market-mode-switch" role="group" aria-label="板块/指数切换">
+      <div v-if="modeOptions.length > 0" class="cl-segmented cl-segmented--sm market-mode-switch" role="group" aria-label="板块/指数切换">
         <button
           v-for="option in modeOptions"
           :key="option.mode"
-          class="market-mode-btn"
-          :class="{ active: viewMode === option.mode }"
+          class="cl-segmented__item market-mode-btn"
+          :class="{ 'is-active': viewMode === option.mode }"
+          :aria-pressed="viewMode === option.mode"
           type="button"
           @click="switchView(option.mode)"
         >
           {{ option.label }}
         </button>
       </div>
-      <span v-if="error" class="market-error" :title="error">刷新失败</span>
+      <span v-if="error" class="cl-badge cl-badge--danger market-error" :title="error">刷新失败</span>
     </div>
 
     <div class="market-grid-wrap">
-      <div v-if="cards.length === 0" class="market-empty">
-        <p>{{ error ? '行情刷新失败' : loading ? '加载中...' : '暂无行情数据' }}</p>
-        <span v-if="error">{{ error }}</span>
+      <div v-if="cards.length === 0" class="cl-empty market-empty">
+        <p class="cl-empty__title">{{ error ? '行情刷新失败' : loading ? '加载中...' : '暂无行情数据' }}</p>
+        <span v-if="error" class="cl-empty__desc">{{ error }}</span>
       </div>
 
-      <div v-else class="market-grid">
+      <div v-else class="cl-stat-grid market-grid">
         <div
           v-for="card in cards"
           :key="card.code"
-          class="market-card"
+          class="cl-stat cl-stat--md market-card"
           :class="{ up: card.up, down: card.down }"
         >
-          <div class="market-card-name" :title="card.name">{{ card.name }}</div>
-          <div class="market-card-percent">
-            <span class="market-arrow">{{ card.up ? '▲' : card.down ? '▼' : '' }}</span>{{ card.percentText }}
+          <div class="cl-stat__label market-card-name" :title="card.name">{{ card.name }}</div>
+          <div class="cl-stat__value market-card-percent" :class="{ 'cl-rise': card.up, 'cl-fall': card.down }">
+            <span class="cl-stat__arrow market-arrow">{{ card.up ? '▲' : card.down ? '▼' : '' }}</span>{{ card.percentText }}
           </div>
-          <div v-if="card.memberText" class="market-card-members">
-            <span class="gain">{{ card.memberText.split(' · ')[0] }}</span>
-            <span class="lose">{{ card.memberText.split(' · ')[1] }}</span>
+          <div v-if="card.memberText" class="cl-stat__delta market-card-members">
+            <span class="cl-rise gain">{{ card.memberText.split(' · ')[0] }}</span>
+            <span class="cl-fall lose">{{ card.memberText.split(' · ')[1] }}</span>
           </div>
-          <div v-else class="market-card-price">{{ card.priceText }}<span class="market-card-change">{{ card.changeText }}</span></div>
+          <div v-else class="cl-stat__delta market-card-price">
+            <span class="cl-secondary">{{ card.priceText }}</span>
+            <span class="market-card-change" :class="{ 'cl-rise': card.up, 'cl-fall': card.down }">{{ card.changeText }}</span>
+          </div>
         </div>
       </div>
     </div>
 
-    <div class="market-bottom">
+    <div class="cl-statusbar market-bottom">
       <button
-        class="market-globe-btn active"
+        class="cl-iconbtn cl-iconbtn--accent is-active market-globe-btn"
         type="button"
         title="返回自选"
         @click="goBackToWatchlist"
       >
-        <Globe :size="14" aria-hidden="true" />
+        <Globe aria-hidden="true" />
       </button>
-      <div class="market-bottom-actions">
-        <button class="refresh-btn" type="button" title="刷新" @click="refreshNow">
-          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="23 4 23 10 17 10" />
-            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
-          </svg>
+      <span class="cl-spacer"></span>
+      <div class="cl-statusbar__actions market-bottom-actions">
+        <button class="cl-iconbtn refresh-btn" type="button" title="刷新" @click="refreshNow">
+          <RotateCw aria-hidden="true" />
         </button>
-        <span class="update-time">{{ lastUpdate ? formatTime(lastUpdate) : '--:--:--' }}</span>
+        <span class="cl-statusbar__time update-time">{{ lastUpdate ? formatTime(lastUpdate) : '--:--:--' }}</span>
       </div>
     </div>
   </div>
@@ -82,7 +85,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import { Globe } from 'lucide-vue-next'
+import { Globe, RotateCw } from 'lucide-vue-next'
 import { fetchGlobalIndices, type GlobalIndexData, type MarketKey } from '../api/stock'
 import { useStockStore } from '../stores/stock'
 import {
@@ -226,45 +229,13 @@ onUnmounted(() => {
 
 <style scoped>
 .market-view{position:relative;flex:1;min-height:0;display:flex;flex-direction:column;padding:6px 0 0}
-.market-tabs{display:flex;align-items:center;gap:4px;margin:0 10px 6px;padding:3px;border:1px solid rgba(255,255,255,.08);border-radius:10px;background:rgba(255,255,255,.035)}
-.market-tab{flex:1;height:24px;border:none;border-radius:7px;background:transparent;color:var(--text-muted);font-size:12px;font-weight:700;cursor:pointer;transition:background .15s ease,color .15s ease}
-.market-tab:hover{color:var(--text-primary);background:rgba(255,255,255,.045)}
-.market-tab.active{color:#f8fbff;background:rgba(45,124,246,.72);box-shadow:inset 0 1px 0 rgba(255,255,255,.16)}
+.market-tabs{margin:0 10px 6px}
 .market-status-line{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 10px 8px}
-.market-status{display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 10px;border:1px solid rgba(255,255,255,.1);border-radius:999px;background:rgba(255,255,255,.04);color:var(--text-muted);font-size:11px;font-weight:600;white-space:nowrap}
-.market-status i{width:7px;height:7px;border-radius:50%;background:#7b8497;flex:0 0 auto}
-.market-status.open{border-color:rgba(56,199,122,.32);background:rgba(56,199,122,.1);color:#4ade80}
-.market-status.open i{background:#2fbd6f;box-shadow:0 0 6px rgba(47,189,111,.8)}
-.market-mode-switch{display:inline-flex;align-items:center;padding:2px;border:1px solid rgba(255,255,255,.1);border-radius:8px;background:rgba(255,255,255,.035)}
-.market-mode-btn{height:18px;padding:0 8px;border:none;border-radius:6px;background:transparent;color:var(--text-muted);font-size:10px;font-weight:700;cursor:pointer;transition:color .15s ease,background .15s ease}
-.market-mode-btn:hover{color:var(--text-primary)}
-.market-mode-btn.active{color:#f8fbff;background:rgba(45,124,246,.72)}
-.market-error{color:#ff8c8c;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.market-status{height:22px;padding:0 10px;border-radius:var(--radius-pill);font-size:var(--fs-xs);font-weight:600}
+.market-error{min-width:0;overflow:hidden;text-overflow:ellipsis}
 .market-grid-wrap{flex:1;min-height:0;overflow-y:auto;padding:0 10px}
-.market-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;padding-bottom:6px}
-.market-card{display:flex;flex-direction:column;gap:4px;min-width:0;padding:9px 10px;border:1px solid rgba(255,255,255,.07);border-radius:10px;background:rgba(255,255,255,.03)}
-.market-card-name{font-size:12px;font-weight:700;line-height:1.1;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.market-card-percent{display:flex;align-items:baseline;gap:3px;font-size:17px;font-weight:900;line-height:1.1;font-variant-numeric:tabular-nums}
-.market-arrow{font-size:10px;transform:translateY(-1px)}
-.market-card.up .market-card-percent{color:#ff7474}
-.market-card.down .market-card-percent{color:#3ad283}
-.market-card:not(.up):not(.down) .market-card-percent{color:var(--text-secondary)}
-.market-card-price{font-size:11px;line-height:1;color:var(--text-secondary);font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.market-card-members{display:flex;align-items:center;gap:6px;font-size:10px;line-height:1;font-variant-numeric:tabular-nums}
-.market-card-members .gain{color:rgba(255,116,116,.78)}
-.market-card-members .lose{color:rgba(58,210,131,.78)}
-.market-card-change{margin-left:6px;color:var(--text-muted)}
-.market-card.up .market-card-change{color:rgba(255,116,116,.75)}
-.market-card.down .market-card-change{color:rgba(58,210,131,.75)}
-.market-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;color:var(--text-muted);text-align:center;padding:12px}
-.market-empty p{font-size:14px;font-weight:600;color:var(--text-secondary)}
-.market-empty span{font-size:12px;max-width:100%;overflow:hidden;text-overflow:ellipsis}
-.market-bottom{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:4px 10px 6px}
-.market-globe-btn{width:26px;height:26px;display:inline-flex;align-items:center;justify-content:center;border:none;border-radius:8px;background:transparent;color:var(--text-muted);cursor:pointer;transition:color .15s ease,background .15s ease}
-.market-globe-btn:hover{color:var(--text-primary);background:rgba(255,255,255,.05)}
-.market-globe-btn.active{color:#5da8ff;background:rgba(45,124,246,.16)}
-.market-bottom-actions{display:inline-flex;align-items:center;gap:6px}
-.refresh-btn{width:26px;height:26px;display:inline-flex;align-items:center;justify-content:center;border:none;border-radius:8px;background:transparent;color:var(--text-muted);cursor:pointer;transition:color .15s ease,background .15s ease}
-.refresh-btn:hover{color:var(--text-primary);background:rgba(255,255,255,.05)}
-.update-time{font-size:11px;color:var(--text-muted)}
+.market-grid{--cols:2;padding-bottom:6px}
+.market-card-members span{opacity:.8}
+.market-card-change{opacity:.8}
+.market-empty{height:100%}
 </style>

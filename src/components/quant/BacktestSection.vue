@@ -1,39 +1,36 @@
 <template>
   <section class="quant-section">
-    <h4>回测对照<span>等权基准 vs {{ strategyLabel }} · 约{{ years }}年</span></h4>
+    <h4 class="cl-section-head">回测对照<span class="cl-section-head__sub">等权基准 vs {{ strategyLabel }} · 约{{ years }}年</span></h4>
     <div v-if="backtest" class="quant-bt">
       <svg v-if="backtest.nav.length > 1" class="quant-nav" viewBox="0 0 240 60" preserveAspectRatio="none">
         <polyline
           v-if="strategyPoints"
           :points="strategyPoints"
-          class="nav-strategy"
-          fill="none"
-          stroke-width="1.5"
+          class="cl-chart__line nav-strategy"
         />
         <polyline
           :points="navPoints"
+          class="cl-chart__line"
           :class="backtest.totalReturn >= 0 ? 'nav-up' : 'nav-down'"
-          fill="none"
-          stroke-width="1.5"
         />
       </svg>
-      <div class="quant-metrics">
-        <div class="metric">
-          <span>等权收益</span>
-          <strong :class="tone(backtest.totalReturn)">{{ percent(backtest.totalReturn) }}</strong>
+      <div class="cl-stat-grid quant-metrics">
+        <div class="cl-stat cl-stat--compact metric">
+          <span class="cl-stat__label">等权收益</span>
+          <strong class="cl-stat__value" :class="tone(backtest.totalReturn)">{{ percent(backtest.totalReturn) }}</strong>
         </div>
-        <div class="metric">
-          <span>{{ strategyLabel }}收益</span>
-          <strong :class="tone(strategy?.totalReturn)">{{ percent(strategy?.totalReturn) }}</strong>
+        <div class="cl-stat cl-stat--compact metric">
+          <span class="cl-stat__label">{{ strategyLabel }}收益</span>
+          <strong class="cl-stat__value" :class="tone(strategy?.totalReturn)">{{ percent(strategy?.totalReturn) }}</strong>
         </div>
-        <div class="metric">
-          <span>等权回撤</span>
-          <strong class="down">{{ percent(backtest.maxDrawdown) }}</strong>
+        <div class="cl-stat cl-stat--compact metric">
+          <span class="cl-stat__label">等权回撤</span>
+          <strong class="cl-stat__value down">{{ percent(backtest.maxDrawdown) }}</strong>
         </div>
       </div>
-      <p class="quant-hint">浅线等权基准，深线为周频 Top-N（信号用上一交易日及之前数据，次日开盘成交）。当前名单是固定自选池，不是点时沪深300。{{ icText }}成本已计入；换手 {{ turnoverText }}。</p>
+      <p class="cl-hint quant-hint">浅线等权基准，深线为周频 Top-N（信号用上一交易日及之前数据，次日开盘成交）。当前名单是固定自选池，不是点时沪深300。{{ icText }}成本已计入；换手 {{ turnoverText }}。</p>
     </div>
-    <div v-else class="quant-hint">数据不足或加载中</div>
+    <div v-else class="cl-hint quant-hint">数据不足或加载中</div>
   </section>
 </template>
 
@@ -86,19 +83,3 @@ function tone(value: number | null | undefined): string {
   return value > 0 ? 'up' : 'down'
 }
 </script>
-
-<style scoped>
-.quant-section h4{margin:0 0 6px;font-size:11px;font-weight:700;color:var(--text-secondary)}
-.quant-section h4 span{font-weight:400;font-size:9px;color:var(--text-muted);margin-left:4px}
-.quant-nav{width:100%;height:56px;display:block;margin-bottom:6px}
-.nav-up{stroke:#ff7474}
-.nav-down{stroke:#3ad283}
-.nav-strategy{stroke:rgba(29,155,240,.85)}
-.quant-metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
-.metric{display:flex;flex-direction:column;gap:2px;padding:6px 7px;border:1px solid rgba(255,255,255,.07);border-radius:8px;background:rgba(255,255,255,.03)}
-.metric span{font-size:9px;color:var(--text-muted)}
-.metric strong{font-size:12px;font-variant-numeric:tabular-nums;color:var(--text-primary)}
-.metric strong.up{color:#ff7474}
-.metric strong.down{color:#3ad283}
-.quant-hint{margin:8px 2px 0;font-size:10px;line-height:1.45;color:var(--text-muted)}
-</style>

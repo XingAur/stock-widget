@@ -1,53 +1,56 @@
 <template>
-  <div v-if="visible" class="import-overlay" @click.self="$emit('close')">
+  <div v-if="visible" class="cl-backdrop cl-backdrop--contained import-overlay" @click.self="$emit('close')">
     <div
       ref="dialogElement"
-      class="import-dialog"
+      class="cl-dialog cl-dialog--xs import-dialog"
       role="dialog"
       aria-modal="true"
       aria-label="图片导入持仓"
       @click.stop
       @keydown="handleKeydown"
     >
-      <header class="import-header">
-        <h3>图片导入</h3>
-        <button class="import-close-btn" type="button" aria-label="关闭导入" title="关闭" @click="$emit('close')">
-          <X :size="15" aria-hidden="true" />
+      <header class="cl-dialog__head import-header">
+        <h3 class="cl-dialog__title">图片导入</h3>
+        <button class="cl-close import-close-btn" type="button" aria-label="关闭导入" title="关闭" @click="$emit('close')">
+          <X aria-hidden="true" />
         </button>
       </header>
 
-      <div class="import-body">
-        <div v-if="resolving" class="import-status">正在识别与匹配…</div>
-        <div v-else-if="entries.length === 0" class="import-status">
-          未识别到股票代码或基金名称，换一张更清晰的截图试试
+      <div class="cl-dialog__body cl-list cl-list--flush import-body">
+        <div v-if="resolving" class="cl-empty import-status"><span class="cl-spinner"></span>正在识别与匹配…</div>
+        <div v-else-if="entries.length === 0" class="cl-empty import-status">
+          <span class="cl-empty__desc">未识别到股票代码或基金名称，换一张更清晰的截图试试</span>
         </div>
 
         <template v-else>
           <label
             v-for="entry in entries"
             :key="entry.key"
-            class="import-row"
+            class="cl-card import-row"
             :class="[entry.status, { disabled: entry.status !== 'ready' }]"
           >
-            <input
-              v-model="entry.checked"
-              type="checkbox"
-              :disabled="entry.status !== 'ready'"
-            />
-            <span class="import-type" :class="entry.type">{{ entry.type === 'stock' ? '股' : '基' }}</span>
-            <span class="import-name" :title="entry.displayName">{{ entry.displayName }}</span>
-            <span class="import-meta">{{ statusText(entry) }}</span>
+            <span class="cl-check">
+              <input
+                v-model="entry.checked"
+                type="checkbox"
+                :aria-label="entry.displayName"
+                :disabled="entry.status !== 'ready'"
+              />
+            </span>
+            <span class="cl-tile cl-tile--sm import-type" :class="[entry.type, entry.type === 'fund' ? 'cl-tile--warning' : '']">{{ entry.type === 'stock' ? '股' : '基' }}</span>
+            <span class="cl-card__title import-name" :title="entry.displayName">{{ entry.displayName }}</span>
+            <span class="cl-card__meta import-meta">{{ statusText(entry) }}</span>
           </label>
         </template>
 
-        <p v-if="error" class="import-error">{{ error }}</p>
+        <p v-if="error" class="cl-field__error import-error" role="alert">{{ error }}</p>
       </div>
 
-      <footer class="import-actions">
+      <footer class="cl-dialog__foot import-actions">
         <span class="import-summary">{{ summaryText }}</span>
-        <button class="import-secondary-btn" type="button" @click="$emit('close')">取消</button>
+        <button class="cl-btn cl-btn--ghost import-secondary-btn" type="button" @click="$emit('close')">取消</button>
         <button
-          class="import-primary-btn"
+          class="cl-btn cl-btn--primary import-primary-btn"
           type="button"
           :disabled="resolving || selectedCount === 0 || importing"
           @click="runImport"
@@ -241,32 +244,14 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.import-overlay{position:absolute;inset:0;z-index:50;display:flex;align-items:center;justify-content:center;padding:16px;background:rgba(0,0,0,.44)}
-.import-dialog{width:min(260px,100%);max-height:100%;display:flex;flex-direction:column;padding:14px;border:1px solid var(--border-color);border-radius:12px;background:var(--solid-bg);box-shadow:0 18px 48px rgba(0,0,0,.35)}
-.import-header{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
-.import-header h3{margin:0;font-size:14px;color:var(--text-primary)}
-.import-close-btn{width:24px;height:24px;border:none;border-radius:6px;background:transparent;color:var(--text-muted);cursor:pointer;font-size:18px;line-height:1}
-.import-close-btn:hover{background:rgba(255,255,255,.06);color:var(--text-primary)}
-.import-body{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:4px}
-.import-status{padding:18px 4px;color:var(--text-muted);font-size:12px;text-align:center}
-.import-row{display:flex;align-items:center;gap:7px;padding:6px 7px;border-radius:8px;background:rgba(255,255,255,.03);cursor:pointer}
-.import-row:hover{background:rgba(255,255,255,.055)}
+.import-body{flex:1;min-height:0;overflow-y:auto;gap:4px}
+.import-status{flex-direction:row;padding:18px 4px;font-size:var(--fs-sm)}
+.import-row{min-height:32px;gap:7px;padding:6px 7px}
 .import-row.disabled{opacity:.55;cursor:not-allowed}
-.import-row input{flex:0 0 auto;accent-color:#2d7cf6}
-.import-type{flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:5px;font-size:10px;font-weight:800}
-.import-type.stock{background:rgba(45,124,246,.2);color:#7bb3ff}
-.import-type.fund{background:rgba(245,158,11,.2);color:#f5b45f}
-.import-name{flex:1;min-width:0;font-size:12px;font-weight:600;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.import-meta{flex:0 0 auto;font-size:10px;color:var(--text-muted);white-space:nowrap}
-.import-row.exists .import-meta{color:#fbbf57}
-.import-row.unmatched .import-meta{color:#ff8c8c}
-.import-error{margin:8px 0 0;color:#fca5a5;font-size:12px}
-.import-actions{display:flex;align-items:center;gap:8px;margin-top:12px}
+.import-name{flex:1;max-width:none;font-size:var(--fs-sm);font-weight:600}
+.import-meta{font-size:10px;font-weight:500}
+.import-row.exists .import-meta{color:var(--c-amber)}
+.import-row.unmatched .import-meta{color:var(--c-err-text)}
 .import-summary{flex:1;min-width:0;font-size:10px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.import-secondary-btn,.import-primary-btn{height:30px;padding:0 12px;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer}
-.import-secondary-btn{background:rgba(255,255,255,.06);color:var(--text-secondary)}
-.import-primary-btn{background:rgba(45,124,246,.82);color:#fff}
-.import-primary-btn:disabled{opacity:.4;filter:saturate(.6);cursor:not-allowed}
-.import-secondary-btn:hover{background:rgba(255,255,255,.1);color:var(--text-primary)}
-.import-primary-btn:not(:disabled):hover{background:rgba(45,124,246,.94)}
+.import-actions{align-items:center}
 </style>
