@@ -6,9 +6,10 @@ use std::{
 
 use crate::codes::parse_tencent_lines;
 use crate::fund::{
-    apply_holding_estimate, is_six_digit_code, parse_fund_base_one_year_return, parse_fund_holdings,
-    parse_fund_industries, parse_fund_nav_history, parse_fund_profile, parse_fund_search_results,
-    parse_fund_sector, parse_pingzhong_fund_history, parse_tencent_fund_quote, percent_encode,
+    apply_holding_estimate, is_six_digit_code, parse_fund_base_one_year_return,
+    parse_fund_holdings, parse_fund_industries, parse_fund_nav_history, parse_fund_profile,
+    parse_fund_search_results, parse_fund_sector, parse_pingzhong_fund_history,
+    parse_tencent_fund_quote, percent_encode,
 };
 use crate::http::{fetch_text, fetch_text_gbk};
 use crate::models::{FundAllocation, FundNavPoint, FundProfile, FundQuote, FundSearchResult};

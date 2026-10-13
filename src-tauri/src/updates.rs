@@ -172,7 +172,11 @@ pub async fn download_update(url: String) -> AppResult<String> {
 #[tauri::command]
 pub fn run_installer(app: AppHandle, path: String) -> AppResult<()> {
     let installer = update_guard::validate_installer_path(&path)?;
-    crate::app_log::append_log(&app, "INFO", &format!("启动更新安装程序：{}", installer.display()));
+    crate::app_log::append_log(
+        &app,
+        "INFO",
+        &format!("启动更新安装程序：{}", installer.display()),
+    );
     std::process::Command::new(&installer)
         .spawn()
         .map_err(|error| format!("启动安装程序失败：{error}"))?;

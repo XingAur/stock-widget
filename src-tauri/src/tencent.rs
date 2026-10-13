@@ -162,9 +162,7 @@ pub fn parse_minute_points(text: &str, tencent_code: &str) -> Vec<MinutePoint> {
     points
 }
 
-pub async fn fetch_stocks_from_network(
-    codes: &[String],
-) -> crate::paths::AppResult<Vec<Stock>> {
+pub async fn fetch_stocks_from_network(codes: &[String]) -> crate::paths::AppResult<Vec<Stock>> {
     if codes.is_empty() {
         return Ok(Vec::new());
     }

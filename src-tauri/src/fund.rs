@@ -1,10 +1,11 @@
-use std::collections::HashMap;
 use serde_json::Value;
+use std::collections::HashMap;
 
 use crate::codes::parse_optional_f64;
 use crate::eastmoney::unix_millis_to_china_date;
 use crate::models::{
-    FundHolding, FundIndustry, FundNavPoint, FundProfile, FundQuote, FundRank, FundSearchResult, Stock,
+    FundHolding, FundIndustry, FundNavPoint, FundProfile, FundQuote, FundRank, FundSearchResult,
+    Stock,
 };
 use crate::paths::AppResult;
 pub fn json_string(value: &Value, key: &str) -> String {
@@ -588,4 +589,3 @@ pub fn apply_holding_estimate(quote: &mut FundQuote, holdings: &[FundHolding], s
     quote.estimate_nav = Some(round4(nav * (1.0 + weighted_change / 100.0)));
     quote.estimate_time = format_quote_time(newest_time);
 }
-

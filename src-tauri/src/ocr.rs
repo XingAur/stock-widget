@@ -25,83 +25,82 @@ mod imp {
         if let Ok(engine) = OcrEngine::TryCreateFromLanguage(&zh) {
             return Ok(engine);
         }
-        OcrEngine::TryCreateFromUserProfileLanguages().map_err(|_| {
-            "系统未安装可用的 OCR 语言包，请在 Windows 设置中添加中文语言".to_string()
-        })
+        OcrEngine::TryCreateFromUserProfileLanguages()
+            .map_err(|_| "系统未安装可用的 OCR 语言包，请在 Windows 设置中添加中文语言".to_string())
     }
 
     pub fn ocr_image_bytes(bytes: &[u8]) -> OcrResult {
         ensure_winrt_apartment();
 
         let stream = InMemoryRandomAccessStream::new()
-                .map_err(|error| format!("创建图片流失败：{error}"))?;
-            let writer = DataWriter::CreateDataWriter(&stream)
-                .map_err(|error| format!("创建写入器失败：{error}"))?;
-            writer
-                .WriteBytes(bytes)
-                .map_err(|error| format!("写入图片数据失败：{error}"))?;
-            writer
-                .StoreAsync()
-                .map_err(|error| format!("暂存图片数据失败：{error}"))?
-                .get()
-                .map_err(|error| format!("暂存图片数据失败：{error}"))?;
-            writer
-                .FlushAsync()
-                .map_err(|error| format!("提交图片数据失败：{error}"))?
-                .get()
-                .map_err(|error| format!("提交图片数据失败：{error}"))?;
-            let _ = writer.DetachStream();
-            stream
-                .Seek(0)
-                .map_err(|error| format!("重置图片流失败：{error}"))?;
+            .map_err(|error| format!("创建图片流失败：{error}"))?;
+        let writer = DataWriter::CreateDataWriter(&stream)
+            .map_err(|error| format!("创建写入器失败：{error}"))?;
+        writer
+            .WriteBytes(bytes)
+            .map_err(|error| format!("写入图片数据失败：{error}"))?;
+        writer
+            .StoreAsync()
+            .map_err(|error| format!("暂存图片数据失败：{error}"))?
+            .get()
+            .map_err(|error| format!("暂存图片数据失败：{error}"))?;
+        writer
+            .FlushAsync()
+            .map_err(|error| format!("提交图片数据失败：{error}"))?
+            .get()
+            .map_err(|error| format!("提交图片数据失败：{error}"))?;
+        let _ = writer.DetachStream();
+        stream
+            .Seek(0)
+            .map_err(|error| format!("重置图片流失败：{error}"))?;
 
-            let bitmap: SoftwareBitmap = BitmapDecoder::CreateAsync(&stream)
-                .map_err(|error| format!("解码图片失败：{error}"))?
-                .get()
-                .map_err(|error| format!("解码图片失败：{error}"))?
-                .GetSoftwareBitmapAsync()
-                .map_err(|error| format!("读取位图失败：{error}"))?
-                .get()
-                .map_err(|error| format!("读取位图失败：{error}"))?;
+        let bitmap: SoftwareBitmap = BitmapDecoder::CreateAsync(&stream)
+            .map_err(|error| format!("解码图片失败：{error}"))?
+            .get()
+            .map_err(|error| format!("解码图片失败：{error}"))?
+            .GetSoftwareBitmapAsync()
+            .map_err(|error| format!("读取位图失败：{error}"))?
+            .get()
+            .map_err(|error| format!("读取位图失败：{error}"))?;
 
-            let engine = create_engine()?;
-            let max_dimension = OcrEngine::MaxImageDimension()
-                .map_err(|error| format!("查询 OCR 上限失败：{error}"))?;
-            let width = bitmap.PixelWidth().unwrap_or(0);
-            let height = bitmap.PixelHeight().unwrap_or(0);
-            if width < 0 || height < 0 {
-                return Err("图片内容为空".to_string());
-            }
-            let (width, height) = (width as u32, height as u32);
-            if width == 0 || height == 0 {
-                return Err("图片内容为空".to_string());
-            }
-            if width > max_dimension || height > max_dimension {
-                return Err(format!(
-                    "图片尺寸 {width}x{height} 超过系统 OCR 上限 {max_dimension}，请截小一点再试"
-                ));
-            }
+        let engine = create_engine()?;
+        let max_dimension = OcrEngine::MaxImageDimension()
+            .map_err(|error| format!("查询 OCR 上限失败：{error}"))?;
+        let width = bitmap.PixelWidth().unwrap_or(0);
+        let height = bitmap.PixelHeight().unwrap_or(0);
+        if width < 0 || height < 0 {
+            return Err("图片内容为空".to_string());
+        }
+        let (width, height) = (width as u32, height as u32);
+        if width == 0 || height == 0 {
+            return Err("图片内容为空".to_string());
+        }
+        if width > max_dimension || height > max_dimension {
+            return Err(format!(
+                "图片尺寸 {width}x{height} 超过系统 OCR 上限 {max_dimension}，请截小一点再试"
+            ));
+        }
 
-            let result = engine
-                .RecognizeAsync(&bitmap)
-                .map_err(|error| format!("识别失败：{error}"))?
-                .get()
-                .map_err(|error| format!("识别失败：{error}"))?;
-            let lines = result
-                .Lines()
-                .map_err(|error| format!("读取识别结果失败：{error}"))?;
-            let mut texts = Vec::new();
-            for line in lines {
-                let text = line
-                    .Text()
-                    .map_err(|error| format!("读取识别文本失败：{error}"))?
-                    .to_string();
-                let trimmed = text.trim().to_string();
-                if !trimmed.is_empty() {
-                    texts.push(trimmed);
-                }
+        let result = engine
+            .RecognizeAsync(&bitmap)
+            .map_err(|error| format!("识别失败：{error}"))?
+            .get()
+            .map_err(|error| format!("识别失败：{error}"))?;
+        let lines = result
+            .Lines()
+            .map_err(|error| format!("读取识别结果失败：{error}"))?;
+        let mut texts = Vec::new();
+        for line in lines {
+            let text = line
+                .Text()
+                .map_err(|error| format!("读取识别文本失败：{error}"))?
+                .to_string();
+            let trimmed = text.trim().to_string();
+            if !trimmed.is_empty() {
+                texts.push(trimmed);
             }
-            Ok(texts)
+        }
+        Ok(texts)
     }
 }
 

@@ -26,7 +26,10 @@ pub fn installer_file_name(url: &str) -> String {
 
 pub fn validate_installer_path(path: &str) -> Result<PathBuf, String> {
     let candidate = Path::new(path);
-    if candidate.components().any(|part| matches!(part, Component::ParentDir)) {
+    if candidate
+        .components()
+        .any(|part| matches!(part, Component::ParentDir))
+    {
         return Err("更新包路径不合法".to_string());
     }
     let is_exe = candidate
@@ -59,7 +62,9 @@ mod tests {
 
     #[test]
     fn rejects_non_https_and_foreign_hosts() {
-        assert!(!is_allowed_update_url("http://github.com/XingAur/stock-widget/releases/x.exe"));
+        assert!(!is_allowed_update_url(
+            "http://github.com/XingAur/stock-widget/releases/x.exe"
+        ));
         assert!(!is_allowed_update_url("https://evil.example/A+.exe"));
         assert!(!is_allowed_update_url("C:\\Temp\\setup.exe"));
     }

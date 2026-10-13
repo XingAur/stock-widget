@@ -44,8 +44,20 @@ pub fn parse_eastmoney_global_indices(text: &str) -> Vec<GlobalIndex> {
 
 fn is_statistics_style_sector(name: &str) -> bool {
     const KEYWORDS: &[&str] = &[
-        "昨日", "连板", "涨停", "跌停", "风格", "大盘", "中盘", "小盘", "ST板块", "次新股", "破净",
-        "高送转", "预盈预增", "预亏预减",
+        "昨日",
+        "连板",
+        "涨停",
+        "跌停",
+        "风格",
+        "大盘",
+        "中盘",
+        "小盘",
+        "ST板块",
+        "次新股",
+        "破净",
+        "高送转",
+        "预盈预增",
+        "预亏预减",
     ];
     KEYWORDS.iter().any(|keyword| name.contains(keyword))
 }

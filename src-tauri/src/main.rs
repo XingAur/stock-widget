@@ -17,15 +17,17 @@ mod update_guard;
 mod updates;
 mod window_state;
 
-use models::*;
 #[cfg(test)]
-use eastmoney::{parse_eastmoney_global_indices, parse_eastmoney_sectors, unix_millis_to_china_date};
+use eastmoney::format_eastmoney_timestamp;
+#[cfg(test)]
+use eastmoney::{
+    parse_eastmoney_global_indices, parse_eastmoney_sectors, unix_millis_to_china_date,
+};
 #[cfg(test)]
 use fund::*;
 #[cfg(test)]
-use fund_api::{CachedFundAllocation, resolve_fund_history_attempts};
-#[cfg(test)]
-use eastmoney::format_eastmoney_timestamp;
+use fund_api::{resolve_fund_history_attempts, CachedFundAllocation};
+use models::*;
 use tencent::fetch_stocks_from_network;
 #[cfg(test)]
 use tencent::{parse_minute_points, parse_stock_from_parts};
@@ -42,17 +44,16 @@ use http::decode_utf8_text;
 use http::fetch_text_gbk;
 use ocr::ocr_image_bytes;
 use paths::{read_state_file, APP_STATE_FILE, QUOTE_CACHE_FILE};
-use window_state::{restore_window_geometry, save_window_geometry, watch_window_geometry};
-#[cfg(test)]
-use window_state::WindowGeometry;
 use std::collections::HashSet;
 use tauri::{
     menu::{Menu, MenuItem},
     AppHandle, Emitter, Manager, WebviewWindow,
 };
+#[cfg(test)]
+use window_state::WindowGeometry;
+use window_state::{restore_window_geometry, save_window_geometry, watch_window_geometry};
 
 type AppResult<T> = Result<T, String>;
-
 
 #[tauri::command]
 fn persist_app_state(app: AppHandle, state: String) -> AppResult<()> {
@@ -60,7 +61,10 @@ fn persist_app_state(app: AppHandle, state: String) -> AppResult<()> {
         return Err("应用状态内容为空，已拒绝覆盖持久化文件".to_string());
     }
 
-    paths::write_atomic(&paths::app_data_file(&app, APP_STATE_FILE)?, state.as_bytes())
+    paths::write_atomic(
+        &paths::app_data_file(&app, APP_STATE_FILE)?,
+        state.as_bytes(),
+    )
 }
 
 #[tauri::command]
@@ -191,8 +195,6 @@ async fn set_auto_start(app: AppHandle, enabled: bool) -> AppResult<()> {
 
     Ok(())
 }
-
-
 
 #[tauri::command]
 async fn fetch_stocks(app: AppHandle, codes: Vec<String>) -> AppResult<Vec<Stock>> {
