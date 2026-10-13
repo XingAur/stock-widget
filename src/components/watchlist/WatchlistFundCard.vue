@@ -1,6 +1,6 @@
 <template>
   <div
-    class="cl-card cl-card--tall fund-card"
+    class="cl-card cl-card--tall stock-card fund-card"
     :class="{
       'is-selected': selected,
       'is-dragging': dragging,
