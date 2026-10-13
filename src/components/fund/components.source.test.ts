@@ -16,7 +16,7 @@ describe('fund detail chart components', () => {
     expect(source).toContain('暂无可对齐的业绩数据')
     expect(source).toContain('createLinePath')
     expect(source).toContain('filterFundNavPointsByRange(props.history, props.range)')
-    expect(source).toContain('class="nav-history-table"')
+    expect(source).toMatch(/class="[^"]*\bnav-history-table\b/)
     expect(source).toContain('日期')
     expect(source).toContain('单位净值')
     expect(source).toContain('累计净值')

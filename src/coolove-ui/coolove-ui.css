@@ -1310,6 +1310,13 @@ button.cl-tag:hover { background: var(--surface-3); color: var(--text-primary); 
 .cl-table th.is-sortable:hover { color: var(--text-primary); }
 .cl-table th[aria-sort="ascending"]::after { content: " ↑"; color: var(--accent-text); }
 .cl-table th[aria-sort="descending"]::after { content: " ↓"; color: var(--accent-text); }
+/* 紧凑表格：嵌在面板里的明细（10px 字号、无表头底色、无外框），配合 .cl-table-wrap--plain */
+.cl-table--compact { font-size: 10px; }
+.cl-table--compact th { position: static; padding: 8px 4px; background: transparent; font-size: 10px; font-weight: 500; }
+.cl-table--compact td { padding: 7px 4px; border-top-color: rgb(var(--ink) / 0.035); color: var(--text-secondary); }
+.cl-table--compact td:first-child { color: var(--text-primary); font-weight: 600; }
+.cl-table--compact tbody tr:hover { background: transparent; }
+.cl-table-wrap--plain { border: none; border-top: 1px solid var(--divider-color); border-radius: 0; }
 
 /* 迷你走势图（SVG） */
 .cl-spark { display: block; width: 100%; height: 100%; overflow: visible; }
@@ -1852,8 +1859,20 @@ button.cl-tag:hover { background: var(--surface-3); color: var(--text-primary); 
  * 12. 杂项
  * ============================================================ */
 .cl-divider { height: 1px; margin: 12px 0; border: none; background: var(--divider-color); }
-.cl-eyebrow { font-size: 10px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-muted); }
+.cl-eyebrow { display: block; font-size: 10px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-muted); }
 .cl-eyebrow--accent { color: var(--accent-text); }
+
+/* 分隔行：子元素之间加 1px 分隔线（交易记录、收益明细这类纵向列表） */
+.cl-divided > * + * { border-top: 1px solid var(--divider-color); }
+.cl-divided--soft > * + * { border-top-color: rgb(var(--ink) / 0.035); }
+
+/* 底部操作栏：等分的“图标 + 文字”按钮，常放在详情页底部；更多菜单用 .cl-menu--static 绝对定位到上方 */
+.cl-actionbar { position: relative; flex-shrink: 0; display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; min-height: 49px; border-top: 1px solid var(--divider-color); }
+.cl-actionbar__item { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; border: 0; background: transparent; color: var(--text-muted); font-size: 10px; cursor: pointer; transition: color var(--ease), background var(--ease); }
+.cl-actionbar__item svg { width: 17px; height: 17px; color: var(--accent-text); stroke-width: 1.8; }
+.cl-actionbar__item:hover { color: var(--text-primary); background: var(--surface-2); }
+.cl-actionbar__item[aria-expanded="true"] { color: var(--text-primary); background: var(--surface-2); }
+.cl-actionbar > .cl-menu { position: absolute; right: 7px; bottom: calc(100% + 4px); z-index: 6; }
 
 /* 小节标题：标题 + 灰色副标题，右侧可放操作（分段选择、按钮），自动靠右 */
 .cl-section-head { display: flex; align-items: center; gap: 6px; min-width: 0; margin: 0 0 6px; font-size: var(--fs-xs); font-weight: 700; color: var(--text-secondary); }

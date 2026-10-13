@@ -1,51 +1,51 @@
 <template>
-  <section class="position-dialog" role="dialog" aria-modal="true" :aria-label="dialogTitle">
-    <header class="dialog-head">
+  <section class="cl-dialog position-dialog" role="dialog" aria-modal="true" :aria-label="dialogTitle">
+    <header class="cl-dialog__head dialog-head">
       <div>
-        <span class="eyebrow">POSITION LEDGER</span>
-        <h2>{{ dialogTitle }}</h2>
+        <span class="cl-eyebrow cl-eyebrow--accent">POSITION LEDGER</span>
+        <h2 class="cl-dialog__title">{{ dialogTitle }}</h2>
       </div>
-      <button type="button" aria-label="关闭持仓录入" title="关闭" @click="emit('close')"><X :size="15" aria-hidden="true" /></button>
+      <button class="cl-close" type="button" aria-label="关闭持仓录入" title="关闭" @click="emit('close')"><X aria-hidden="true" /></button>
     </header>
 
-    <div class="simulation-notice"><CircleAlert :size="13" aria-hidden="true" /> 仅记录模拟持仓，请先在真实交易平台完成操作</div>
+    <div class="cl-alert cl-alert--warning cl-alert--banner simulation-notice"><CircleAlert aria-hidden="true" /> 仅记录模拟持仓，请先在真实交易平台完成操作</div>
 
     <div class="fund-strip">
       <div><strong>{{ fundName }}</strong><small>{{ code }}</small></div>
-      <div><span>参考净值</span><strong>{{ currentNav?.toFixed(4) || '--' }}</strong></div>
+      <div><span>参考净值</span><strong class="cl-num">{{ currentNav?.toFixed(4) || '--' }}</strong></div>
     </div>
 
-    <form @submit.prevent="submitForm">
+    <form class="cl-dialog__body" @submit.prevent="submitForm">
       <div class="form-grid">
-        <label v-if="mode === 'buy'" class="wide">
-          <span>加仓金额</span>
-          <div class="money-input"><b>¥</b><input v-model.number="form.amount" type="number" min="0" step="0.01" placeholder="输入加仓金额" autofocus /></div>
+        <label v-if="mode === 'buy'" class="cl-field wide">
+          <span class="cl-field__label">加仓金额</span>
+          <div class="cl-input-wrap money-input"><span class="cl-input-wrap__prefix">¥</span><input v-model.number="form.amount" class="cl-input cl-input--lg" type="number" min="0" step="0.01" placeholder="输入加仓金额" autofocus /></div>
         </label>
 
-        <label v-if="mode === 'sell'" class="wide">
-          <span>卖出份额 <small>最多 {{ formatShares(availableShares) }} 份</small></span>
-          <input v-model.number="form.shares" type="number" min="0" step="0.000001" placeholder="输入卖出份额" autofocus />
-          <div class="quick-shares">
-            <button v-for="shortcut in sellShortcuts" :key="shortcut.label" type="button" @click="setSellFraction(shortcut.ratio)">{{ shortcut.label }}</button>
+        <label v-if="mode === 'sell'" class="cl-field wide">
+          <span class="cl-field__label">卖出份额 <small>最多 {{ formatShares(availableShares) }} 份</small></span>
+          <input v-model.number="form.shares" class="cl-input" type="number" min="0" step="0.000001" placeholder="输入卖出份额" autofocus />
+          <div class="cl-segmented cl-segmented--ghost cl-segmented--block quick-shares" role="group" aria-label="快捷份额">
+            <button v-for="shortcut in sellShortcuts" :key="shortcut.label" class="cl-segmented__item" type="button" @click="setSellFraction(shortcut.ratio)">{{ shortcut.label }}</button>
           </div>
         </label>
 
         <template v-if="mode === 'adjust'">
-          <label><span>持有金额</span><input v-model.number="form.holdingAmount" type="number" min="0" step="0.01" placeholder="0.00" /></label>
-          <label><span>持有收益</span><input v-model.number="form.holdingProfit" type="number" step="0.01" placeholder="可输入负数" /></label>
+          <label class="cl-field"><span class="cl-field__label">持有金额</span><input v-model.number="form.holdingAmount" class="cl-input" type="number" min="0" step="0.01" placeholder="0.00" /></label>
+          <label class="cl-field"><span class="cl-field__label">持有收益</span><input v-model.number="form.holdingProfit" class="cl-input" type="number" step="0.01" placeholder="可输入负数" /></label>
         </template>
 
-        <label v-if="mode !== 'adjust'">
-          <span>{{ mode === 'buy' ? '买入费率' : '卖出费率' }} (%)</span>
-          <input v-model.number="form.feeRate" type="number" min="0" max="100" step="0.001" />
+        <label v-if="mode !== 'adjust'" class="cl-field">
+          <span class="cl-field__label">{{ mode === 'buy' ? '买入费率' : '卖出费率' }} (%)</span>
+          <input v-model.number="form.feeRate" class="cl-input" type="number" min="0" max="100" step="0.001" />
         </label>
-        <label>
-          <span>确认净值</span>
-          <input v-model.number="form.nav" type="number" min="0" step="0.0001" />
+        <label class="cl-field">
+          <span class="cl-field__label">确认净值</span>
+          <input v-model.number="form.nav" class="cl-input" type="number" min="0" step="0.0001" />
         </label>
-        <label>
-          <span>{{ mode === 'adjust' ? '调整日期' : '交易日期' }}</span>
-          <input v-model="form.tradeDate" type="date" :min="minimumTradeDate || undefined" :max="today" />
+        <label class="cl-field">
+          <span class="cl-field__label">{{ mode === 'adjust' ? '调整日期' : '交易日期' }}</span>
+          <input v-model="form.tradeDate" class="cl-input" type="date" :min="minimumTradeDate || undefined" :max="today" />
         </label>
         <div class="nav-match">
           <span>净值匹配</span>
@@ -53,7 +53,7 @@
         </div>
       </div>
 
-      <div v-if="mode !== 'adjust'" class="preview-card">
+      <div v-if="mode !== 'adjust'" class="cl-panel preview-card">
         <template v-if="mode === 'buy'">
           <div><span>预计手续费</span><strong>{{ formatMoney(buyPreview.fee) }}</strong></div>
           <div><span>预计确认份额</span><strong>{{ formatShares(buyPreview.shares) }}</strong></div>
@@ -64,13 +64,13 @@
         </template>
       </div>
 
-      <div v-if="errors.length" class="form-errors">
+      <div v-if="errors.length" class="cl-field__error form-errors" role="alert">
         <span v-for="error in errors" :key="error">{{ error }}</span>
       </div>
 
       <footer class="dialog-actions">
-        <button type="button" @click="emit('close')">取消</button>
-        <button class="primary" type="submit">{{ initialTransaction ? '保存修改' : `确认${dialogTitle}` }}</button>
+        <button class="cl-btn cl-btn--ghost" type="button" @click="emit('close')">取消</button>
+        <button class="cl-btn cl-btn--primary primary" type="submit">{{ initialTransaction ? '保存修改' : `确认${dialogTitle}` }}</button>
       </footer>
     </form>
   </section>
@@ -206,45 +206,35 @@ watch(() => form.tradeDate, matchNavForDate, { immediate: true })
 </script>
 
 <style scoped>
-.position-dialog { width: min(440px, calc(100% - 30px)); max-height: calc(100% - 24px); overflow-y: auto; border: 1px solid var(--border-color); border-radius: 16px; color: var(--text-primary); background: var(--solid-bg); box-shadow: 0 24px 80px rgba(0, 0, 0, .48); }
-.dialog-head { display: flex; align-items: center; justify-content: space-between; padding: 13px 16px 10px; }
-.eyebrow { display: block; color: #6f94f8; font-size: 10px; font-weight: 800; letter-spacing: 0; }
-.dialog-head h2 { margin-top: 2px; font-size: 16px; }
-.dialog-head button { width: 25px; height: 25px; border: 0; border-radius: 7px; color: var(--text-muted); background: var(--card-bg); cursor: pointer; }
-.simulation-notice { display: flex; align-items: center; gap: 4px; padding: 6px 16px; color: #e9a25d; background: rgba(245, 158, 11, .08); font-size: 10px; }
-.fund-strip { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; border-bottom: 1px solid var(--divider-color); }
+/* 外观来自 coolove-ui（cl-dialog / cl-field / cl-input--lg / cl-alert--banner），这里只排布表单 */
+.position-dialog { width: min(440px, calc(100% - 30px)); max-height: calc(100% - 24px); overflow-y: auto; }
+.dialog-head .cl-dialog__title { margin-top: 2px; font-size: var(--fs-xl); }
+.simulation-notice { font-size: 10px; }
+.fund-strip { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 16px; border-bottom: 1px solid var(--divider-color); }
 .fund-strip > div:first-child { min-width: 0; }
 .fund-strip strong, .fund-strip small, .fund-strip span { display: block; }
-.fund-strip > div:first-child strong { overflow: hidden; max-width: 280px; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+.fund-strip > div:first-child strong { overflow: hidden; max-width: 280px; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-xs); }
 .fund-strip small, .fund-strip span { margin-top: 2px; color: var(--text-muted); font-size: 10px; }
 .fund-strip > div:last-child { text-align: right; }
-.fund-strip > div:last-child strong { margin-top: 2px; font-size: 12px; }
-form { padding: 11px 16px 14px; }
+.fund-strip > div:last-child strong { margin-top: 2px; font-size: var(--fs-sm); }
+.cl-dialog__body { padding-top: 11px; padding-bottom: 14px; }
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 9px 11px; }
-label { display: block; min-width: 0; }
-label.wide { grid-column: 1 / -1; }
-label > span, .nav-match > span { display: flex; justify-content: space-between; margin-bottom: 4px; color: var(--text-secondary); font-size: 10px; }
-label > span small { color: var(--text-muted); font-size: 10px; }
-input { width: 100%; height: 31px; padding: 0 9px; border: 1px solid var(--border-color); outline: none; border-radius: 7px; color: var(--text-primary); background: var(--input-bg); font: inherit; font-size: 11px; user-select: text; }
-input:focus { border-color: rgba(111, 148, 248, .6); box-shadow: 0 0 0 2px rgba(91, 140, 255, .1); }
-.money-input { position: relative; }
-.money-input b { position: absolute; top: 4px; left: 9px; color: #8fb0ff; font-size: 18px; }
-.money-input input { height: 39px; padding-left: 32px; font-size: 17px; font-weight: 650; }
-.quick-shares { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 6px; }
-.quick-shares button { height: 25px; border: 1px solid var(--border-color); border-radius: 7px; color: var(--text-muted); background: transparent; font: inherit; font-size: 10px; cursor: pointer; }
-.quick-shares button:hover { color: #8fb0ff; border-color: rgba(111, 148, 248, .5); }
-.nav-match { align-self: end; height: 31px; padding: 4px 8px; border-radius: 7px; background: var(--card-bg); }
-.nav-match span { margin: 0; color: var(--text-muted); font-size: 10px; }
+.form-grid .cl-field { gap: 4px; }
+.form-grid .cl-field__label { display: flex; justify-content: space-between; color: var(--text-secondary); font-size: 10px; font-weight: 500; }
+.form-grid .cl-field__label small { color: var(--text-muted); font-size: 10px; }
+.wide { grid-column: 1 / -1; }
+.quick-shares { margin-top: 6px; }
+.nav-match { align-self: end; height: var(--ctl-h); padding: 4px 8px; border-radius: var(--radius-sm); background: var(--surface-1); }
+.nav-match span { display: block; color: var(--text-muted); font-size: 10px; line-height: 1; }
 .nav-match strong { display: block; overflow: hidden; margin-top: 2px; color: var(--text-secondary); text-overflow: ellipsis; white-space: nowrap; font-size: 10px; }
-.preview-card { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; padding: 9px 10px; border: 1px solid rgba(111, 148, 248, .12); border-radius: 9px; background: rgba(91, 140, 255, .07); }
+.preview-card { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; padding: 9px 10px; border-color: color-mix(in srgb, var(--accent) 14%, transparent); background: color-mix(in srgb, var(--accent) 7%, transparent); }
 .preview-card span, .preview-card strong { display: block; }
 .preview-card span { color: var(--text-muted); font-size: 10px; }
-.preview-card strong { margin-top: 3px; font-size: 11px; }
-.up { color: var(--danger); }
-.down { color: var(--success); }
-.form-errors { display: flex; flex-wrap: wrap; gap: 3px 8px; margin-top: 8px; color: #f28b82; font-size: 10px; }
+.preview-card strong { margin-top: 3px; font-size: var(--fs-xs); font-variant-numeric: tabular-nums; }
+.up { color: var(--rise); }
+.down { color: var(--fall); }
+.form-errors { display: flex; flex-wrap: wrap; gap: 3px 8px; margin-top: 8px; font-size: 10px; }
 .form-errors span::before { content: '• '; }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 7px; margin-top: 12px; }
-.dialog-actions button { min-width: 74px; height: 30px; border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-secondary); background: transparent; font: inherit; font-size: 10px; cursor: pointer; }
-.dialog-actions button.primary { border-color: transparent; color: white; background: linear-gradient(135deg, #557fef, #6f94f8); box-shadow: 0 6px 17px rgba(91, 140, 255, .22); }
+.dialog-actions .cl-btn { min-width: 74px; }
 </style>
