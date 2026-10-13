@@ -6,7 +6,7 @@
     </div>
     <div class="price-panel">
       <div class="price-value">{{ priceText }}</div>
-      <div class="price-pill" :class="tone">{{ changeText }}</div>
+      <div class="cl-pill price-pill" :class="[tone, tone === 'up' ? 'cl-pill--rise' : 'cl-pill--fall']">{{ changeText }}</div>
     </div>
   </header>
   <section class="stats-grid">
@@ -32,17 +32,16 @@ defineProps<{
 <style scoped>
 .stock-header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding:16px 0 10px}
 .stock-title{display:flex;align-items:baseline;gap:8px;min-width:0;flex-wrap:wrap}
-.stock-title h2{margin:0;font-size:20px;line-height:1.08;font-weight:800;color:#fff}
-.stock-subtitle{margin-top:0;font-size:13px;line-height:1.08;color:rgba(255,255,255,.68);white-space:nowrap}
+.stock-title h2{margin:0;font-size:20px;line-height:1.08;font-weight:800;color:var(--text-primary)}
+.stock-subtitle{margin-top:0;font-size:var(--fs-md);line-height:1.08;color:var(--text-secondary);white-space:nowrap}
 .stock-header,.stats-grid{flex-shrink:0}
 .price-panel{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap}
-.price-value{font-size:14px;line-height:1;font-weight:650;color:var(--text-primary)}
-.price-pill{min-width:92px;padding:6px 12px;border-radius:999px;text-align:center;font-size:14px;font-weight:800}
-.price-pill.up{color:#ff7474;background:rgba(239,68,68,.14)}
-.price-pill.down{color:#3ad283;background:rgba(34,197,94,.12)}
-.stats-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:0;padding:8px 0 10px;border-top:1px solid rgba(255,255,255,.08);border-bottom:1px solid rgba(255,255,255,.08)}
+.price-value{font-size:var(--fs-lg);line-height:1;font-weight:650;color:var(--text-primary);font-variant-numeric:tabular-nums}
+/* 详情页的涨跌胶囊比列表大一号 */
+.price-pill{min-width:92px;padding:6px 12px;font-size:var(--fs-lg);font-weight:800}
+.stats-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:0;padding:8px 0 10px;border-top:1px solid var(--divider-color);border-bottom:1px solid var(--divider-color)}
 .stat-item{display:flex;flex-direction:column;gap:4px;padding:6px 12px}
-.stat-item.compact .stat-value{font-size:16px;font-weight:700;color:var(--text-primary)}
-.stat-label{font-size:12px;color:var(--text-muted)}
-.stat-value{font-size:16px;font-weight:700;color:var(--text-primary)}
+.stat-label{font-size:var(--fs-sm);color:var(--text-muted)}
+.stat-value{font-size:var(--fs-xl);font-weight:700;color:var(--text-primary);font-variant-numeric:tabular-nums}
+.stat-value :deep(.stat-unit){font-size:var(--fs-sm);font-weight:400;color:var(--text-muted)}
 </style>

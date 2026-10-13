@@ -5,18 +5,18 @@
         <div v-for="index in indices" :key="index.code" class="index-card">
           <span class="index-name">{{ index.name }}</span>
           <strong class="index-price">{{ index.price.toFixed(2) }}</strong>
-          <span class="index-change" :class="{ up: index.changePercent >= 0, down: index.changePercent < 0 }">
+          <span class="index-change" :class="index.changePercent >= 0 ? 'up cl-rise' : 'down cl-fall'">
             {{ formatSigned(index.change) }}({{ formatSignedPercent(index.changePercent) }})
           </span>
         </div>
       </div>
     </div>
 
-    <div v-if="detailRefreshError && detail" class="detail-refresh-notice" role="status">
+    <div v-if="detailRefreshError && detail" class="cl-alert cl-alert--warning detail-refresh-notice" role="status">
       {{ detailRefreshError }}
     </div>
 
-    <div v-if="loading && !detail" class="detail-empty">加载中...</div>
+    <div v-if="loading && !detail" class="cl-empty detail-empty"><span class="cl-spinner"></span>加载中...</div>
 
     <div v-else-if="detail" class="detail-body">
       <DetailQuoteHeader
@@ -31,22 +31,22 @@
 
       <section class="chart-card">
         <DetailChartToolbar :tabs="tabs" :active-tab="activeTab" @switch="onChartTabSwitch">
-        <div class="chart-meta-slot">
+        <div class="cl-legend cl-legend--dot chart-meta-slot">
           <template v-if="activeTab === 'minute' && minuteChartModel">
-            <span class="legend-item"><span class="legend-dot latest" />最新 {{ minuteChartModel.latestPrice.toFixed(2) }}</span>
-            <span class="legend-item"><span class="legend-dot avg" />均价 {{ minuteChartModel.avgPrice.toFixed(2) }}</span>
+            <span class="legend-item" style="--c: var(--accent)">最新 {{ minuteChartModel.latestPrice.toFixed(2) }}</span>
+            <span class="legend-item" style="--c: var(--series-avg)">均价 {{ minuteChartModel.avgPrice.toFixed(2) }}</span>
           </template>
           <template v-else-if="klineChartModel">
-            <span class="legend-item"><span class="legend-dot latest" />收盘 {{ formatPrice(klineChartModel.latestClose) }}</span>
-            <span class="legend-item"><span class="legend-dot dot-ma5"></span>MA5 {{ formatMA(klineChartModel.latestMA5) }}</span>
-            <span class="legend-item"><span class="legend-dot dot-ma10"></span>MA10 {{ formatMA(klineChartModel.latestMA10) }}</span>
-            <span class="legend-item"><span class="legend-dot dot-ma20"></span>MA20 {{ formatMA(klineChartModel.latestMA20) }}</span>
+            <span class="legend-item" style="--c: var(--accent)">收盘 {{ formatPrice(klineChartModel.latestClose) }}</span>
+            <span class="legend-item" style="--c: var(--series-1)">MA5 {{ formatMA(klineChartModel.latestMA5) }}</span>
+            <span class="legend-item" style="--c: var(--series-2)">MA10 {{ formatMA(klineChartModel.latestMA10) }}</span>
+            <span class="legend-item" style="--c: var(--series-3)">MA20 {{ formatMA(klineChartModel.latestMA20) }}</span>
           </template>
         </div>
         </DetailChartToolbar>
 
         <div class="chart-area">
-          <div v-if="chartLoading" class="chart-empty">加载图表中...</div>
+          <div v-if="chartLoading" class="cl-empty chart-empty"><span class="cl-spinner"></span>加载图表中...</div>
 
           <template v-else-if="activeTab === 'minute'">
             <div v-if="minuteChartModel" class="minute-layout">
@@ -61,7 +61,7 @@
                   <line
                     v-for="tick in minuteChartModel.yTicks"
                     :key="tick.label"
-                    class="grid-line"
+                    class="cl-chart__grid grid-line"
                     :x1="CHART_PADDING.left"
                     :x2="minuteChartModel.viewWidth - CHART_PADDING.right"
                     :y1="tick.y"
@@ -70,13 +70,13 @@
                   <text
                     v-for="tick in minuteChartModel.yTicks"
                     :key="`${tick.label}-y`"
-                    :class="['axis-label', minuteAxisLabelClass]"
+                    :class="['cl-chart__axis axis-label', minuteAxisLabelClass]"
                     :x="14"
                     :y="tick.y + 4"
                   >
                     {{ tick.label }}
                   </text>
-                  <path class="area-fill" :d="minuteChartModel.areaPath" />
+                  <path class="cl-chart__area area-fill" :d="minuteChartModel.areaPath" />
                   <line
                     class="minute-volume-divider"
                     :x1="CHART_PADDING.left"
@@ -95,28 +95,28 @@
                     v-for="bar in minuteChartModel.volumeBars"
                     :key="bar.key"
                     class="minute-volume-bar"
-                    :class="bar.tone"
+                    :class="[bar.tone, VOLUME_BAR_CLASS[bar.tone]]"
                     :x="bar.x"
                     :y="bar.y"
                     :width="bar.width"
                     :height="bar.height"
                   />
-                  <polyline class="chart-line chart-line-latest" :points="minuteChartModel.latestPath" />
-                  <polyline class="chart-line chart-line-avg" :points="minuteChartModel.avgPath" />
+                  <polyline class="cl-chart__line chart-line chart-line-latest" :points="minuteChartModel.latestPath" />
+                  <polyline class="cl-chart__line chart-line chart-line-avg" :points="minuteChartModel.avgPath" />
                   <template v-if="minuteChartModel.zeroY !== null">
-                    <line class="chart-zero-line" :x1="CHART_PADDING.left" :x2="minuteChartModel.viewWidth - CHART_PADDING.right" :y1="minuteChartModel.zeroY" :y2="minuteChartModel.zeroY" />
+                    <line class="cl-chart__baseline chart-zero-line" :x1="CHART_PADDING.left" :x2="minuteChartModel.viewWidth - CHART_PADDING.right" :y1="minuteChartModel.zeroY" :y2="minuteChartModel.zeroY" />
                   </template>
                   <template v-if="minuteHover">
-                    <line class="hover-line" :x1="minuteHover.x" :x2="minuteHover.x" :y1="CHART_PADDING.top" :y2="minuteChartModel.geometry.volumeBottom" />
-                    <line class="hover-line" :x1="CHART_PADDING.left" :x2="minuteChartModel.viewWidth - CHART_PADDING.right" :y1="minuteHover.latestY" :y2="minuteHover.latestY" />
-                    <circle class="hover-point latest" :cx="minuteHover.x" :cy="minuteHover.latestY" r="3.4" />
-                    <circle class="hover-point avg" :cx="minuteHover.x" :cy="minuteHover.avgY" r="2.8" />
-                    <rect class="hover-price-bg" x="2" :y="minuteHover.latestY - 12" width="54" height="24" rx="6" />
-                    <text class="hover-label-text" x="29" :y="minuteHover.latestY + 4" text-anchor="middle">
+                    <line class="cl-chart__hover hover-line" :x1="minuteHover.x" :x2="minuteHover.x" :y1="CHART_PADDING.top" :y2="minuteChartModel.geometry.volumeBottom" />
+                    <line class="cl-chart__hover hover-line" :x1="CHART_PADDING.left" :x2="minuteChartModel.viewWidth - CHART_PADDING.right" :y1="minuteHover.latestY" :y2="minuteHover.latestY" />
+                    <circle class="cl-chart__point hover-point latest" :cx="minuteHover.x" :cy="minuteHover.latestY" r="3.4" />
+                    <circle class="cl-chart__point hover-point avg" :cx="minuteHover.x" :cy="minuteHover.avgY" r="2.8" />
+                    <rect class="cl-chart__tag hover-price-bg" x="2" :y="minuteHover.latestY - 12" width="54" height="24" rx="6" />
+                    <text class="cl-chart__tag-text hover-label-text" x="29" :y="minuteHover.latestY + 4" text-anchor="middle">
                       {{ minuteHover.latestPrice.toFixed(2) }}
                     </text>
                     <rect
-                      class="hover-time-bg"
+                      class="cl-chart__tag cl-chart__tag--muted hover-time-bg"
                       :x="clamp(minuteHover.x - 24, CHART_PADDING.left, minuteChartModel.viewWidth - CHART_PADDING.right - 48)"
                       :y="minuteChartModel.geometry.hoverTimeBoxY"
                       width="48"
@@ -124,7 +124,7 @@
                       rx="4"
                     />
                     <text
-                      class="hover-label-text"
+                      class="cl-chart__tag-text hover-label-text"
                       :x="clamp(minuteHover.x, CHART_PADDING.left + 24, minuteChartModel.viewWidth - CHART_PADDING.right - 24)"
                       :y="minuteChartModel.geometry.hoverTimeTextY"
                       text-anchor="middle"
@@ -135,7 +135,7 @@
                   <text
                     v-for="tick in minuteChartModel.xTicks"
                     :key="`${tick.label}-x`"
-                    :class="['axis-label', minuteAxisLabelClass]"
+                    :class="['cl-chart__axis axis-label', minuteAxisLabelClass]"
                     :x="tick.x"
                     :y="minuteChartModel.geometry.xAxisY"
                     text-anchor="middle"
@@ -146,20 +146,20 @@
 
                 <div
                   v-if="minuteHover"
-                  class="chart-tooltip"
+                  class="cl-tooltip-card chart-tooltip"
                   :style="{ left: `${minuteHover.tooltipLeft}px`, top: `${minuteHover.tooltipTop}px` }"
                 >
-                  <div class="chart-tooltip-title">{{ minuteHover.time }}</div>
-                  <div class="chart-tooltip-row">
-                    <span class="tooltip-key"><span class="tooltip-dot latest"></span>最新</span>
+                  <div class="cl-tooltip-card__title chart-tooltip-title">{{ minuteHover.time }}</div>
+                  <div class="cl-tooltip-card__row chart-tooltip-row">
+                    <span class="cl-tooltip-card__key tooltip-key"><span class="tooltip-dot latest"></span>最新</span>
                     <strong>{{ minuteHover.latestPrice.toFixed(2) }}</strong>
                   </div>
-                  <div class="chart-tooltip-row">
-                    <span class="tooltip-key"><span class="tooltip-dot avg"></span>均价</span>
+                  <div class="cl-tooltip-card__row chart-tooltip-row">
+                    <span class="cl-tooltip-card__key tooltip-key"><span class="tooltip-dot avg"></span>均价</span>
                     <strong>{{ minuteHover.avgPrice.toFixed(3) }}</strong>
                   </div>
-                  <div class="chart-tooltip-row">
-                    <span class="tooltip-key">分时量</span>
+                  <div class="cl-tooltip-card__row chart-tooltip-row">
+                    <span class="cl-tooltip-card__key tooltip-key">分时量</span>
                     <strong>{{ formatOrderBookVolume(minuteHover.volume) }}</strong>
                   </div>
                 </div>
@@ -174,7 +174,7 @@
                 />
             </div>
 
-            <div v-if="!minuteChartModel" class="chart-empty">暂无图表数据</div>
+            <div v-if="!minuteChartModel" class="cl-empty chart-empty">暂无图表数据</div>
           </template>
 
           <template v-else>
@@ -196,7 +196,7 @@
               <line
                 v-for="tick in klineChartModel.yTicks"
                 :key="tick.label"
-                class="grid-line"
+                class="cl-chart__grid grid-line"
                 :x1="CHART_PADDING.left"
                 :x2="CHART_WIDTH - CHART_PADDING.right"
                 :y1="tick.y"
@@ -205,7 +205,7 @@
               <text
                 v-for="tick in klineChartModel.yTicks"
                 :key="`${tick.label}-y`"
-                class="axis-label"
+                class="cl-chart__axis axis-label"
                 :x="14"
                 :y="tick.y + 4"
               >
@@ -214,7 +214,7 @@
               <template v-for="(candle, index) in klineChartModel.candles" :key="`${klineChartModel.points[index].time}-candle`">
                 <line
                   class="k-candle-wick"
-                  :class="{ up: candle.isUp, down: !candle.isUp }"
+                  :class="candle.isUp ? 'up' : 'down'"
                   :x1="candle.x"
                   :x2="candle.x"
                   :y1="candle.wickTop"
@@ -222,7 +222,7 @@
                 />
                 <rect
                   class="k-candle-body"
-                  :class="{ up: candle.isUp, down: !candle.isUp }"
+                  :class="candle.isUp ? 'up' : 'down'"
                   :x="candle.x - candle.bodyWidth / 2"
                   :y="candle.bodyY"
                   :width="candle.bodyWidth"
@@ -230,20 +230,20 @@
                   rx="1"
                 />
               </template>
-              <polyline class="chart-line ma5-line" :points="klineChartModel.ma5Path" />
-              <polyline class="chart-line ma10-line" :points="klineChartModel.ma10Path" />
-              <polyline class="chart-line ma20-line" :points="klineChartModel.ma20Path" />
-              <polyline class="chart-line ma30-line" :points="klineChartModel.ma30Path" />
+              <polyline class="cl-chart__line chart-line ma5-line" :points="klineChartModel.ma5Path" />
+              <polyline class="cl-chart__line chart-line ma10-line" :points="klineChartModel.ma10Path" />
+              <polyline class="cl-chart__line chart-line ma20-line" :points="klineChartModel.ma20Path" />
+              <polyline class="cl-chart__line chart-line ma30-line" :points="klineChartModel.ma30Path" />
               <template v-if="klineHover">
-                <line class="hover-line" :x1="klineHover.x" :x2="klineHover.x" :y1="CHART_PADDING.top" :y2="CHART_HEIGHT - CHART_PADDING.bottom" />
-                <line class="hover-line" :x1="CHART_PADDING.left" :x2="CHART_WIDTH - CHART_PADDING.right" :y1="klineHover.closeY" :y2="klineHover.closeY" />
-                <circle class="hover-point latest" :cx="klineHover.x" :cy="klineHover.closeY" r="3.4" />
-                <rect class="hover-price-bg" x="2" :y="klineHover.closeY - 12" width="54" height="24" rx="6" />
-                <text class="hover-label-text" x="29" :y="klineHover.closeY + 4" text-anchor="middle">
+                <line class="cl-chart__hover hover-line" :x1="klineHover.x" :x2="klineHover.x" :y1="CHART_PADDING.top" :y2="CHART_HEIGHT - CHART_PADDING.bottom" />
+                <line class="cl-chart__hover hover-line" :x1="CHART_PADDING.left" :x2="CHART_WIDTH - CHART_PADDING.right" :y1="klineHover.closeY" :y2="klineHover.closeY" />
+                <circle class="cl-chart__point hover-point latest" :cx="klineHover.x" :cy="klineHover.closeY" r="3.4" />
+                <rect class="cl-chart__tag hover-price-bg" x="2" :y="klineHover.closeY - 12" width="54" height="24" rx="6" />
+                <text class="cl-chart__tag-text hover-label-text" x="29" :y="klineHover.closeY + 4" text-anchor="middle">
                   {{ klineHover.close.toFixed(2) }}
                 </text>
                 <rect
-                  class="hover-time-bg"
+                  class="cl-chart__tag cl-chart__tag--muted hover-time-bg"
                   :x="clamp(klineHover.x - 36, CHART_PADDING.left, CHART_WIDTH - CHART_PADDING.right - 72)"
                   y="304"
                   width="72"
@@ -251,7 +251,7 @@
                   rx="4"
                 />
                 <text
-                  class="hover-label-text"
+                  class="cl-chart__tag-text hover-label-text"
                   :x="clamp(klineHover.x, CHART_PADDING.left + 44, CHART_WIDTH - CHART_PADDING.right - 44)"
                   y="317"
                   text-anchor="middle"
@@ -262,7 +262,7 @@
               <text
                 v-for="tick in klineChartModel.xTicks"
                 :key="`${tick.label}-x`"
-                class="axis-label"
+                class="cl-chart__axis axis-label"
                 :x="tick.x"
                 :y="302"
                 text-anchor="middle"
@@ -273,66 +273,66 @@
 
             <div
               v-if="klineHover"
-              class="chart-tooltip chart-tooltip-kline"
+              class="cl-tooltip-card chart-tooltip chart-tooltip-kline"
               :style="{ left: `${klineHover.tooltipLeft}px`, top: `${klineHover.tooltipTop}px` }"
             >
-              <div class="chart-tooltip-title">{{ klineHover.time }}</div>
-              <div class="chart-tooltip-row chart-tooltip-row-kline chart-tooltip-row-single">
+              <div class="cl-tooltip-card__title chart-tooltip-title">{{ klineHover.time }}</div>
+              <div class="cl-tooltip-card__row chart-tooltip-row chart-tooltip-row-kline chart-tooltip-row-single">
                 <div class="tooltip-key-kline">
                   <span class="tooltip-dot tooltip-dot-kline rise"></span>
                   <span class="tooltip-label">{{ activeTabLabel }}</span>
                 </div>
               </div>
-              <div class="chart-tooltip-row chart-tooltip-row-kline">
+              <div class="cl-tooltip-card__row chart-tooltip-row chart-tooltip-row-kline">
                 <div class="tooltip-key-kline">
                   <span class="tooltip-dot tooltip-dot-kline tooltip-dot-placeholder"></span>
                   <span class="tooltip-label">开盘</span>
                 </div>
                 <strong class="tooltip-value">{{ formatPrice(klineHover.open) }}</strong>
               </div>
-              <div class="chart-tooltip-row chart-tooltip-row-kline">
+              <div class="cl-tooltip-card__row chart-tooltip-row chart-tooltip-row-kline">
                 <div class="tooltip-key-kline">
                   <span class="tooltip-dot tooltip-dot-kline tooltip-dot-placeholder"></span>
                   <span class="tooltip-label">收盘</span>
                 </div>
                 <strong class="tooltip-value">{{ formatPrice(klineHover.close) }}</strong>
               </div>
-              <div class="chart-tooltip-row chart-tooltip-row-kline">
+              <div class="cl-tooltip-card__row chart-tooltip-row chart-tooltip-row-kline">
                 <div class="tooltip-key-kline">
                   <span class="tooltip-dot tooltip-dot-kline tooltip-dot-placeholder"></span>
                   <span class="tooltip-label">最低</span>
                 </div>
                 <strong class="tooltip-value">{{ formatPrice(klineHover.low) }}</strong>
               </div>
-              <div class="chart-tooltip-row chart-tooltip-row-kline">
+              <div class="cl-tooltip-card__row chart-tooltip-row chart-tooltip-row-kline">
                 <div class="tooltip-key-kline">
                   <span class="tooltip-dot tooltip-dot-kline tooltip-dot-placeholder"></span>
                   <span class="tooltip-label">最高</span>
                 </div>
                 <strong class="tooltip-value">{{ formatPrice(klineHover.high) }}</strong>
               </div>
-              <div v-if="formatMA(klineHover.ma5) !== '--'" class="chart-tooltip-row chart-tooltip-row-kline">
+              <div v-if="formatMA(klineHover.ma5) !== '--'" class="cl-tooltip-card__row chart-tooltip-row chart-tooltip-row-kline">
                 <div class="tooltip-key-kline">
                   <span class="tooltip-dot tooltip-dot-kline dot-ma5"></span>
                   <span class="tooltip-label">MA5</span>
                 </div>
                 <strong class="tooltip-value">{{ formatMA(klineHover.ma5) }}</strong>
               </div>
-              <div v-if="formatMA(klineHover.ma10) !== '--'" class="chart-tooltip-row chart-tooltip-row-kline">
+              <div v-if="formatMA(klineHover.ma10) !== '--'" class="cl-tooltip-card__row chart-tooltip-row chart-tooltip-row-kline">
                 <div class="tooltip-key-kline">
                   <span class="tooltip-dot tooltip-dot-kline dot-ma10"></span>
                   <span class="tooltip-label">MA10</span>
                 </div>
                 <strong class="tooltip-value">{{ formatMA(klineHover.ma10) }}</strong>
               </div>
-              <div v-if="formatMA(klineHover.ma20) !== '--'" class="chart-tooltip-row chart-tooltip-row-kline">
+              <div v-if="formatMA(klineHover.ma20) !== '--'" class="cl-tooltip-card__row chart-tooltip-row chart-tooltip-row-kline">
                 <div class="tooltip-key-kline">
                   <span class="tooltip-dot tooltip-dot-kline dot-ma20"></span>
                   <span class="tooltip-label">MA20</span>
                 </div>
                 <strong class="tooltip-value">{{ formatMA(klineHover.ma20) }}</strong>
               </div>
-              <div v-if="formatMA(klineHover.ma30) !== '--'" class="chart-tooltip-row chart-tooltip-row-kline">
+              <div v-if="formatMA(klineHover.ma30) !== '--'" class="cl-tooltip-card__row chart-tooltip-row chart-tooltip-row-kline">
                 <div class="tooltip-key-kline">
                   <span class="tooltip-dot tooltip-dot-kline dot-ma30"></span>
                   <span class="tooltip-label">MA30</span>
@@ -341,13 +341,13 @@
               </div>
             </div>
 
-            <div v-if="!klineChartModel" class="chart-empty">暂无图表数据</div>
+            <div v-if="!klineChartModel" class="cl-empty chart-empty">暂无图表数据</div>
           </template>
         </div>
       </section>
     </div>
 
-    <div v-else class="detail-empty">{{ detailRefreshError || '暂无详情数据' }}</div>
+    <div v-else class="cl-empty detail-empty">{{ detailRefreshError || '暂无详情数据' }}</div>
   </div>
 </template>
 
@@ -577,7 +577,9 @@ const minuteXTickCount = computed(() => {
   return 6
 })
 const minuteYTickCount = computed(() => minuteChartPanelWidth.value < 440 ? 3 : 4)
-const minuteAxisLabelClass = computed(() => minuteChartPanelWidth.value < 440 ? 'axis-label-compact' : '')
+const minuteAxisLabelClass = computed(() => minuteChartPanelWidth.value < 440 ? 'cl-chart__axis--sm axis-label-compact' : '')
+// 分时量柱按逐笔涨跌着色，颜色跟随 coolove-ui 的涨跌配色（data-trend）
+const VOLUME_BAR_CLASS = { up: 'cl-chart__bar--rise', down: 'cl-chart__bar--fall', flat: 'cl-chart__bar--flat' } as const
 const minuteChartViewWidth = computed(() => Math.max(Math.round(minuteChartPanelWidth.value || CHART_WIDTH), 320))
 
 const overviewItems = computed(() => {
@@ -1358,124 +1360,56 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-.detail-view{height:100%;display:flex;flex-direction:column;overflow:hidden;padding:14px 18px 16px;background:var(--window-bg)}
-.detail-refresh-notice{flex:0 0 22px;display:flex;align-items:center;margin-top:8px;padding:0 10px;border:1px solid rgba(245,158,11,.22);border-radius:6px;color:#f5b45f;background:rgba(245,158,11,.08);font-size:10px}
-.detail-topbar{display:flex;align-items:flex-start;gap:12px;padding-bottom:12px;border-bottom:1px solid var(--border-color)}
+/* 颜色全部来自 coolove-ui 的 token（图表：--chart-* / --series-* / --rise / --fall），深浅色主题无需单独覆盖 */
+.detail-view{height:100%;display:flex;flex-direction:column;overflow:hidden;padding:14px 18px 16px}
+.detail-refresh-notice{flex:0 0 auto;margin-top:8px;padding:3px 10px;border-radius:var(--radius-xs);font-size:10px}
+.detail-topbar{display:flex;align-items:flex-start;gap:12px;padding-bottom:12px;border-bottom:1px solid var(--divider-color)}
 .indices-strip{flex:1;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px}
 .index-card{display:flex;flex-direction:column;gap:2px;min-width:0}
-.index-name{font-size:12px;color:rgba(255,255,255,.72);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.index-price{font-size:15px;font-weight:700;color:#f5f5f5;line-height:1.1}
-.index-change{font-size:11px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.index-change.up{color:#ff6b6b}
-.index-change.down{color:#33c26f}
+.index-name{font-size:var(--fs-sm);color:var(--text-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.index-price{font-size:15px;font-weight:700;color:var(--text-primary);line-height:1.1;font-variant-numeric:tabular-nums}
+.index-change{font-size:var(--fs-xs);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums}
 .detail-body{flex:1;min-height:0;display:flex;flex-direction:column;overflow-y:auto;overflow-x:hidden;padding-right:4px;scrollbar-width:none;-ms-overflow-style:none}
-.stock-header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding:16px 0 10px}
+.detail-body::-webkit-scrollbar{display:none}
 .stock-header,.stats-grid{flex-shrink:0}
-.stock-title{display:flex;align-items:baseline;gap:8px;min-width:0;flex-wrap:wrap}
-.stock-title h2{margin:0;font-size:20px;line-height:1.08;font-weight:800;color:#fff}
-.stock-subtitle{margin-top:0;font-size:13px;line-height:1.08;color:rgba(255,255,255,.68);white-space:nowrap}
-.price-panel{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap}
-.price-value{font-size:14px;line-height:1;font-weight:650;color:var(--text-primary)}
-.price-pill{min-width:92px;padding:6px 12px;border-radius:999px;text-align:center;font-size:14px;font-weight:800}
-.price-pill.up{color:#ff7474;background:rgba(239,68,68,.14)}
-.price-pill.down{color:#3ad283;background:rgba(34,197,94,.12)}
-.stats-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:0;padding:8px 0 10px;border-top:1px solid rgba(255,255,255,.08);border-bottom:1px solid rgba(255,255,255,.08)}
-.stat-item{display:flex;flex-direction:column;gap:4px;padding:6px 12px}
-.stat-item.compact .stat-value{font-size:16px;font-weight:700;color:var(--text-primary)}
-.stat-label{font-size:12px;color:var(--text-muted)}
-.stat-value{font-size:16px;font-weight:700;color:var(--text-primary)}
-:deep(.stat-unit){font-size:12px;font-weight:400;color:var(--text-muted)}
 .chart-card{flex:1;min-height:400px;display:flex;flex-direction:column;padding-top:8px}
-.tab-bar{display:flex;align-items:center;gap:28px;padding-bottom:10px;border-bottom:1px solid rgba(255,255,255,.08)}
-.tab-btn{position:relative;padding:0;border:none;background:transparent;color:rgba(255,255,255,.72);font-size:14px;font-weight:700;cursor:pointer}
-.tab-btn.active{color:#2d9cff}
-.tab-btn.active::after{content:'';position:absolute;left:0;right:0;bottom:-11px;height:2px;border-radius:999px;background:#2d9cff}
-.chart-meta{display:flex;align-items:center;gap:12px;min-height:28px;padding:12px 0 8px;color:rgba(255,255,255,.74);font-size:12px;justify-content:flex-start;flex-wrap:nowrap;overflow:hidden}
-.legend-item{display:inline-flex;align-items:center;gap:4px;line-height:1.2;white-space:nowrap;flex:0 0 auto}
-.legend-dot{width:8px;height:8px;border-radius:999px}
-.legend-dot.latest{background:#1d9bf0}
-.legend-dot.avg{background:#f59e0b}
-.legend-dot.dot-ma5{background:#5d7cf6}
-.legend-dot.dot-ma10{background:#b8d72f}
-.legend-dot.dot-ma20{background:#6d6ea6}
-.legend-dot.dot-ma30{background:#ffa04a}
+.legend-item{white-space:nowrap;flex:0 0 auto}
 .chart-area{flex:1;min-height:320px;position:relative}
 .minute-layout{display:flex;align-items:stretch;gap:16px;min-height:320px;height:100%}
 .minute-chart-panel{position:relative;flex:1;min-width:0;min-height:320px;height:100%}
-.orderbook-panel{width:160px;flex:0 0 160px;min-height:0;padding:12px 0 0 14px;border-left:1px solid rgba(255,255,255,.08);display:flex;flex-direction:column;gap:8px}
-.orderbook-row{position:relative;isolation:isolate;display:grid;grid-template-columns:28px 1fr auto;align-items:center;column-gap:10px;overflow:hidden}
-.orderbook-row>span,.orderbook-row>strong{position:relative;z-index:1}
-.orderbook-depth{position:absolute;z-index:0;top:50%;right:0;height:18px;transform:translateY(-50%);opacity:.48;pointer-events:none}
-.orderbook-depth.sell{background:rgba(34,197,94,.62)}
-.orderbook-depth.buy{background:rgba(239,68,68,.58)}
-.orderbook-volume{text-align:right}
-.orderbook-section{flex:1;min-height:0;display:grid;grid-template-rows:repeat(5,minmax(24px,1fr));gap:4px}
-.orderbook-row{min-height:24px;font-size:12px}
-.orderbook-level{color:rgba(243,246,255,.72)}
-.orderbook-price{font-weight:700;text-align:left}
-.orderbook-volume{color:rgba(243,246,255,.78);font-variant-numeric:tabular-nums}
-.orderbook-row.up .orderbook-price{color:#ff7474}
-.orderbook-row.down .orderbook-price{color:#3ad283}
-.orderbook-row.flat .orderbook-price{color:var(--text-primary)}
-.orderbook-divider{display:flex;flex:0 0 3px;height:3px;overflow:hidden;margin:1px 0;background:rgba(255,255,255,.08)}
-.orderbook-divider i{display:block;height:100%}
-.orderbook-divider .buy{background:#ef4444}
-.orderbook-divider .sell{background:#22c55e}
 .chart-svg{width:100%;height:100%;display:block;min-height:320px}
 .chart-svg-kline{cursor:grab;touch-action:none}
 .chart-svg-kline.dragging{cursor:grabbing}
-.grid-line{stroke:rgba(255,255,255,.07);stroke-width:1}
-.axis-label{fill:rgba(255,255,255,.42);font-size:11px}
-.axis-label-compact{font-size:9px}
-.area-fill{fill:rgba(29,155,240,.18)}
-.minute-volume-divider{stroke:rgba(255,255,255,.10);stroke-width:1}
-.minute-volume-title,.minute-volume-value{fill:rgba(255,255,255,.58);font-size:10px;font-weight:650}
-.minute-volume-bar.up{fill:#ef4444}
-.minute-volume-bar.down{fill:#22c55e}
-.minute-volume-bar.flat{fill:#7b8497}
-.kline-fill{fill:rgba(29,155,240,.14)}
-.chart-line{fill:none;stroke-width:1.8;stroke-linejoin:round;stroke-linecap:round}
-.chart-line-latest{stroke:#1d9bf0}
-.chart-line-avg{stroke:#f59e0b;stroke-dasharray:4 3;opacity:.85}
-.chart-zero-line{stroke:var(--text-secondary);stroke-width:1.2;stroke-dasharray:6 4;opacity:.9;vector-effect:non-scaling-stroke}
-.ma5-line{stroke:#5d7cf6}
-.ma10-line{stroke:#b8d72f}
-.ma20-line{stroke:#6d6ea6}
-.ma30-line{stroke:#ffa04a}
+.minute-volume-divider{stroke:var(--chart-grid);stroke-width:1}
+.minute-volume-title,.minute-volume-value{fill:var(--chart-axis);font-size:10px;font-weight:650}
+.chart-line-latest{stroke:var(--accent)}
+.chart-line-avg{stroke:var(--series-avg);stroke-dasharray:4 3;opacity:.85}
+.ma5-line{stroke:var(--series-1)}
+.ma10-line{stroke:var(--series-2)}
+.ma20-line{stroke:var(--series-3)}
+.ma30-line{stroke:var(--series-4)}
 .k-candle-wick{stroke-width:1.2}
-.k-candle-wick.up{stroke:#56e788}
-.k-candle-wick.down{stroke:#ff5b6e}
-.k-candle-body.up{fill:#56e788}
-.k-candle-body.down{fill:#ff5b6e}
-.hover-line{stroke:rgba(255,255,255,.38);stroke-width:1;stroke-dasharray:4 3}
-.hover-point{stroke:#121212;stroke-width:1.4}
-.hover-point.latest{fill:#1d9bf0}
-.hover-point.avg{fill:#f59e0b}
-.hover-price-bg{fill:#5f70ad}
-.hover-time-bg{fill:#4c5361}
-.hover-label-text{fill:#f3f6ff;font-size:11px;font-weight:700}
-.chart-tooltip{position:absolute;z-index:2;width:142px;padding:10px 12px;border:1px solid var(--border-color);border-radius:8px;background:var(--solid-bg);box-shadow:0 14px 28px rgba(0,0,0,.22);backdrop-filter:blur(6px);pointer-events:none}
+.k-candle-wick.up{stroke:var(--rise-strong)}
+.k-candle-wick.down{stroke:var(--fall-strong)}
+.k-candle-body.up{fill:var(--rise-strong)}
+.k-candle-body.down{fill:var(--fall-strong)}
+.hover-point.latest{fill:var(--accent)}
+.hover-point.avg{fill:var(--series-avg)}
+.chart-tooltip{width:142px}
 .chart-tooltip-kline{width:220px;display:flex;flex-direction:column;gap:2px}
-.chart-tooltip-title{font-size:11px;font-weight:700;color:#eef3ff;margin-bottom:8px;text-align:left}
-.chart-tooltip-row{display:flex;align-items:center;justify-content:space-between;gap:10px;color:#f3f6ff;font-size:11px;line-height:1.5;white-space:nowrap}
 .chart-tooltip-row-single{justify-content:flex-start}
-.chart-tooltip-row strong{min-width:48px;text-align:right;font-weight:700;flex-shrink:0}
 .chart-tooltip-row-kline{min-height:20px;justify-content:flex-start;gap:0}
-.tooltip-key{display:inline-flex;align-items:center;gap:6px;color:rgba(243,246,255,.82);flex-shrink:0}
-.tooltip-key-kline{display:flex;align-items:center;gap:6px;width:78px;min-width:78px;flex:0 0 78px}
-.tooltip-label{color:rgba(243,246,255,.82);min-width:0}
-.tooltip-value{margin-left:auto;min-width:48px;text-align:right;font-weight:700;flex:0 0 auto}
+.tooltip-key-kline{display:flex;align-items:center;gap:6px;width:78px;min-width:78px;flex:0 0 78px;color:var(--text-secondary)}
+.tooltip-value{margin-left:auto;min-width:48px;text-align:right;font-weight:700;flex:0 0 auto;font-variant-numeric:tabular-nums}
 .tooltip-dot{width:8px;height:8px;border-radius:999px;display:inline-block;flex-shrink:0}
-.tooltip-dot-kline{display:inline-block}
 .tooltip-dot-placeholder{visibility:hidden}
-.tooltip-dot.latest{background:#1d9bf0}
-.tooltip-dot.avg{background:#f59e0b}
-.tooltip-dot.rise{background:#56e788}
-.tooltip-dot.dot-ma5{background:#5d7cf6}
-.tooltip-dot.dot-ma10{background:#b8d72f}
-.tooltip-dot.dot-ma20{background:#6d6ea6}
-.tooltip-dot.dot-ma30{background:#ffa04a}
-.chart-empty,.detail-empty{display:flex;align-items:center;justify-content:center;min-height:240px;color:rgba(255,255,255,.52);font-size:13px}
-.detail-body::-webkit-scrollbar{display:none}
-@media (max-width:1200px){.indices-strip{grid-template-columns:repeat(5,minmax(0,1fr));gap:8px}.stats-grid{grid-template-columns:repeat(4,minmax(0,1fr))}.minute-layout{gap:12px}.orderbook-panel{width:148px;flex-basis:148px;padding-left:12px}}
+.tooltip-dot.latest{background:var(--accent)}
+.tooltip-dot.avg{background:var(--series-avg)}
+.tooltip-dot.rise{background:var(--rise-strong)}
+.tooltip-dot.dot-ma5{background:var(--series-1)}
+.tooltip-dot.dot-ma10{background:var(--series-2)}
+.tooltip-dot.dot-ma20{background:var(--series-3)}
+.tooltip-dot.dot-ma30{background:var(--series-4)}
+.chart-empty,.detail-empty{flex-direction:row;min-height:240px}
+@media (max-width:1200px){.indices-strip{gap:8px}.minute-layout{gap:12px}}
 </style>

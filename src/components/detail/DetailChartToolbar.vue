@@ -1,10 +1,12 @@
 <template>
-  <div class="tab-bar">
+  <div class="cl-tabs tab-bar" role="tablist" aria-label="图表周期">
     <button
       v-for="tab in tabs"
       :key="tab.key"
-      class="tab-btn"
+      class="cl-tabs__item tab-btn"
       :class="{ active: activeTab === tab.key }"
+      role="tab"
+      :aria-selected="activeTab === tab.key"
       type="button"
       @click="$emit('switch', tab.key)"
     >
@@ -28,9 +30,9 @@ defineEmits<{
 </script>
 
 <style scoped>
-.tab-bar{display:flex;align-items:center;gap:28px;padding-bottom:10px;border-bottom:1px solid rgba(255,255,255,.08)}
-.tab-btn{position:relative;padding:0;border:none;background:transparent;color:rgba(255,255,255,.72);font-size:14px;font-weight:700;cursor:pointer}
-.tab-btn.active{color:#2d9cff}
-.tab-btn.active::after{content:'';position:absolute;left:0;right:0;bottom:-11px;height:2px;border-radius:999px;background:#2d9cff}
-.chart-meta{display:flex;align-items:center;gap:12px;min-height:28px;padding:12px 0 8px;color:rgba(255,255,255,.74);font-size:12px;flex-wrap:nowrap;overflow:hidden}
+/* 标签页外观来自 coolove-ui 的 cl-tabs；详情页标签更宽松一些 */
+.tab-bar{gap:12px}
+.tab-btn{font-size:var(--fs-lg)}
+.chart-meta{display:flex;align-items:center;gap:12px;min-height:28px;padding:12px 0 8px;color:var(--text-secondary);font-size:var(--fs-sm);flex-wrap:nowrap;overflow:hidden}
+.chart-meta :deep(.cl-legend){flex-wrap:nowrap;gap:12px;font-size:var(--fs-sm);color:var(--text-secondary)}
 </style>
