@@ -62,6 +62,24 @@ describe('persistence payload', () => {
     expect(parsePersistedState('[1,2,3]')).toBeNull()
   })
 
+  it('drops retired research slices without losing holdings or settings', () => {
+    const payload = parsePersistedState(JSON.stringify({
+      schemaVersion: 2,
+      quantTopN: 5,
+      importedQuantReport: { nav: [1, 1.1] },
+      watchList: ['600000'],
+      stockPositions: { '600000': { costPrice: 10, shares: 100 } },
+      settings: { theme: 'dark' }
+    }))!
+    adoptPersistedSlices(payload)
+    const saved = buildPersistPayload()
+    expect(saved).not.toHaveProperty('quantTopN')
+    expect(saved).not.toHaveProperty('importedQuantReport')
+    expect(saved.watchList).toEqual(['600000'])
+    expect(saved.stockPositions).toEqual({ '600000': { costPrice: 10, shares: 100 } })
+    expect(saved.settings).toEqual({ theme: 'dark' })
+  })
+
   it('accepts a well-formed payload', () => {
     const payload = parsePersistedState(
       JSON.stringify({ schemaVersion: PERSIST_SCHEMA_VERSION, watchList: ['600000'] })

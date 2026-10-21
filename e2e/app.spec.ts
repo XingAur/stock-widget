@@ -474,56 +474,24 @@ async function countCommand(page: Page, command: string): Promise<number> {
   )
 }
 
-test.describe('量化页（A+徽标入口）', () => {
-  test('A+ 徽标进入量化页：评分排行、持仓对照、回测指标', async ({ page }) => {
-    await addStockThroughSearch(page, '600000', '浦发银行')
-
-    const badge = page.locator('.brand-badge')
-    await expect(badge).toHaveAttribute('title', /量化/)
-    await badge.click()
-
-    await expect(page.locator('.quant-view')).toBeVisible()
-    await expect(badge).toHaveClass(/active/)
-
-    // 评分排行：浦发银行出现且带动量百分比
-    const row = page.locator('.quant-row', { hasText: '浦发银行' })
-    await expect(row).toBeVisible()
-    await expect(row.locator('.quant-mom')).toHaveText(/%$/)
-    // 动量为正时显示“涨”色（默认灰色不能盖过状态色）
-    await expect(row.locator('.quant-mom.up')).toHaveCSS('color', await trendColor(page, 'rise'))
-
-    // 回测：净值曲线与指标卡（mock K 线单边上涨 → 总收益为正）
-    await expect(page.locator('.quant-nav polyline').first()).toHaveAttribute('points', /.+/)
-    const metrics = page.locator('.quant-bt .metric')
-    await expect(metrics.first().locator('strong')).toHaveClass(/up/)
-    await expect(metrics.first().locator('strong')).toHaveCSS('color', await trendColor(page, 'rise'))
-
-    // 返回自选
-    await page.locator('.quant-back').click()
-    await expect(page.locator('.quant-view')).toHaveCount(0)
-    await expect(page.locator('.stock-list')).toBeVisible()
+test('旧版研究页恢复到股票自选并保留持仓，品牌徽标仅作展示', async ({ page }) => {
+  await page.evaluate(() => {
+    window.localStorage.setItem('__e2e_persisted_state__', JSON.stringify({
+      schemaVersion: 2,
+      activeAssetType: 'quant',
+      quantTopN: 5,
+      importedQuantReport: { nav: [1, 1.1] },
+      watchList: ['600000'],
+      stockPositions: { '600000': { costPrice: 8, shares: 100 } }
+    }))
   })
-
-  test('已有自选和持仓直接用于量化对照，不推断账户现金', async ({ page }) => {
-    await page.evaluate(() => {
-      window.localStorage.setItem('__e2e_persisted_state__', JSON.stringify({
-        schemaVersion: 1,
-        watchList: ['600000', '000001', '600030'],
-        stockPositions: {
-          '600000': { costPrice: 8, shares: 100 },
-          '000001': { costPrice: 10, shares: 100 }
-        },
-        activeAssetType: 'stock'
-      }))
-    })
-    await simulateAppRestart(page)
-    await page.locator('.brand-badge').click()
-
-    await expect(page.locator('.quant-sub')).toContainText('自选 3 只')
-    await expect(page.locator('.quant-sub')).toContainText('已录持仓 2 只')
-    await expect(page.locator('.quant-hint', { hasText: '已录入的 2 只股票持仓市值' })).toBeVisible()
-    await expect(page.locator('.quant-hold')).toHaveCount(3)
-    await expect(page.locator('.quant-assets')).toHaveCount(0)
-    await expect(page.locator('.quant-hold.cash')).toHaveCount(0)
-  })
+  await simulateAppRestart(page)
+  await expect(page.locator('.stock-list')).toBeVisible()
+  await expect(page.locator('.stock-card').filter({ hasText: '浦发银行' })).toBeVisible()
+  await expect(page.locator('span.brand-badge')).toHaveText('A+')
+  await expect(page.locator('button.brand-badge')).toHaveCount(0)
+  const saved = await waitForPersistedState(page, (state) => state.activeAssetType === 'stock')
+  expect(saved.stockPositions).toEqual({ '600000': { costPrice: 8, shares: 100 } })
+  expect(saved).not.toHaveProperty('quantTopN')
+  expect(saved).not.toHaveProperty('importedQuantReport')
 })

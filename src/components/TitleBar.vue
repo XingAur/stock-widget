@@ -20,16 +20,7 @@
           <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
         </svg>
       </button>
-      <button
-        class="cl-brand brand-badge"
-        :class="{ 'is-active': quantActive }"
-        :aria-pressed="quantActive ? 'true' : 'false'"
-        type="button"
-        title="量化（因子评分 / 持仓对照 / 组合回测）"
-        @click.stop="$emit('toggleQuant')"
-      >
-        A+
-      </button>
+      <span class="cl-brand brand-badge">A+</span>
       <button class="cl-titlebar__title app-title" type="button" title="切换股票/基金" @click.stop="$emit('toggleAssetType')">
         {{ displayTitle }}
       </button>
@@ -42,7 +33,6 @@ import { computed } from 'vue'
 
 const props = defineProps<{
   title: string
-  quantActive?: boolean
 }>()
 
 defineEmits<{
@@ -50,7 +40,6 @@ defineEmits<{
   minimize: []
   settings: []
   toggleAssetType: []
-  toggleQuant: []
 }>()
 
 // 标题形如 "A+Stock Assistant"：A+ 已拆成独立徽标，文字部分去掉前缀

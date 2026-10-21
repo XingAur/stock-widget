@@ -24,29 +24,14 @@ pub async fn fetch_minute_data(code: String) -> AppResult<Vec<MinutePoint>> {
 
 #[tauri::command]
 pub async fn fetch_kline_data(code: String, ktype: String) -> AppResult<Vec<KlinePoint>> {
-    fetch_kline_series(code, ktype, None, None).await
-}
-
-#[tauri::command]
-pub async fn fetch_kline_series(
-    code: String,
-    ktype: String,
-    adjust: Option<String>,
-    count: Option<u32>,
-) -> AppResult<Vec<KlinePoint>> {
     let period = match ktype.as_str() {
         "week" => "week",
         "month" => "month",
         _ => "day",
     };
-    let fq = match adjust.as_deref() {
-        Some("hfq") => "hfq",
-        _ => "qfq",
-    };
-    let bars = count.unwrap_or(120).clamp(20, 640);
     let tencent_code = to_tencent_code(&code);
     let url = format!(
-        "https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param={tencent_code},{period},,,{bars},{fq}"
+        "https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param={tencent_code},{period},,,120,qfq"
     );
     let text = fetch_text(&url, None).await?;
     let Ok(json) = serde_json::from_str::<Value>(&text) else {
@@ -55,7 +40,7 @@ pub async fn fetch_kline_series(
     let Some(stock_data) = json["data"][&tencent_code].as_object() else {
         return Ok(Vec::new());
     };
-    let fallback_key = format!("{fq}{period}");
+    let fallback_key = format!("qfq{period}");
     let rows = stock_data
         .get(period)
         .and_then(Value::as_array)

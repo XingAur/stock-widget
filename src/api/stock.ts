@@ -59,7 +59,7 @@ export interface SearchResult {
   market: string
 }
 
-export type AssetType = 'stock' | 'fund' | 'market' | 'quant'
+export type AssetType = 'stock' | 'fund' | 'market'
 
 export type MarketKey = 'cn' | 'hk' | 'us' | 'world' | 'sectors' | 'industry-sectors' | 'us-sectors'
 
@@ -214,33 +214,6 @@ export function normalizeKlinePoints(points: KlinePoint[]): KlinePoint[] {
 export async function fetchKlineData(code: string, period: ChartPeriod = 'day'): Promise<KlinePoint[]> {
   const points = await invokeSafe('fetch_kline_data', { code, ktype: period }, [])
   return normalizeKlinePoints(points)
-}
-
-export interface KlineSeries {
-  code: string
-  adjust: 'hfq' | 'qfq'
-  points: KlinePoint[]
-}
-
-/** 量化用 K 线：hfq 后复权（避免前复权的未来函数），count 可到 640。
- * 返回带 adjust 元信息（阶段F-37）：调用方可校验收到的口径与请求一致。 */
-export async function fetchQuantKline(code: string, count = 320): Promise<KlinePoint[]> {
-  const series = await fetchQuantKlineSeries(code, 'hfq', count)
-  return series.points
-}
-
-export async function fetchQuantKlineSeries(
-  code: string,
-  adjust: 'hfq' | 'qfq',
-  count = 320
-): Promise<KlineSeries> {
-  const points = await invokeSafe(
-    'fetch_kline_series',
-    { code, ktype: 'day', adjust, count },
-    []
-  )
-  const normalized = normalizeKlinePoints(points)
-  return { code, adjust, points: normalized }
 }
 
 export async function fetchStockDetail(code: string): Promise<StockDetail | null> {

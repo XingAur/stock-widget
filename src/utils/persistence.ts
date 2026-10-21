@@ -4,18 +4,12 @@ export const PERSIST_SCHEMA_VERSION = 2
 export const PERSIST_SHADOW_KEY = 'appStateShadow'
 const PERSIST_DEBOUNCE_MS = 300
 
-export type PersistedStateKey =
-  | 'watchList'
-  | 'fundWatchList'
-  | 'fundNames'
-  | 'stockPositions'
-  | 'fundPositions'
-  | 'fundLedgers'
-  | 'activeAssetType'
-  | 'activeMarket'
-  | 'quantTopN'
-  | 'importedQuantReport'
-  | 'settings'
+const PERSISTED_STATE_KEYS = [
+  'watchList', 'fundWatchList', 'fundNames', 'stockPositions',
+  'fundPositions', 'fundLedgers', 'activeAssetType', 'activeMarket', 'settings'
+] as const
+
+export type PersistedStateKey = typeof PERSISTED_STATE_KEYS[number]
 
 export interface PersistedAppState {
   schemaVersion: number
@@ -28,8 +22,6 @@ export interface PersistedAppState {
   fundLedgers?: Record<string, unknown>
   activeAssetType?: string
   activeMarket?: string
-  quantTopN?: number | string
-  importedQuantReport?: unknown
   settings?: unknown
 }
 
@@ -64,7 +56,14 @@ export function migratePersistedState(parsed: unknown): PersistedAppState | null
   }
   const revision = Number(record.revision)
   return {
-    ...(record as unknown as PersistedAppState),
+    // 只恢复现有功能使用的分片，已移除功能的旧数据不再进入后续快照。
+    ...Object.fromEntries(PERSISTED_STATE_KEYS
+      .filter((key) => Object.prototype.hasOwnProperty.call(record, key))
+      .map((key) => [key, record[key]])),
+    ...(record.activeAssetType !== undefined ? {
+      activeAssetType: record.activeAssetType === 'fund' || record.activeAssetType === 'market'
+        ? record.activeAssetType : 'stock'
+    } : {}),
     schemaVersion: PERSIST_SCHEMA_VERSION,
     revision: Number.isFinite(revision) ? revision : 0
   }
@@ -117,16 +116,16 @@ export function buildPersistPayload(): PersistedAppState {
   return payload as unknown as PersistedAppState
 }
 
-export function updatePersistedSlice(key: PersistedStateKey | string, value: unknown): void {
+export function updatePersistedSlice(key: PersistedStateKey, value: unknown): void {
   slices.set(key, value)
   schedulePersist()
 }
 
 export function adoptPersistedSlices(payload: PersistedAppState): void {
   persistRevision = Number(payload.revision) || 0
-  for (const [key, value] of Object.entries(payload)) {
-    if (key !== 'schemaVersion' && key !== 'revision') {
-      slices.set(key, value)
+  for (const key of PERSISTED_STATE_KEYS) {
+    if (Object.prototype.hasOwnProperty.call(payload, key)) {
+      slices.set(key, payload[key])
     }
   }
 }
@@ -134,7 +133,7 @@ export function adoptPersistedSlices(payload: PersistedAppState): void {
 /**
  * 读取当前会话内某分片的最新值（含启动恢复与本次会话的所有更新）。
  */
-export function readPersistedSlice(key: string): unknown {
+export function readPersistedSlice(key: PersistedStateKey): unknown {
   return slices.get(key)
 }
 

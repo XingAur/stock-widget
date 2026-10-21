@@ -2,6 +2,8 @@
 
 Windows 桌面股票/基金行情小组件。常驻桌面的小窗口，一眼看清自选行情与持仓盈亏，内置市场助手与板块热度，支持持仓截图一键导入。
 
+当前主线已移除量化入口、因子评分、持仓策略对照、组合回测及研究报告导入，同时删除专用接口、计算模块、示例报告与测试数据。A+ 徽标仅作品牌展示；标题仍可切换股票 / 基金。旧版停留在量化页时会恢复到股票自选页，自选、持仓、基金账本和外观设置保留，旧研究数据不再写入后续状态快照。
+
 ![Platform](https://img.shields.io/badge/platform-Windows-blue) ![Tauri](https://img.shields.io/badge/Tauri-2-orange) ![Vue](https://img.shields.io/badge/Vue-3-brightgreen)
 
 ## 下载安装
@@ -51,6 +53,12 @@ Windows 桌面股票/基金行情小组件。常驻桌面的小窗口，一眼�
 - 单实例：重复启动直接唤起已有窗口，避免数据冲突与空白窗口
 - 点 × 隐藏到托盘常驻（托盘菜单：恢复窗口 / 退出）；支持开机自启、置顶、透明度、主题与字体设置
 
+### 系统毛玻璃（实验）
+
+设置中提供关闭、自动、Acrylic、Mica、Blur 五种选项，默认关闭。开启后可用「背景透明度」调整主题色调浓度；普通浏览器预览不能验证桌面模糊。
+
+目前接口已接入，实际窗口效果与拖动性能仍需 Windows 实机验证。快速开启后关闭存在旧异步请求覆盖新状态的已知问题；Tauri 接口返回成功也不保证系统实际应用了效果。该选项暂建议保持关闭。
+
 ## 数据来源
 
 - 股票/指数/港股行情：腾讯行情接口（qt.gtimg.cn）
@@ -69,8 +77,9 @@ Windows 桌面股票/基金行情小组件。常驻桌面的小窗口，一眼�
 ## 开发
 
 ```bash
-npm install          # 安装依赖
+npm ci               # 按锁文件安装依赖
 npm run tauri:dev    # 桌面开发调试
+npm run check        # 版本一致性、全部前端单测、类型检查与构建
 npm run test         # 前端单测（Vitest）
 npm run test:e2e     # Playwright E2E（mock Tauri IPC）
 npm run build        # 类型检查 + 前端构建
@@ -89,7 +98,7 @@ cargo fmt --check    # CI 强制要求
 
 1. 版本号三处同步：`package.json`、`src-tauri/tauri.conf.json`、`src-tauri/Cargo.toml`
 2. 提交并推送 `main`（CI 自动跑全量测试）
-3. 打标签并推送：`git tag v1.0.6 && git push origin v1.0.6`
+3. 如需发布安装包，再创建并推送与三处版本号一致的 `v<版本号>` 标签；普通 `main` 推送只执行 CI，不会创建 Release
 4. GitHub Actions 自动构建并创建 Release（`.github/workflows/release.yml`）
 
 ## 项目结构
@@ -100,6 +109,7 @@ cargo fmt --check    # CI 强制要求
 ├─ src/
 │  ├─ api/                  # Tauri 命令调用与类型
 │  ├─ components/           # 标题栏、导入弹窗、基金图表组件
+│  ├─ coolove-ui/           # Coolove UI 0.7.0 同步副本与原生毛玻璃适配
 │  ├─ stores/               # Pinia 状态（自选/持仓/设置）与持久化
 │  ├─ styles/               # 全局主题
 │  ├─ utils/                # 持久化、账本、市场分组、OCR 解析、图表、拖动等工具

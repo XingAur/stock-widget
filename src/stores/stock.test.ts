@@ -401,6 +401,29 @@ describe('state persistence across restarts', () => {
     expect(persisted.activeAssetType).toBe('fund')
   })
 
+  it('returns a retired persisted view to stocks and preserves positions', async () => {
+    localStorage.setItem(PERSIST_SHADOW_KEY, JSON.stringify({
+      schemaVersion: 2,
+      activeAssetType: 'quant',
+      watchList: ['600000'],
+      stockPositions: { '600000': { costPrice: 10, shares: 100 } }
+    }))
+    const store = useStockStore()
+    await store.restorePersistedState()
+    const saved = await readShadow()
+    expect(store.activeAssetType).toBe('stock')
+    expect(store.watchList).toEqual(['600000'])
+    expect(store.stockPositions['600000']).toEqual({ costPrice: 10, shares: 100 })
+    expect(saved.activeAssetType).toBe('stock')
+  })
+
+  it('returns a retired legacy localStorage view to stocks', () => {
+    localStorage.setItem('activeAssetType', 'quant')
+    const store = useStockStore()
+    store.loadStoredState()
+    expect(store.activeAssetType).toBe('stock')
+  })
+
   it('reports add failures so the UI can warn the user', async () => {
     vi.mocked(fetchStocks).mockResolvedValueOnce([])
     const store = useStockStore()

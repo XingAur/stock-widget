@@ -1,5 +1,7 @@
 # A+助手 V2 优化方案
 
+> 历史方案（2026-10-21 更新）：A+助手已移除量化页面、因子评分、回测和研究报告导入。本文中的量化章节仅保留为历史设计记录，不再列入开发计划；当前功能与开发方式以仓库 README 为准。
+
 > 项目：`XingAur/stock-widget`  
 > 仓库：https://github.com/XingAur/stock-widget  
 > 审查基线：`main` / `v1.2.6`  

@@ -2,12 +2,10 @@
   <div class="app-shell" @mousedown="handleShellMouseDown">
     <TitleBar
       :title="assetTitle"
-      :quant-active="stockStore.activeAssetType === 'quant'"
       @close="handleClose"
       @minimize="handleMinimize"
       @settings="openSettings"
       @toggle-asset-type="toggleAssetType"
-      @toggle-quant="toggleQuant"
     />
 
     <main class="workspace" :class="{ 'detail-left': hasDetail && detailPosition === 'left', 'detail-right': hasDetail && detailPosition === 'right' }">
@@ -17,8 +15,7 @@
           :selected-code="selectedCode"
           @select-detail="showDetail"
         />
-        <MarketView v-else-if="stockStore.activeAssetType === 'market'" />
-        <QuantView v-else />
+        <MarketView v-else />
       </aside>
 
       <section v-if="hasDetail" class="detail-panel" :class="{ 'panel-left': detailPosition === 'left', 'panel-right': detailPosition === 'right' }">
@@ -110,14 +107,13 @@ import { anchoredWindowX } from './utils/windowGeometry'
 import TitleBar from './components/TitleBar.vue'
 import HomeView from './views/Home.vue'
 import MarketView from './views/MarketView.vue'
-import QuantView from './views/QuantView.vue'
 import { useSettingsStore } from './stores/settings'
 import { useStockStore } from './stores/stock'
 import type { AssetType } from './api/stock'
 import { getAssetTitle, getNextAssetType } from './utils/assets'
 import { focusFirstModalControl, trapModalFocus } from './utils/modalFocus'
 import { isTauriRuntime } from './utils/persistence'
-import { lastWatchlistViewType, rememberWatchlistView } from './utils/market'
+import { rememberWatchlistView } from './utils/market'
 import { logError, logInfo } from './utils/logger'
 import { startWindowDrag } from './utils/windowDrag'
 import { kickWebViewPaint, onPageVisibilityChange, reloadIfAppShellMissing } from './utils/windowLifecycle'
@@ -132,7 +128,6 @@ const settingsStore = useSettingsStore()
 const COMPACT_SIZE = { width: 280, height: 480 }
 const EXPANDED_SIZE = { width: 900, height: 480 }
 const DETAIL_WIDTH = 620
-const QUANT_WIDE_SIZE = { width: 720, height: 480 }
 
 interface DetailSelection {
   assetType: AssetType
@@ -295,24 +290,6 @@ function toggleAssetType() {
   handleAssetTypeChange(nextAssetType)
 }
 
-const quantExpandDirection = ref<'left' | 'right'>('right')
-
-async function openQuantWide(): Promise<void> {
-  const direction = await determineDetailPosition(QUANT_WIDE_SIZE.width)
-  quantExpandDirection.value = direction
-  await syncWindowSize(false, direction, true)
-}
-
-function toggleQuant() {
-  const nextAssetType: AssetType = stockStore.activeAssetType === 'quant'
-    ? lastWatchlistViewType()
-    : 'quant'
-  stockStore.setActiveAssetType(nextAssetType)
-  if (nextAssetType !== 'quant') {
-    handleAssetTypeChange(nextAssetType)
-  }
-}
-
 async function determineDetailPosition(requiredLogicalWidth = DETAIL_WIDTH): Promise<'left' | 'right'> {
   try {
     const appWindow = getCurrentWindow()
@@ -375,10 +352,9 @@ async function closeDetail() {
 
 async function syncWindowSize(
   nextHasDetail = hasDetail.value,
-  targetDetailPosition = detailPosition.value,
-  wide = false
+  targetDetailPosition = detailPosition.value
 ) {
-  const targetWidth = wide ? QUANT_WIDE_SIZE.width : nextHasDetail ? EXPANDED_SIZE.width : COMPACT_SIZE.width
+  const targetWidth = nextHasDetail ? EXPANDED_SIZE.width : COMPACT_SIZE.width
   windowResizeQueue = windowResizeQueue.then(async () => {
     try {
       const appWindow = getCurrentWindow()
@@ -431,14 +407,10 @@ async function handleMinimize() {
 
 watch(() => stockStore.activeAssetType, (nextAssetType) => {
   rememberWatchlistView(nextAssetType)
-  if ((nextAssetType === 'market' || nextAssetType === 'quant') && selectedDetail.value) {
+  if (nextAssetType === 'market' && selectedDetail.value) {
     void closeDetail()
   }
-  if (nextAssetType === 'quant') {
-    void openQuantWide()
-  } else {
-    void syncWindowSize(hasDetail.value, detailPosition.value)
-  }
+  void syncWindowSize(hasDetail.value, detailPosition.value)
 })
 
 watch(() => [...stockStore.watchList], (watchList) => {

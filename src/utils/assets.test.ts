@@ -5,10 +5,12 @@ describe('asset title helpers', () => {
   it('maps active asset type to title text', () => {
     expect(getAssetTitle('stock')).toBe('A+Stock Assistant')
     expect(getAssetTitle('fund')).toBe('A+Fund Assistant')
+    expect(getAssetTitle('market')).toBe('A+Market')
   })
 
   it('toggles between stock and fund', () => {
     expect(getNextAssetType('stock')).toBe('fund')
     expect(getNextAssetType('fund')).toBe('stock')
+    expect(getNextAssetType('market')).toBe('stock')
   })
 })

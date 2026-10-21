@@ -1036,7 +1036,6 @@ fn main() {
             kline::fetch_index_history,
             kline::fetch_minute_data,
             kline::fetch_kline_data,
-            kline::fetch_kline_series,
             kline::fetch_indices,
             market::fetch_global_indices,
             ocr_image,

@@ -68,7 +68,7 @@ function readStoredList(key: string): string[] {
 
 function readStoredAssetType(): AssetType {
   const saved = localStorage.getItem(ACTIVE_ASSET_TYPE_STORAGE_KEY)
-  return saved === 'fund' || saved === 'market' || saved === 'quant' ? saved : 'stock'
+  return saved === 'fund' || saved === 'market' ? saved : 'stock'
 }
 
 function toStringArray(value: unknown): string[] {
@@ -306,7 +306,7 @@ export const useStockStore = defineStore('stock', () => {
     stockPositions.value = pickValidRecordEntries(persisted.stockPositions, isStockPosition)
     fundPositions.value = pickValidRecordEntries(persisted.fundPositions, isFundPosition)
     fundLedgers.value = pickValidRecordEntries(persisted.fundLedgers, isFundLedger)
-    activeAssetType.value = ['fund', 'market', 'quant'].includes(String(persisted.activeAssetType))
+    activeAssetType.value = ['fund', 'market'].includes(String(persisted.activeAssetType))
       ? persisted.activeAssetType as AssetType
       : 'stock'
   }
