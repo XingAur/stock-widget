@@ -19,6 +19,7 @@ function createStore(overrides: Partial<Settings> = {}) {
     fontFamily: 'system',
     showIndices: true,
     showSparklines: true,
+    nativeGlass: 'off',
     ...overrides
   }
 

@@ -13,7 +13,8 @@ describe('settings normalization', () => {
       customFontColor: '#abcdef',
       fontFamily: 'Arial, sans-serif',
       showIndices: false,
-      showSparklines: false
+      showSparklines: false,
+      nativeGlass: 'acrylic'
     })
 
     expect(settings).toEqual({
@@ -26,7 +27,8 @@ describe('settings normalization', () => {
       customFontColor: '#abcdef',
       fontFamily: 'Arial, sans-serif',
       showIndices: false,
-      showSparklines: false
+      showSparklines: false,
+      nativeGlass: 'acrylic'
     })
   })
 
@@ -41,7 +43,8 @@ describe('settings normalization', () => {
       customFontColor: '#fff',
       fontFamily: 123,
       showIndices: 'true',
-      showSparklines: []
+      showSparklines: [],
+      nativeGlass: 'liquid'
     })
 
     expect(settings).toEqual(DEFAULT_SETTINGS)

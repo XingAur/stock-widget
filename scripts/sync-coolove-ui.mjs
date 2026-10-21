@@ -10,7 +10,8 @@ const source = resolve(process.env.COOLOVE_UI_DIR || join(root, '..', 'coolove-u
 const target = join(root, 'src', 'coolove-ui')
 const files = [
   ['coolove-ui.css', 'coolove-ui.css'],
-  ['vue/useCooloveTheme.ts', 'useCooloveTheme.ts']
+  ['vue/useCooloveTheme.ts', 'useCooloveTheme.ts'],
+  ['tauri/nativeGlass.ts', 'nativeGlass.ts']
 ]
 
 if (!existsSync(join(source, 'coolove-ui.css'))) {

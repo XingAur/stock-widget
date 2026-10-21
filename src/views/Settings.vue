@@ -166,6 +166,24 @@
 
       <hr class="cl-divider">
 
+      <!-- 系统毛玻璃 -->
+      <div class="cl-stack setting-item-vertical">
+        <div class="cl-setting__info">
+          <span class="cl-setting__label">系统毛玻璃（实验）</span>
+          <span class="cl-setting__desc">{{ glassDesc }}</span>
+        </div>
+        <select
+          class="cl-select"
+          aria-label="系统毛玻璃"
+          :value="settings.settings.nativeGlass"
+          @change="setNativeGlass($event)"
+        >
+          <option v-for="o in glassOptions" :key="o.value" :value="o.value">{{ o.label }}</option>
+        </select>
+      </div>
+
+      <hr class="cl-divider">
+
       <!-- 显示大盘指数 -->
       <div class="cl-setting setting-item">
         <div class="cl-setting__info">
@@ -204,6 +222,7 @@ import { computed, ref } from 'vue'
 import { Moon, Palette, Sun, X } from 'lucide-vue-next'
 import { invoke } from '@tauri-apps/api/core'
 import { useSettingsStore, FONT_OPTIONS } from '../stores/settings'
+import { NATIVE_GLASS_OPTIONS, type NativeGlassMode } from '../coolove-ui/nativeGlass'
 import {
   resetSettingsWithEffects,
   toggleAlwaysOnTopWithEffect,
@@ -218,6 +237,17 @@ const settings = useSettingsStore()
 
 const fonts = FONT_OPTIONS
 const opacityPercent = computed(() => Math.round(settings.settings.backgroundOpacity * 100))
+const glassOptions = NATIVE_GLASS_OPTIONS
+const glassDesc = computed(() => {
+  const mode = settings.settings.nativeGlass
+  if (mode === 'off') return '由系统模糊窗口后面的桌面；打开后用背景透明度调节色调深浅'
+  if (!settings.glassActive) return '当前系统不支持所选效果，已保持普通外观'
+  return NATIVE_GLASS_OPTIONS.find((o) => o.value === mode)?.hint ?? ''
+})
+
+function setNativeGlass(event: Event) {
+  settings.updateSettings('nativeGlass', (event.target as HTMLSelectElement).value as NativeGlassMode)
+}
 const pendingKeys = ref<Partial<Record<'alwaysOnTop' | 'autoStart' | 'reset', boolean>>>({})
 
 function setPending(key: 'alwaysOnTop' | 'autoStart' | 'reset', value: boolean) {
