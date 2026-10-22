@@ -474,7 +474,7 @@ async function countCommand(page: Page, command: string): Promise<number> {
   )
 }
 
-test('旧版研究页恢复到股票自选并保留持仓，品牌徽标仅作展示', async ({ page }) => {
+test('旧版研究页恢复到股票自选并保留持仓，A+回归整段标题且加号为红色', async ({ page }) => {
   await page.evaluate(() => {
     window.localStorage.setItem('__e2e_persisted_state__', JSON.stringify({
       schemaVersion: 2,
@@ -488,10 +488,23 @@ test('旧版研究页恢复到股票自选并保留持仓，品牌徽标仅作�
   await simulateAppRestart(page)
   await expect(page.locator('.stock-list')).toBeVisible()
   await expect(page.locator('.stock-card').filter({ hasText: '浦发银行' })).toBeVisible()
-  await expect(page.locator('span.brand-badge')).toHaveText('A+')
-  await expect(page.locator('button.brand-badge')).toHaveCount(0)
+  await expect(page.locator('.brand-badge, .cl-brand')).toHaveCount(0)
+  await expect(page.locator('.app-title')).toHaveText('A+Stock Assistant')
+  await expect(page.locator('.app-title .brand-prefix')).toHaveText('A+')
+  const red = await page.evaluate(() => {
+    const probe = document.createElement('span')
+    probe.style.color = 'var(--c-red)'
+    document.body.appendChild(probe)
+    const color = getComputedStyle(probe).color
+    probe.remove()
+    return color
+  })
+  await expect(page.locator('.brand-plus')).toHaveCSS('color', red)
   const saved = await waitForPersistedState(page, (state) => state.activeAssetType === 'stock')
   expect(saved.stockPositions).toEqual({ '600000': { costPrice: 8, shares: 100 } })
   expect(saved).not.toHaveProperty('quantTopN')
   expect(saved).not.toHaveProperty('importedQuantReport')
+  await page.locator('.app-title').click()
+  await expect(page.locator('.app-title')).toHaveText('A+Fund Assistant')
+  await expect(page.locator('.brand-plus')).toHaveCSS('color', red)
 })
