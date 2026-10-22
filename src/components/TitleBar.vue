@@ -52,6 +52,8 @@ const displayTitle = computed(() => props.title.replace(/^A\+/, '').trim() || pr
 }
 
 .brand-plus {
+  display: inline-block;
+  margin-inline: 2px;
   color: var(--c-red);
 }
 
