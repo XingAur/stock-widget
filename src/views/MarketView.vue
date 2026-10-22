@@ -35,6 +35,9 @@
     </div>
 
     <div class="market-grid-wrap">
+      <p v-if="error" class="cl-hint market-retry" role="status">
+        {{ cards.length ? '当前显示上次成功获取的数据。' : '' }}{{ retryText }}
+      </p>
       <div v-if="cards.length === 0" class="cl-empty market-empty">
         <p class="cl-empty__title">{{ error ? '行情刷新失败' : loading ? '加载中...' : '暂无行情数据' }}</p>
         <span v-if="error" class="cl-empty__desc">{{ error }}</span>
@@ -74,7 +77,7 @@
       </button>
       <span class="cl-spacer"></span>
       <div class="cl-statusbar__actions market-bottom-actions">
-        <button class="cl-iconbtn refresh-btn" type="button" title="刷新" @click="refreshNow">
+        <button class="cl-iconbtn refresh-btn" type="button" title="刷新" :disabled="loading" @click="refreshNow">
           <RotateCw aria-hidden="true" />
         </button>
         <span class="cl-statusbar__time update-time">{{ lastUpdate ? formatTime(lastUpdate) : '--:--:--' }}</span>
@@ -100,9 +103,8 @@ import {
   type MarketViewMode
 } from '../utils/market'
 import { readPersistedSlice, updatePersistedSlice } from '../utils/persistence'
-
-/** 开市时每 60 秒刷新；休市时行情时间不再前进，自动停止轮询 */
-const REFRESH_INTERVAL_MS = 60_000
+import { logError } from '../utils/logger'
+import { marketErrorMessage, marketRefreshDelay, readMarketSnapshot, saveMarketSnapshot } from '../utils/marketRefresh'
 
 const stockStore = useStockStore()
 
@@ -112,16 +114,25 @@ const indices = ref<GlobalIndexData[]>([])
 const loading = ref(false)
 const error = ref('')
 const lastUpdate = ref<Date | null>(null)
+const failures = ref(0)
+const retryText = computed(() => {
+  if (loading.value) return '正在重试…'
+  const delay = marketRefreshDelay(failures.value, false)
+  return delay === null ? '自动重试已暂停，请点击刷新重试；详情见托盘运行日志。' : `将在 ${delay / 1000} 秒后自动重试。`
+})
 
 let refreshTimer: number | null = null
 let loadSeq = 0
+let requestKey: MarketKey | null = null
 
 const activeGroup = computed(() => findMarketGroup(activeMarket.value))
 const modeOptions = computed(() => marketViewModeOptions(activeGroup.value.hasSectors, activeMarket.value === 'cn'))
 const cards = computed(() => indices.value.map(toMarketCardModel))
-const isMarketOpen = computed(() => isOpenMarket(indices.value))
+const isMarketOpen = computed(() => !error.value && isOpenMarket(indices.value))
 const statusText = computed(() => (
-  isMarketOpen.value ? `${activeGroup.value.label}盘中` : `${activeGroup.value.label}已休市`
+  error.value || indices.value.length === 0
+    ? `${activeGroup.value.label}状态未知`
+    : isMarketOpen.value ? `${activeGroup.value.label}盘中` : `${activeGroup.value.label}已休市`
 ))
 
 /** 当前视图实际请求的行情 key：默认行业板块（主流做法），可切概念/指数 */
@@ -132,8 +143,11 @@ function formatTime(date: Date): string {
 }
 
 async function load(): Promise<void> {
-  const seq = ++loadSeq
   const key = currentDataKey.value
+  if (loading.value && requestKey === key) return
+  clearRefreshTimer()
+  const seq = ++loadSeq
+  requestKey = key
   loading.value = true
   try {
     const data = await fetchGlobalIndices(key)
@@ -141,25 +155,42 @@ async function load(): Promise<void> {
       return
     }
     if (data.length === 0) {
-      if (indices.value.length === 0) {
-        error.value = '行情服务暂未返回数据'
-      }
-      return
+      throw new Error('行情服务未返回数据')
     }
 
     indices.value = data
     error.value = ''
     lastUpdate.value = new Date()
+    failures.value = 0
+    saveMarketSnapshot(key, data, lastUpdate.value)
   } catch (caught) {
     if (seq !== loadSeq) {
       return
     }
-    error.value = caught instanceof Error ? caught.message : String(caught)
+    failures.value += 1
+    error.value = marketErrorMessage(key, caught)
+    logError(`市场行情刷新失败（${key}，连续失败 ${failures.value} 次）`, caught)
   } finally {
     if (seq === loadSeq) {
       loading.value = false
+      const delay = marketRefreshDelay(failures.value, isOpenMarket(indices.value))
+      if (delay !== null) refreshTimer = window.setTimeout(() => { void load() }, delay)
     }
   }
+}
+
+function clearRefreshTimer(): void {
+  if (refreshTimer !== null) window.clearTimeout(refreshTimer)
+  refreshTimer = null
+}
+
+function restoreSnapshot(): void {
+  clearRefreshTimer()
+  const snapshot = readMarketSnapshot(currentDataKey.value)
+  indices.value = snapshot?.data ?? []
+  lastUpdate.value = snapshot?.updatedAt ?? null
+  error.value = ''
+  failures.value = 0
 }
 
 function switchMarket(market: MarketKey): void {
@@ -170,9 +201,7 @@ function switchMarket(market: MarketKey): void {
   activeMarket.value = market
   // 进入新市场回到默认视图：默认行业板块（主流做法），纯指数市场只有指数
   viewMode.value = findMarketGroup(market).hasSectors ? 'industry' : 'indices'
-  indices.value = []
-  error.value = ''
-  lastUpdate.value = null
+  restoreSnapshot()
   updatePersistedSlice('activeMarket', market)
   void load()
 }
@@ -183,13 +212,13 @@ function switchView(mode: MarketViewMode): void {
   }
 
   viewMode.value = mode
-  indices.value = []
-  error.value = ''
-  lastUpdate.value = null
+  restoreSnapshot()
   void load()
 }
 
 function refreshNow(): void {
+  if (loading.value) return
+  failures.value = 0
   void load()
 }
 
@@ -210,20 +239,13 @@ onMounted(() => {
     activeMarket.value = findMarketGroup(rememberedMarket).key
   }
   viewMode.value = defaultViewMode(activeMarket.value)
-
+  restoreSnapshot()
   void load()
-  refreshTimer = window.setInterval(() => {
-    if (isOpenMarket(indices.value)) {
-      void load()
-    }
-  }, REFRESH_INTERVAL_MS)
 })
 
 onUnmounted(() => {
-  if (refreshTimer) {
-    clearInterval(refreshTimer)
-    refreshTimer = null
-  }
+  loadSeq += 1
+  clearRefreshTimer()
 })
 </script>
 
@@ -238,4 +260,5 @@ onUnmounted(() => {
 .market-card-members span{opacity:.8}
 .market-card-change{opacity:.8}
 .market-empty{height:100%}
+.market-retry{margin:4px 0 8px;overflow-wrap:anywhere}
 </style>

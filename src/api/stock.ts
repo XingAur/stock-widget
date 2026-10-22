@@ -237,5 +237,5 @@ export async function fetchIndices(): Promise<IndexData[]> {
 }
 
 export async function fetchGlobalIndices(market: MarketKey): Promise<GlobalIndexData[]> {
-  return invokeSafe('fetch_global_indices', { market }, [])
+  return invoke<GlobalIndexData[]>('fetch_global_indices', { market })
 }
