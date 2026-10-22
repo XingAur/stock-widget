@@ -24,10 +24,18 @@ textarea {
   user-select: text;
 }
 
-/* 窗口玻璃（底色 × 不透明度、模糊、圆角、阴影）由 index.html 上的 .cl-window 提供，这里只定尺寸 */
+/* 原生透明窗口边缘仅保留一层圆角背景。
+ * 组件库的投影、内描边与高光用于页面内卡片窗口；贴满 WebView 时会在四角形成第二圈灰边。
+ */
 #app {
   width: 100vw;
   height: 100vh;
+  box-shadow: none;
+  clip-path: inset(0 round var(--radius-window));
+}
+
+#app::before {
+  display: none;
 }
 
 ::-webkit-scrollbar {

@@ -8,7 +8,7 @@
       @toggle-asset-type="toggleAssetType"
     />
 
-    <main class="workspace" :class="{ 'detail-left': hasDetail && detailPosition === 'left', 'detail-right': hasDetail && detailPosition === 'right' }">
+    <main class="workspace" :class="{ 'detail-left': hasDetail && detailPosition === 'left', 'detail-right': hasDetail && detailPosition === 'right' }" :style="{ '--compact-width': `${compactWindowWidth}px` }">
       <aside class="sidebar">
         <HomeView
           v-if="stockStore.activeAssetType === 'stock' || stockStore.activeAssetType === 'fund'"
@@ -126,8 +126,8 @@ const stockStore = useStockStore()
 const settingsStore = useSettingsStore()
 
 const COMPACT_SIZE = { width: 280, height: 480 }
-const EXPANDED_SIZE = { width: 900, height: 480 }
 const DETAIL_WIDTH = 620
+const compactWindowWidth = ref(COMPACT_SIZE.width)
 
 interface DetailSelection {
   assetType: AssetType
@@ -139,6 +139,7 @@ const selectedCode = computed(() => selectedDetail.value?.code ?? '')
 const detailPosition = ref<'left' | 'right'>('right')
 let activeExpansionDirection: 'left' | 'right' | null = null
 let windowResizeQueue: Promise<void> = Promise.resolve()
+let detailSelectionSeq = 0
 const showSettings = ref(false)
 const settingsDialogRef = ref<HTMLElement | null>(null)
 const hasDetail = computed(() => Boolean(selectedDetail.value))
@@ -287,7 +288,6 @@ function handleAssetTypeChange(assetType: AssetType) {
 function toggleAssetType() {
   const nextAssetType = getNextAssetType(stockStore.activeAssetType)
   stockStore.setActiveAssetType(nextAssetType)
-  handleAssetTypeChange(nextAssetType)
 }
 
 async function determineDetailPosition(requiredLogicalWidth = DETAIL_WIDTH): Promise<'left' | 'right'> {
@@ -324,6 +324,7 @@ async function openDetail(selection: DetailSelection) {
   if (!selection.code) {
     return
   }
+  const seq = ++detailSelectionSeq
 
   if (
     selectedDetail.value?.assetType === selection.assetType
@@ -339,12 +340,15 @@ async function openDetail(selection: DetailSelection) {
   }
 
   const nextDetailPosition = await determineDetailPosition()
+  if (seq !== detailSelectionSeq || stockStore.activeAssetType !== selection.assetType) return
   detailPosition.value = nextDetailPosition
   selectedDetail.value = selection
   await syncWindowSize(true, nextDetailPosition)
 }
 
 async function closeDetail() {
+  detailSelectionSeq += 1
+  if (!selectedDetail.value) return
   const closingPosition = detailPosition.value
   selectedDetail.value = null
   await syncWindowSize(false, closingPosition)
@@ -354,18 +358,21 @@ async function syncWindowSize(
   nextHasDetail = hasDetail.value,
   targetDetailPosition = detailPosition.value
 ) {
-  const targetWidth = nextHasDetail ? EXPANDED_SIZE.width : COMPACT_SIZE.width
   windowResizeQueue = windowResizeQueue.then(async () => {
     try {
+      // 普通页面切换不改尺寸；只有真正展开/收起详情才操作窗口。
+      if (nextHasDetail ? activeExpansionDirection !== null || !hasDetail.value : activeExpansionDirection === null) return
       const appWindow = getCurrentWindow()
       await appWindow.setMinSize(new LogicalSize(COMPACT_SIZE.width, COMPACT_SIZE.height))
       const scaleFactor = await appWindow.scaleFactor()
       const currentSize = await appWindow.innerSize()
       const currentLogicalSize = currentSize.toLogical(scaleFactor)
+      if (nextHasDetail) compactWindowWidth.value = currentLogicalSize.width
+      const targetWidth = compactWindowWidth.value + (nextHasDetail ? DETAIL_WIDTH : 0)
       const currentPosition = await appWindow.outerPosition()
       const targetPhysicalWidth = new LogicalSize(targetWidth, currentLogicalSize.height).toPhysical(scaleFactor).width
       const widthDelta = targetPhysicalWidth - currentSize.width
-      const direction = widthDelta < 0
+      const direction = !nextHasDetail
         ? activeExpansionDirection ?? targetDetailPosition
         : targetDetailPosition
       const targetX = anchoredWindowX(currentPosition.x, currentSize.width, targetPhysicalWidth, direction)
@@ -379,7 +386,7 @@ async function syncWindowSize(
       if (widthDelta >= 0) {
         await appWindow.setSize(new LogicalSize(targetWidth, currentLogicalSize.height))
       }
-      activeExpansionDirection = targetWidth > COMPACT_SIZE.width ? direction : null
+      activeExpansionDirection = nextHasDetail ? direction : null
     } catch (error) {
       console.error('Sync window size error:', error)
     }
@@ -406,11 +413,9 @@ async function handleMinimize() {
 }
 
 watch(() => stockStore.activeAssetType, (nextAssetType) => {
+  detailSelectionSeq += 1
   rememberWatchlistView(nextAssetType)
-  if (nextAssetType === 'market' && selectedDetail.value) {
-    void closeDetail()
-  }
-  void syncWindowSize(hasDetail.value, detailPosition.value)
+  handleAssetTypeChange(nextAssetType)
 })
 
 watch(() => [...stockStore.watchList], (watchList) => {
@@ -505,10 +510,16 @@ onUnmounted(() => {
 
 .sidebar {
   height: 100%;
-  flex: 0 0 280px;
+  flex: 1 1 auto;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+.workspace.detail-left .sidebar,
+.workspace.detail-right .sidebar {
+  flex: 0 0 var(--compact-width);
 }
 
 .workspace.detail-right .sidebar {
@@ -579,6 +590,7 @@ onUnmounted(() => {
   .workspace.detail-left .sidebar,
   .workspace.detail-right .sidebar {
     border: none;
+    flex: none;
   }
 
   /* 窄窗口里详情盖在列表上，需要一层底色遮住下面的卡片 */

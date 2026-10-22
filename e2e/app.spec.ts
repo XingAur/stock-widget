@@ -287,6 +287,53 @@ test.describe('添加反馈（额外缺陷：失败静默）', () => {
 })
 
 test.describe('详情面板（长时间使用负载优化）', () => {
+  test('自定义宽度在页面切换和详情往返后保持不变', async ({ page }) => {
+    await addStockThroughSearch(page, '600000', '浦发银行')
+    await page.setViewportSize({ width: 980, height: 650 })
+    for (const scale of [1, 1.25, 1.5]) {
+      const original = { x: Math.round(1920 - 320 * scale - 20), y: 80, width: Math.round(320 * scale), height: Math.round(520 * scale), scale }
+      await page.evaluate(bounds => { (window as any).__e2eState.windowBounds = bounds }, original)
+      const sizeCalls = await countCommand(page, 'plugin:window|set_size')
+      await page.locator('.app-title').click()
+      await expect(page.locator('.app-title')).toHaveText('A+Fund Assistant')
+      await page.locator('.market-btn').click()
+      await expect(page.locator('.market-view')).toBeVisible()
+      await page.locator('.market-globe-btn').click()
+      await page.locator('.app-title').click()
+      await expect(page.locator('.stock-list')).toBeVisible()
+      await page.locator('.traffic-settings').click()
+      await expect(page.locator('.settings-dialog')).toBeVisible()
+      await page.keyboard.press('Escape')
+      await expect(page.locator('.settings-dialog')).toHaveCount(0)
+      expect(await countCommand(page, 'plugin:window|set_size')).toBe(sizeCalls)
+      expect(await page.evaluate(() => (window as any).__e2eState.windowBounds)).toEqual(original)
+
+      const card = page.locator('.stock-card', { hasText: '浦发银行' })
+      await card.click()
+      await expect(page.locator('.detail-panel')).toBeVisible()
+      await expect.poll(() => page.evaluate(() => (window as any).__e2eState.windowBounds.width)).toBe(Math.round((320 + 620) * scale))
+      await expect(page.locator('.sidebar')).toHaveCSS('flex-basis', '320px')
+      await card.click()
+      await expect(page.locator('.detail-panel')).toHaveCount(0)
+      await expect.poll(() => page.evaluate(() => (window as any).__e2eState.windowBounds)).toEqual(original)
+      // 展开状态直接切页也必须恢复原宽度及锚点。
+      await card.click()
+      await expect.poll(() => page.evaluate(() => (window as any).__e2eState.windowBounds.width)).toBe(Math.round((320 + 620) * scale))
+      await page.locator('.app-title').click()
+      await expect(page.locator('.app-title')).toHaveText('A+Fund Assistant')
+      await expect.poll(() => page.evaluate(() => (window as any).__e2eState.windowBounds)).toEqual(original)
+      await page.locator('.app-title').click()
+    }
+  })
+
+  test('透明窗口四角只保留一层圆角，无投影描边及顶部高光叠层', async ({ page }) => {
+    await page.setViewportSize({ width: 320, height: 520 })
+    await expect(page.locator('#app')).toHaveCSS('box-shadow', 'none')
+    expect(await page.locator('#app').evaluate(el => getComputedStyle(el, '::before').display)).toBe('none')
+    await expect(page.locator('#app')).toHaveCSS('clip-path', 'inset(0px round 22px)')
+    await page.screenshot({ path: 'test-results/window-corners-transparent.png', omitBackground: true })
+  })
+
   test('屏幕右侧向左打开详情后，关闭恢复小组件原位置并显示昨收零线', async ({ page }) => {
     await addStockThroughSearch(page, '600000', '浦发银行')
     await page.setViewportSize({ width: 900, height: 700 })
