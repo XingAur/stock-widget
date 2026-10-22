@@ -202,7 +202,7 @@
       <div class="cl-setting setting-item">
         <div class="cl-setting__info">
           <span class="cl-setting__label">显示分时折线图</span>
-          <span class="cl-setting__desc">在股票列表中显示迷你折线图</span>
+          <span class="cl-setting__desc">股票和基金列表显示走势图；关闭后窗口可缩窄至 200</span>
         </div>
         <label class="cl-switch">
           <input type="checkbox" aria-label="显示分时折线图" :checked="settings.settings.showSparklines" @change="toggleShowSparklines">

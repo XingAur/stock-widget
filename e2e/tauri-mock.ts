@@ -77,8 +77,11 @@ export const initScript = `
           return { width: state.windowBounds.width, height: state.windowBounds.height };
         case 'plugin:window|current_monitor':
           return { name: 'test monitor', scaleFactor: state.windowBounds.scale, position: {x: 0, y: 0}, size: {width: 1920, height: 1080}, workArea: {position: {x: 0, y: 0}, size: {width: 1920, height: 1040}} };
-        case 'plugin:window|set_min_size':
+        case 'plugin:window|set_min_size': {
+          const value = JSON.parse(JSON.stringify(args.value));
+          state.windowMinimum = value.Logical || value.Physical;
           return null;
+        }
         case 'plugin:window|set_size': {
           const value = JSON.parse(JSON.stringify(args.value));
           const size = value.Logical || value.Physical;

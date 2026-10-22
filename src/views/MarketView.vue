@@ -261,4 +261,8 @@ onUnmounted(() => {
 .market-card-change{opacity:.8}
 .market-empty{height:100%}
 .market-retry{margin:4px 0 8px;overflow-wrap:anywhere}
+@media (max-width:230px){
+  .market-grid{--cols:1}
+  .market-status-line{flex-wrap:wrap}
+}
 </style>

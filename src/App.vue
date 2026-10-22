@@ -125,7 +125,8 @@ const SettingsView = defineAsyncComponent(() => import('./views/Settings.vue'))
 const stockStore = useStockStore()
 const settingsStore = useSettingsStore()
 
-const COMPACT_SIZE = { width: 280, height: 480 }
+const COMPACT_SIZE = { width: 250, height: 480 }
+const minimumWindowWidth = computed(() => settingsStore.settings.showSparklines ? COMPACT_SIZE.width : 200)
 const DETAIL_WIDTH = 620
 const compactWindowWidth = ref(COMPACT_SIZE.width)
 
@@ -363,7 +364,7 @@ async function syncWindowSize(
       // 普通页面切换不改尺寸；只有真正展开/收起详情才操作窗口。
       if (nextHasDetail ? activeExpansionDirection !== null || !hasDetail.value : activeExpansionDirection === null) return
       const appWindow = getCurrentWindow()
-      await appWindow.setMinSize(new LogicalSize(COMPACT_SIZE.width, COMPACT_SIZE.height))
+      await appWindow.setMinSize(new LogicalSize(minimumWindowWidth.value, COMPACT_SIZE.height))
       const scaleFactor = await appWindow.scaleFactor()
       const currentSize = await appWindow.innerSize()
       const currentLogicalSize = currentSize.toLogical(scaleFactor)
@@ -394,6 +395,33 @@ async function syncWindowSize(
   await windowResizeQueue
 }
 
+function syncMinimumWindowSize(): Promise<void> {
+  windowResizeQueue = windowResizeQueue.then(async () => {
+    try {
+      const appWindow = getCurrentWindow()
+      const scale = await appWindow.scaleFactor()
+      const size = await appWindow.innerSize()
+      const logicalSize = size.toLogical(scale)
+      const minWidth = minimumWindowWidth.value
+      const expanded = activeExpansionDirection !== null
+      const requiredWidth = minWidth + (expanded ? DETAIL_WIDTH : 0)
+      if (expanded) compactWindowWidth.value = Math.max(compactWindowWidth.value, minWidth)
+      await appWindow.setMinSize(new LogicalSize(minWidth, COMPACT_SIZE.height))
+      // 开启折线时只放大不足的宽度；关闭折线仅解除限制，由用户决定缩到多窄。
+      if (logicalSize.width < requiredWidth) {
+        const position = await appWindow.outerPosition()
+        const targetPhysicalWidth = new LogicalSize(requiredWidth, logicalSize.height).toPhysical(scale).width
+        const targetX = anchoredWindowX(position.x, size.width, targetPhysicalWidth, activeExpansionDirection ?? 'right')
+        if (targetX !== position.x) await appWindow.setPosition(new PhysicalPosition(targetX, position.y))
+        await appWindow.setSize(new LogicalSize(requiredWidth, logicalSize.height))
+      }
+    } catch (error) {
+      console.error('Sync minimum window size error:', error)
+    }
+  })
+  return windowResizeQueue
+}
+
 async function handleClose() {
   try {
     await invoke('close_window')
@@ -416,6 +444,10 @@ watch(() => stockStore.activeAssetType, (nextAssetType) => {
   detailSelectionSeq += 1
   rememberWatchlistView(nextAssetType)
   handleAssetTypeChange(nextAssetType)
+})
+
+watch(() => settingsStore.settings.showSparklines, () => {
+  void syncMinimumWindowSize()
 })
 
 watch(() => [...stockStore.watchList], (watchList) => {
@@ -441,6 +473,7 @@ watch(() => [...stockStore.fundWatchList], (fundWatchList) => {
 onMounted(async () => {
   window.addEventListener('keydown', handleGlobalKeydown)
   await settingsStore.load()
+  await syncMinimumWindowSize()
   try {
     await invoke('set_always_on_top', { enabled: settingsStore.settings.alwaysOnTop })
   } catch (error) {

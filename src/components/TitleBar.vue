@@ -49,6 +49,8 @@ const displayTitle = computed(() => props.title.replace(/^A\+/, '').trim() || pr
 /* A+ 与标题合为同一个股票/基金切换入口，不使用可交互徽标样式。 */
 .window-controls {
   gap: 8px;
+  min-width: 0;
+  flex: 1;
 }
 
 .brand-plus {
@@ -60,5 +62,9 @@ const displayTitle = computed(() => props.title.replace(/^A\+/, '').trim() || pr
 .app-title {
   margin-left: 10px;
   padding: 2px 4px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 </style>

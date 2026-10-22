@@ -996,4 +996,20 @@ onUnmounted(() => {
 /* 小部件里的走势线比 coolove-ui 默认更细（1.2px → 1.1px） */
 .stock-list{--spark-stroke:1.1px;flex:1;min-height:0;overflow-y:auto;padding-top:6px;padding-bottom:2px}
 .empty-state{flex:1}
+/* 边缘操作只显示轻图标；背景仅在控件本身悬停时出现，不叠不透明色块。 */
+.stock-list :deep(.cl-card__handle),
+.stock-list :deep(.cl-card__remove){width:18px;height:22px;border:0;background:transparent;color:var(--text-muted);box-shadow:none}
+.stock-list :deep(.cl-card__handle span){width:8px}
+.stock-list :deep(.cl-card__handle:hover){background:var(--surface-3);color:var(--text-primary)}
+.stock-list :deep(.cl-card__remove:hover){background:var(--c-red-soft);color:var(--c-red)}
+.stock-list :deep(.cl-card__remove svg){width:11px;height:11px}
+.stock-list :deep(.cl-card__remove:focus-visible){outline:2px solid var(--accent);outline-offset:-2px}
+.stock-list :deep(.cl-card__info){flex-shrink:1}
+@media (max-width:230px){
+  .bottom-bar{flex-wrap:wrap;gap:4px}
+  .bottom-bar :deep(.search-shell){flex:1 0 100%}
+  .bottom-bar :deep(.search-results){min-width:0;width:100%}
+  .bottom-bar :deep(.bottom-actions){width:100%;gap:6px}
+  .bottom-bar :deep(.update-time){margin-left:auto}
+}
 </style>

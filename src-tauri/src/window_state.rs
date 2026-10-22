@@ -4,7 +4,7 @@ use tauri::{AppHandle, Manager, WebviewWindow, WindowEvent};
 use crate::paths::{app_data_file, read_state_file, write_atomic, WINDOW_STATE_FILE};
 
 const WINDOW_SAVE_DEBOUNCE: std::time::Duration = std::time::Duration::from_millis(600);
-const COMPACT_WINDOW_WIDTH: f64 = 280.0;
+const COMPACT_WINDOW_WIDTH: f64 = 250.0;
 const EXPANDED_WINDOW_WIDTH_THRESHOLD: f64 = 560.0;
 const MIN_VISIBLE_WINDOW_PX: i32 = 60;
 
