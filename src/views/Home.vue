@@ -861,6 +861,8 @@ async function handleSelect(code: string) {
   }
 
   searchError.value = ''
+  // 新添加的项在列表顶部，滚回顶部让用户立即看到
+  listRef.value?.scrollTo({ top: 0, behavior: 'smooth' })
 }
 
 function handleEnter() {

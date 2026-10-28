@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 
 const detailVue = readFileSync(new URL('./Detail.vue', import.meta.url), 'utf8')
 const orderBookVue = readFileSync(new URL('../components/detail/DetailOrderBook.vue', import.meta.url), 'utf8')
+const companyInfoVue = readFileSync(new URL('../components/detail/DetailCompanyInfo.vue', import.meta.url), 'utf8')
 
 describe('detail order book source', () => {
   it('colors every order price from the current stock direction', () => {
@@ -39,5 +40,14 @@ describe('detail order book source', () => {
   it('pauses detail polling while the window is hidden', () => {
     expect(detailVue).toContain('isPageVisible')
     expect(detailVue).toContain('onPageVisibilityChange')
+  })
+
+  it('shows boards, company profile and announcements loaded once per stock', () => {
+    expect(detailVue).toContain('<DetailCompanyInfo')
+    expect(detailVue).toContain('fetchStockProfile(code)')
+    expect(detailVue).toContain(':tags="headerTags"')
+    expect(companyInfoVue).toContain('所属板块')
+    expect(companyInfoVue).toContain('最新公告')
+    expect(companyInfoVue).toContain('openExternalUrl')
   })
 })

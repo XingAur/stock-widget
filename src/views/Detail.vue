@@ -27,6 +27,8 @@
         :change-text="formatSignedPercent(detail.changePercent)"
         :tone="detail.changePercent >= 0 ? 'up' : 'down'"
         :items="overviewItems"
+        :tags="headerTags"
+        @tags-click="scrollToCompanyInfo"
       />
 
       <section class="chart-card">
@@ -345,6 +347,13 @@
           </template>
         </div>
       </section>
+
+      <DetailCompanyInfo
+        ref="companyInfoRef"
+        :profile="companyProfile"
+        :loading="companyLoading"
+        :error="companyError"
+      />
     </div>
 
     <div v-else class="cl-empty detail-empty">{{ detailRefreshError || '暂无详情数据' }}</div>
@@ -356,10 +365,13 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import DetailQuoteHeader from '../components/detail/DetailQuoteHeader.vue'
 import DetailOrderBook from '../components/detail/DetailOrderBook.vue'
 import DetailChartToolbar from '../components/detail/DetailChartToolbar.vue'
+import DetailCompanyInfo from '../components/detail/DetailCompanyInfo.vue'
 import {
   fetchIndices,
   fetchKlineData,
   fetchStockDetail,
+  fetchStockProfile,
+  type StockProfile,
   type ChartPeriod,
   type IndexData,
   type KlinePoint,
@@ -1205,6 +1217,48 @@ async function loadIndices() {
   indices.value = await fetchIndices()
 }
 
+// 公司资料（所属板块、简介、公告）变化很慢，每只股票只在进入详情时加载一次
+const companyProfile = ref<StockProfile | null>(null)
+const companyLoading = ref(false)
+const companyError = ref('')
+const companyInfoRef = ref<InstanceType<typeof DetailCompanyInfo> | null>(null)
+let companyRequestId = 0
+
+const headerTags = computed(() => {
+  const profile = companyProfile.value
+  if (!profile) return []
+  const industry = profile.industry.split('-').filter(Boolean).pop() ?? ''
+  const tags = industry ? [industry] : []
+  for (const board of profile.boards) {
+    if (tags.length >= 3) break
+    if (!tags.includes(board)) tags.push(board)
+  }
+  return tags
+})
+
+async function loadCompanyProfile() {
+  const requestId = ++companyRequestId
+  const code = props.code
+  companyLoading.value = true
+  companyError.value = ''
+  try {
+    const profile = await fetchStockProfile(code)
+    if (requestId !== companyRequestId) return
+    companyProfile.value = profile
+  } catch (error) {
+    if (requestId !== companyRequestId) return
+    companyError.value = '公司资料加载失败，请稍后重试'
+    console.error('Load stock profile error:', error)
+  } finally {
+    if (requestId === companyRequestId) companyLoading.value = false
+  }
+}
+
+function scrollToCompanyInfo() {
+  const element = (companyInfoRef.value as { $el?: HTMLElement } | null)?.$el
+  element?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
+
 async function loadBaseDetail() {
   try {
     const nextDetail = await fetchStockDetail(props.code)
@@ -1314,6 +1368,8 @@ watch(() => props.code, async () => {
   klineCache.value = {}
   klineViewports.value = {}
   lastKlineLoadedAt = 0
+  companyProfile.value = null
+  void loadCompanyProfile()
   await loadAll()
 })
 
@@ -1335,6 +1391,7 @@ watch(minuteChartPanelRef, (panel) => {
 let stopVisibility: (() => void) | null = null
 
 onMounted(async () => {
+  void loadCompanyProfile()
   await loadAll()
   syncMinuteChartPanelSize()
   refreshTimer = window.setInterval(() => {

@@ -12,6 +12,7 @@ mod market;
 mod models;
 mod ocr;
 mod paths;
+mod stock_profile;
 mod tencent;
 mod update_guard;
 mod updates;
@@ -1038,6 +1039,8 @@ fn main() {
             kline::fetch_kline_data,
             kline::fetch_indices,
             market::fetch_global_indices,
+            stock_profile::fetch_stock_profile,
+            stock_profile::open_external_url,
             ocr_image,
             updates::check_update,
             updates::download_update,

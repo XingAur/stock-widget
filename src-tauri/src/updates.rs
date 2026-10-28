@@ -185,7 +185,7 @@ pub fn run_installer(app: AppHandle, path: String) -> AppResult<()> {
 }
 
 #[cfg(windows)]
-fn spawn_hidden(program: &str, args: &[&str]) -> Result<std::process::Child, String> {
+pub(crate) fn spawn_hidden(program: &str, args: &[&str]) -> Result<std::process::Child, String> {
     use std::os::windows::process::CommandExt;
     std::process::Command::new(program)
         .args(args)
@@ -195,7 +195,7 @@ fn spawn_hidden(program: &str, args: &[&str]) -> Result<std::process::Child, Str
 }
 
 #[cfg(not(windows))]
-fn spawn_hidden(program: &str, args: &[&str]) -> Result<std::process::Child, String> {
+pub(crate) fn spawn_hidden(program: &str, args: &[&str]) -> Result<std::process::Child, String> {
     std::process::Command::new(program)
         .args(args)
         .spawn()

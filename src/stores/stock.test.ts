@@ -432,4 +432,16 @@ describe('state persistence across restarts', () => {
     expect(succeeded).toBe(false)
     expect(store.watchList).toEqual([])
   })
+
+  it('puts newly added stocks at the top of the watchlist', async () => {
+    vi.mocked(fetchStocks).mockResolvedValueOnce([createStock({ code: '000001' })])
+    vi.mocked(fetchMinuteData).mockResolvedValue([])
+    const store = useStockStore()
+    store.watchList = ['600000', '600519']
+
+    const succeeded = await store.addStock('000001')
+
+    expect(succeeded).toBe(true)
+    expect(store.watchList).toEqual(['000001', '600000', '600519'])
+  })
 })

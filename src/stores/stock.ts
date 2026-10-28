@@ -482,7 +482,8 @@ export const useStockStore = defineStore('stock', () => {
       return false
     }
 
-    watchList.value = [...watchList.value, code]
+    // 新添加的股票置顶，方便立即看到
+    watchList.value = [code, ...watchList.value]
     const nextMap = new Map(stocks.value)
     nextMap.set(data[0].code, data[0])
     stocks.value = nextMap
@@ -515,7 +516,8 @@ export const useStockStore = defineStore('stock', () => {
         ...fundNames.value,
         [fund.code]: fund.name
       }
-      fundWatchList.value = [...fundWatchList.value, fund.code]
+      // 新添加的基金置顶，方便立即看到
+      fundWatchList.value = [fund.code, ...fundWatchList.value]
       const nextMap = new Map(funds.value)
       nextMap.set(fund.code, fund)
       funds.value = nextMap

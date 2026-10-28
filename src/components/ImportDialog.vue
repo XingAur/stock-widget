@@ -201,7 +201,8 @@ async function runImport(): Promise<void> {
   error.value = ''
   let imported = 0
   try {
-    for (const entry of selected) {
+    // 新增项会插入列表顶部，倒序导入可让最终顺序与识别列表一致
+    for (const entry of [...selected].reverse()) {
       const succeeded = entry.type === 'stock'
         ? await stockStore.addStock(entry.code)
         : await stockStore.addFund(entry.code)

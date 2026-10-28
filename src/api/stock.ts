@@ -239,3 +239,30 @@ export async function fetchIndices(): Promise<IndexData[]> {
 export async function fetchGlobalIndices(market: MarketKey): Promise<GlobalIndexData[]> {
   return invoke<GlobalIndexData[]>('fetch_global_indices', { market })
 }
+
+export interface StockAnnouncement {
+  title: string
+  date: string
+  category: string
+  url: string
+}
+
+export interface StockProfile {
+  code: string
+  fullName: string
+  industry: string
+  region: string
+  listingDate: string
+  profile: string
+  mainBusiness: string
+  boards: string[]
+  announcements: StockAnnouncement[]
+}
+
+export async function fetchStockProfile(code: string): Promise<StockProfile> {
+  return invoke<StockProfile>('fetch_stock_profile', { code })
+}
+
+export async function openExternalUrl(url: string): Promise<void> {
+  await invoke('open_external_url', { url })
+}
