@@ -152,6 +152,12 @@
                   :style="{ left: `${minuteHover.tooltipLeft}px`, top: `${minuteHover.tooltipTop}px` }"
                 >
                   <div class="cl-tooltip-card__title chart-tooltip-title">{{ minuteHover.time }}</div>
+                  <div v-if="minuteHover.change !== null" class="cl-tooltip-card__row chart-tooltip-row">
+                    <span class="cl-tooltip-card__key tooltip-key">涨跌</span>
+                    <strong :class="getChangeToneClass(minuteHover.change)">
+                      {{ formatSigned(minuteHover.change) }} {{ formatSignedPercent(minuteHover.changePercent ?? 0) }}
+                    </strong>
+                  </div>
                   <div class="cl-tooltip-card__row chart-tooltip-row">
                     <span class="cl-tooltip-card__key tooltip-key"><span class="tooltip-dot latest"></span>最新</span>
                     <strong>{{ minuteHover.latestPrice.toFixed(2) }}</strong>
@@ -397,7 +403,8 @@ import {
   formatPrice,
   formatSigned,
   formatSignedPercent,
-  formatVolume
+  formatVolume,
+  getSignedChangeTone
 } from '../utils/format'
 import { isPageVisible, onPageVisibilityChange } from '../utils/windowLifecycle'
 
@@ -491,6 +498,9 @@ interface MinuteHoverState {
   latestPrice: number
   avgPrice: number
   volume: number
+  // 相对昨收的涨跌；无昨收（如停牌/新股）时为 null，不展示
+  change: number | null
+  changePercent: number | null
   tooltipLeft: number
   tooltipTop: number
 }
@@ -1147,6 +1157,12 @@ function handleKlinePointerLeave() {
   }
 }
 
+// 悬停涨跌文字配色：红涨绿跌，零涨跌保持默认色
+function getChangeToneClass(value: number | null): string {
+  const tone = getSignedChangeTone(value)
+  return tone === 'up' ? 'cl-rise' : tone === 'down' ? 'cl-fall' : ''
+}
+
 function handleMinuteHover(event: MouseEvent) {
   if (!minuteChartModel.value) return
 
@@ -1156,6 +1172,10 @@ function handleMinuteHover(event: MouseEvent) {
   const point = minuteChartModel.value.points[hover.index]
   const avgPrice = minuteChartModel.value.avgPrices[hover.index]
   const geometry = minuteChartModel.value.geometry
+  // 涨跌以昨收为基准；昨收不可用时（停牌/新股）不展示涨跌行
+  const zeroPrice = minuteChartModel.value.zeroPrice
+  const change = zeroPrice === null ? null : point.price - zeroPrice
+  const changePercent = zeroPrice === null || zeroPrice <= 0 ? null : ((point.price - zeroPrice) / zeroPrice) * 100
   const latestY = getMinuteY(point.price, minuteChartModel.value.minPrice, minuteChartModel.value.maxPrice, geometry)
   const avgY = getMinuteY(avgPrice, minuteChartModel.value.minPrice, minuteChartModel.value.maxPrice, geometry)
   const tooltip = getTooltipPosition(
@@ -1163,7 +1183,7 @@ function handleMinuteHover(event: MouseEvent) {
     hover.pointX,
     latestY,
     142,
-    108,
+    change === null ? 108 : 126,
     minuteChartModel.value.viewWidth,
     geometry.viewHeight
   )
@@ -1176,6 +1196,8 @@ function handleMinuteHover(event: MouseEvent) {
     latestPrice: point.price,
     avgPrice,
     volume: point.volume,
+    change,
+    changePercent,
     tooltipLeft: tooltip.left,
     tooltipTop: tooltip.top
   }
