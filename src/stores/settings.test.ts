@@ -14,7 +14,9 @@ describe('settings normalization', () => {
       fontFamily: 'Arial, sans-serif',
       showIndices: false,
       showSparklines: false,
-      nativeGlass: 'acrylic'
+      nativeGlass: 'acrylic',
+      showShortcut: 'Ctrl+Alt+K',
+      hideShortcut: 'Ctrl+Alt+H'
     })
 
     expect(settings).toEqual({
@@ -28,7 +30,9 @@ describe('settings normalization', () => {
       fontFamily: 'Arial, sans-serif',
       showIndices: false,
       showSparklines: false,
-      nativeGlass: 'acrylic'
+      nativeGlass: 'acrylic',
+      showShortcut: 'Ctrl+Alt+K',
+      hideShortcut: 'Ctrl+Alt+H'
     })
   })
 
@@ -48,5 +52,23 @@ describe('settings normalization', () => {
     })
 
     expect(settings).toEqual(DEFAULT_SETTINGS)
+  })
+
+  it('normalizes shortcut settings', () => {
+    expect(sanitizeSettings({ showShortcut: '', hideShortcut: 'Ctrl+Q' })).toMatchObject({
+      showShortcut: '',
+      hideShortcut: 'Ctrl+Q'
+    })
+
+    expect(sanitizeSettings({ showShortcut: 'Q', hideShortcut: 'bare key' })).toMatchObject({
+      showShortcut: DEFAULT_SETTINGS.showShortcut,
+      hideShortcut: DEFAULT_SETTINGS.hideShortcut
+    })
+
+    // 打开与隐藏相同：隐藏项回落默认值，不能同键注册两次
+    expect(sanitizeSettings({ showShortcut: 'Alt+Q', hideShortcut: 'Alt+Q' })).toMatchObject({
+      showShortcut: 'Alt+Q',
+      hideShortcut: DEFAULT_SETTINGS.hideShortcut
+    })
   })
 })

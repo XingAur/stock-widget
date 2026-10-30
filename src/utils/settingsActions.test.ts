@@ -20,6 +20,8 @@ function createStore(overrides: Partial<Settings> = {}) {
     showIndices: true,
     showSparklines: true,
     nativeGlass: 'off',
+    showShortcut: 'Alt+Q',
+    hideShortcut: 'Alt+W',
     ...overrides
   }
 

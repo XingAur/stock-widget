@@ -3,6 +3,11 @@ import { ref, watch } from 'vue'
 import { readPersistedState, updatePersistedSlice } from '../utils/persistence'
 import { applyCooloveTheme } from '../coolove-ui/useCooloveTheme'
 import { applyNativeGlass, type NativeGlassMode } from '../coolove-ui/nativeGlass'
+import {
+  DEFAULT_HIDE_SHORTCUT,
+  DEFAULT_SHOW_SHORTCUT,
+  isValidShortcut
+} from '../utils/shortcut'
 
 const SETTINGS_STORAGE_KEY = 'settings'
 
@@ -21,6 +26,9 @@ export interface Settings {
   showSparklines: boolean
   /** 系统毛玻璃（Windows Acrylic / Mica / Blur）；off 为只用 CSS 半透明 */
   nativeGlass: NativeGlassMode
+  /** 全局快捷键：打开 / 隐藏窗口；空字符串表示停用 */
+  showShortcut: string
+  hideShortcut: string
 }
 
 export const FONT_OPTIONS = [
@@ -43,7 +51,9 @@ export const DEFAULT_SETTINGS: Settings = {
   fontFamily: FONT_OPTIONS[0].value,
   showIndices: true,
   showSparklines: true,
-  nativeGlass: 'off'
+  nativeGlass: 'off',
+  showShortcut: DEFAULT_SHOW_SHORTCUT,
+  hideShortcut: DEFAULT_HIDE_SHORTCUT
 }
 
 const THEME_MODES: ThemeMode[] = ['dark', 'light', 'custom']
@@ -76,8 +86,23 @@ function sanitizeFontFamily(value: unknown) {
   return typeof value === 'string' && value.trim().length > 0 ? value : DEFAULT_SETTINGS.fontFamily
 }
 
+// 空字符串代表"未设置"，其余必须是合法组合键；写错的旧数据回落到默认值。
+function sanitizeShortcut(value: unknown, fallback: string) {
+  if (typeof value !== 'string') return fallback
+  const trimmed = value.trim()
+  if (trimmed === '') return ''
+  return isValidShortcut(trimmed) ? trimmed : fallback
+}
+
 export function sanitizeSettings(value: unknown): Settings {
   const stored = isRecord(value) ? value : {}
+
+  const showShortcut = sanitizeShortcut(stored.showShortcut, DEFAULT_SETTINGS.showShortcut)
+  let hideShortcut = sanitizeShortcut(stored.hideShortcut, DEFAULT_SETTINGS.hideShortcut)
+  // 同一个组合键不能同时负责打开和隐藏：隐藏项冲突时停用，避免注册失败
+  if (hideShortcut && hideShortcut === showShortcut) {
+    hideShortcut = DEFAULT_SETTINGS.hideShortcut === showShortcut ? '' : DEFAULT_SETTINGS.hideShortcut
+  }
 
   return {
     alwaysOnTop: sanitizeBoolean(stored.alwaysOnTop, DEFAULT_SETTINGS.alwaysOnTop),
@@ -92,7 +117,9 @@ export function sanitizeSettings(value: unknown): Settings {
     showSparklines: sanitizeBoolean(stored.showSparklines, DEFAULT_SETTINGS.showSparklines),
     nativeGlass: GLASS_MODES.includes(stored.nativeGlass as NativeGlassMode)
       ? stored.nativeGlass as NativeGlassMode
-      : DEFAULT_SETTINGS.nativeGlass
+      : DEFAULT_SETTINGS.nativeGlass,
+    showShortcut,
+    hideShortcut
   }
 }
 

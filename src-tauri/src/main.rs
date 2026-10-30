@@ -50,6 +50,7 @@ use tauri::{
     menu::{Menu, MenuItem},
     AppHandle, Emitter, Manager, WebviewWindow,
 };
+use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 #[cfg(test)]
 use window_state::WindowGeometry;
 use window_state::{restore_window_geometry, save_window_geometry, watch_window_geometry};
@@ -133,6 +134,68 @@ fn minimize_window(window: WebviewWindow) -> AppResult<()> {
 #[tauri::command]
 fn minimize_to_tray(window: WebviewWindow) -> AppResult<()> {
     window.hide().map_err(|error| error.to_string())
+}
+
+/// 空字符串表示用户清空了该快捷键，返 Ok(None) 表示不注册。
+fn parse_shortcut_arg(value: &str) -> AppResult<Option<Shortcut>> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+
+    trimmed
+        .parse::<Shortcut>()
+        .map(Some)
+        .map_err(|error| format!("无法识别快捷键「{trimmed}」：{error}"))
+}
+
+/// 前端启动、设置变更、录制临时停用都会调用，串行化避免并发注销/注册互相打断。
+static SHORTCUT_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+/// 全量替换全局快捷键：打开窗口 / 隐藏窗口。
+/// 传空字符串即注销对应动作，因此在快捷键录制期间也能用空值临时停用。
+#[tauri::command]
+fn set_global_shortcuts(app: AppHandle, show: String, hide: String) -> AppResult<()> {
+    let _guard = SHORTCUT_LOCK
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    let manager = app.global_shortcut();
+    manager
+        .unregister_all()
+        .map_err(|error| format!("注销旧快捷键失败：{error}"))?;
+
+    let show_shortcut = parse_shortcut_arg(&show)?;
+    let hide_shortcut = parse_shortcut_arg(&hide)?;
+
+    if let (Some(show_shortcut), Some(hide_shortcut)) = (show_shortcut, hide_shortcut) {
+        if show_shortcut.id() == hide_shortcut.id() {
+            return Err("打开窗口与隐藏窗口不能使用同一个快捷键".to_string());
+        }
+    }
+
+    if let Some(shortcut) = show_shortcut {
+        manager
+            .on_shortcut(shortcut, |app, _shortcut, event| {
+                if matches!(event.state, ShortcutState::Pressed) {
+                    restore_main_window(app);
+                }
+            })
+            .map_err(|error| format!("打开窗口快捷键注册失败：{error}"))?;
+    }
+
+    if let Some(shortcut) = hide_shortcut {
+        manager
+            .on_shortcut(shortcut, |app, _shortcut, event| {
+                if matches!(event.state, ShortcutState::Pressed) {
+                    if let Some(window) = app.get_webview_window("main") {
+                        let _ = window.hide();
+                    }
+                }
+            })
+            .map_err(|error| format!("隐藏窗口快捷键注册失败：{error}"))?;
+    }
+
+    Ok(())
 }
 
 const WEBVIEW_RESTORE_SCRIPT: &str = r#"
@@ -296,6 +359,22 @@ async fn search_stock(keyword: String) -> AppResult<Vec<SearchResult>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parses_global_shortcut_arguments() {
+        assert!(parse_shortcut_arg("").unwrap().is_none());
+        assert!(parse_shortcut_arg("   ").unwrap().is_none());
+        assert!(parse_shortcut_arg("Alt+Q").unwrap().is_some());
+        assert!(parse_shortcut_arg("Ctrl+Shift+F5").unwrap().is_some());
+        assert!(parse_shortcut_arg("不存在的键").is_err());
+    }
+
+    #[test]
+    fn treats_equivalent_shortcut_spellings_as_same_hotkey() {
+        let alt_q = parse_shortcut_arg("Alt+Q").unwrap().unwrap();
+        let key_q = parse_shortcut_arg("ALT+KEYQ").unwrap().unwrap();
+        assert_eq!(alt_q.id(), key_q.id());
+    }
 
     #[test]
     fn compares_release_versions() {
@@ -970,6 +1049,8 @@ fn main() {
             None,
         ))
         .plugin(tauri_plugin_store::Builder::new().build())
+        // 快捷键在 Rust 侧注册，窗口隐藏时也能响应（不依赖 WebView 事件循环）
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .setup(|app| {
             app_log::install_panic_hook(app.handle());
 
@@ -1022,6 +1103,7 @@ fn main() {
             close_window,
             minimize_window,
             minimize_to_tray,
+            set_global_shortcuts,
             set_always_on_top,
             start_drag,
             set_auto_start,

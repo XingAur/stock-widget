@@ -216,6 +216,10 @@ export const initScript = `
           state.marketCalls.push(args.market);
           return marketIndices[args.market] || [];
         }
+        case 'set_global_shortcuts':
+          state.shortcutCalls = state.shortcutCalls || [];
+          state.shortcutCalls.push(args);
+          return null;
         case 'plugin:window|scale_factor':
           return 1;
         case 'plugin:window|outer_position':

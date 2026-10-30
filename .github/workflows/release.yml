@@ -17,6 +17,9 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # 生成更新说明需要上一个 tag 与完整提交历史
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
@@ -41,6 +44,33 @@ jobs:
         working-directory: src-tauri
         run: cargo test
 
+      # 客户端"检查更新"弹窗直接展示 release body，这里用本次 tag 之前的提交生成更新内容
+      - name: Compose release notes
+        id: notes
+        shell: bash
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          previous_tag="$(git describe --tags --abbrev=0 "${GITHUB_REF_NAME}^" 2>/dev/null || true)"
+          if [ -n "$previous_tag" ]; then
+            range="${previous_tag}..${GITHUB_REF_NAME}"
+          else
+            range="${GITHUB_REF_NAME}"
+          fi
+          changes="$(git log "$range" --no-merges --pretty=format:'- %s' | grep -v '^- release: v' || true)"
+          if [ -z "$changes" ]; then
+            changes='- 稳定性优化与细节修复'
+          fi
+          {
+            echo "body<<__CHANGELOG_EOF__"
+            echo "Windows 桌面股票/基金小组件 v${version}。"
+            echo
+            echo "本次更新："
+            echo "${changes}"
+            echo
+            echo "安装包：APlus_Assistant_${version}_x64-setup.exe（NSIS 安装程序）"
+            echo "__CHANGELOG_EOF__"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Build and publish release
         uses: tauri-apps/tauri-action@v0
         env:
@@ -48,12 +78,7 @@ jobs:
         with:
           tagName: v__VERSION__
           releaseName: 'A+助手 __VERSION__'
-          releaseBody: |
-            Windows 桌面股票/基金小组件 v__VERSION__。
-
-            安装包：APlus_Assistant___VERSION___x64-setup.exe（NSIS 安装程序）
-
-            完整更新说明见提交历史与 README。
+          releaseBody: ${{ steps.notes.outputs.body }}
           releaseDraft: false
           prerelease: false
 

@@ -205,6 +205,40 @@ test.describe('状态持久化（问题 1/2：删除与清空在重启后保持�
     await simulateAppRestart(page)
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
   })
+
+  test('窗口位置贴边按钮把窗口移到对应角落', async ({ page }) => {
+    await page.locator('.traffic-settings').click()
+    await expect(page.locator('.settings-dialog')).toBeVisible()
+
+    await page.getByRole('button', { name: '贴靠右下' }).click()
+    await expect.poll(() => page.evaluate(() => ({ ...(window as any).__e2eState.windowBounds })))
+      .toEqual(expect.objectContaining({ x: 1920 - 350, y: 1040 - 600 }))
+
+    await page.getByRole('button', { name: '贴靠左上' }).click()
+    await expect.poll(() => page.evaluate(() => ({ ...(window as any).__e2eState.windowBounds })))
+      .toEqual(expect.objectContaining({ x: 0, y: 0 }))
+  })
+
+  test('快捷键录制后保存并重新注册，重复组合给出提示', async ({ page }) => {
+    await page.locator('.traffic-settings').click()
+    const openRecorder = page.getByRole('button', { name: '打开窗口快捷键' })
+    await expect(openRecorder).toContainText('Alt + Q')
+
+    await openRecorder.click()
+    await expect(openRecorder).toContainText('按下组合键')
+    await page.keyboard.press('Control+Shift+K')
+    await expect(openRecorder).toContainText('Ctrl + Shift + K')
+    await expect.poll(() => page.evaluate(() => {
+      const calls = (window as any).__e2eState.shortcutCalls || []
+      return calls[calls.length - 1]
+    })).toEqual({ show: 'Ctrl+Shift+K', hide: 'Alt+W' })
+
+    // 与"隐藏窗口"重复的组合被拒绝，并给出提示
+    await openRecorder.click()
+    await page.keyboard.press('Alt+W')
+    await expect(openRecorder).toContainText('Ctrl + Shift + K')
+    await expect(page.locator('.settings-hint.is-error')).toBeVisible()
+  })
 })
 
 test.describe('右键菜单', () => {

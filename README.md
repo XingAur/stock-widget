@@ -52,6 +52,9 @@ Windows 桌面股票/基金行情小组件。常驻桌面的小窗口，一眼�
 - 窗口位置与尺寸自动记忆，重启回到原位；多显示器拔插自动回到可视区域
 - 单实例：重复启动直接唤起已有窗口，避免数据冲突与空白窗口
 - 点 × 隐藏到托盘常驻（托盘菜单：恢复窗口 / 退出）；支持开机自启、置顶、透明度、主题与字体设置
+- 设置里可一键把窗口贴到屏幕四角（避开任务栏），也可手动拖动
+- 全局快捷键默认 Alt+Q 打开、Alt+W 隐藏，可在设置里重新录制（支持 Ctrl / Alt / Shift / Win 组合），窗口隐藏时同样生效
+- 检查更新发现新版本时，弹窗展示本次提交生成的更新内容
 
 ### 系统毛玻璃（实验）
 
@@ -101,7 +104,7 @@ cargo fmt --check    # CI 强制要求
 1. 版本号三处同步：`package.json`、`src-tauri/tauri.conf.json`、`src-tauri/Cargo.toml`
 2. 提交并推送 `main`（CI 自动跑全量测试）
 3. 如需发布安装包，再创建并推送与三处版本号一致的 `v<版本号>` 标签；普通 `main` 推送只执行 CI，不会创建 Release
-4. GitHub Actions 自动构建并创建 Release（`.github/workflows/release.yml`）
+4. GitHub Actions 自动构建并创建 Release（`.github/workflows/release.yml`）；Release 说明由上一个 tag 到本次 tag 的提交自动生成，客户端更新弹窗直接展示这段内容
 
 ## 项目结构
 

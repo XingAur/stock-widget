@@ -66,7 +66,11 @@
         <template v-else-if="updateInfo?.hasUpdate">
           <div class="cl-dialog__body">
             <p class="update-status">发现新版本 <strong class="update-version">v{{ updateInfo.latestVersion }}</strong>（当前 v{{ updateInfo.currentVersion }}）</p>
-            <p class="update-notes cl-scroll">{{ updateInfo.notes }}</p>
+            <div class="update-notes cl-scroll">
+              <p class="update-notes-title">更新内容</p>
+              <p v-if="updateInfo.notes.trim()" class="update-notes-body">{{ updateInfo.notes }}</p>
+              <p v-else class="update-notes-empty">本次更新暂无详细说明，可打开下载页查看变更。</p>
+            </div>
             <div v-if="updateState.downloading" class="update-download">
               <span class="update-status">正在下载更新包…</span>
               <div class="cl-progress cl-progress--sm cl-progress--indeterminate"><div class="cl-progress__bar"></div></div>
@@ -166,6 +170,19 @@ const updateState = ref<{ visible: boolean; checking: boolean; downloading: bool
   downloading: false,
   error: ''
 })
+
+// 全局快捷键在 Rust 侧注册：窗口隐藏时也能响应，不依赖 WebView 事件循环
+async function applyGlobalShortcuts(): Promise<void> {
+  if (!isTauriRuntime()) return
+  try {
+    await invoke('set_global_shortcuts', {
+      show: settingsStore.settings.showShortcut,
+      hide: settingsStore.settings.hideShortcut
+    })
+  } catch (error) {
+    logError('注册全局快捷键失败', error)
+  }
+}
 
 async function openUpdateDialog(): Promise<void> {
   updateState.value = { visible: true, checking: true, downloading: false, error: '' }
@@ -450,6 +467,13 @@ watch(() => settingsStore.settings.showSparklines, () => {
   void syncMinimumWindowSize()
 })
 
+watch(
+  () => [settingsStore.settings.showShortcut, settingsStore.settings.hideShortcut],
+  () => {
+    void applyGlobalShortcuts()
+  }
+)
+
 watch(() => [...stockStore.watchList], (watchList) => {
   if (selectedDetail.value?.assetType !== 'stock') {
     return
@@ -473,6 +497,7 @@ watch(() => [...stockStore.fundWatchList], (fundWatchList) => {
 onMounted(async () => {
   window.addEventListener('keydown', handleGlobalKeydown)
   await settingsStore.load()
+  await applyGlobalShortcuts()
   await syncMinimumWindowSize()
   try {
     await invoke('set_always_on_top', { enabled: settingsStore.settings.alwaysOnTop })
@@ -597,8 +622,22 @@ onUnmounted(() => {
   font-size: var(--fs-xs);
   line-height: 1.6;
   color: var(--text-muted);
-  white-space: pre-line;
   user-select: text;
+}
+
+.update-notes-title {
+  margin: 0 0 4px;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+
+.update-notes-body {
+  margin: 0;
+  white-space: pre-line;
+}
+
+.update-notes-empty {
+  margin: 0;
 }
 
 .update-download {

@@ -69,7 +69,7 @@ pub fn parse_latest_release(body: &str, current_version: &str) -> UpdateCheckRes
         .and_then(Value::as_str)
         .unwrap_or_default()
         .chars()
-        .take(600)
+        .take(1200)
         .collect();
     let download_url = json
         .get("assets")
