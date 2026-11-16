@@ -36,14 +36,14 @@
 
         <template v-if="row.kind === 'future'">
           <div class="move-block">
-            <span class="move-label">异动价</span>
-            <strong class="move-number" :class="abnormalTone(row)">{{ formatPrice(row.abnormalPrice) }}</strong>
+            <span class="move-label">异动触发</span>
+            <strong class="move-pct" :class="abnormalTone(row)">{{ abnormalLead(row) }}</strong>
             <span class="move-meta">{{ abnormalMeta(row) }}</span>
           </div>
           <div class="move-block">
-            <span class="move-label">涨停价</span>
-            <strong class="move-number up">{{ formatPrice(row.limitUpPrice) }}</strong>
-            <span class="move-meta">{{ formatPercent(row.limitUpPercent) }} · 跌停 {{ formatPrice(row.limitDownPrice) }}</span>
+            <span class="move-label">涨停</span>
+            <strong class="move-pct up">{{ formatPercent(row.limitUpPercent) }}</strong>
+            <span class="move-meta">{{ formatPrice(row.limitUpPrice) }} · 昨收 {{ formatPrice(row.basePrice) }}</span>
           </div>
           <span class="move-badge" :class="row.abnormalStatus">{{ badgeOf(row) }}</span>
         </template>
@@ -95,8 +95,9 @@ const estimate = computed(() => buildMoveEstimate({
 }))
 
 const rows = computed<MoveEstimateRow[]>(() => {
-  const { past, today, future } = estimate.value
-  return [...(today ? [today] : []), ...future, ...past]
+  const { today, future } = estimate.value
+  // 第一行是今天，之后按交易日从前往后排列
+  return [...(today ? [today] : []), ...future]
 })
 
 const quoteToneClass = computed(() => toneOf(props.changePercent))
@@ -159,10 +160,16 @@ function formatPercent(value: number | null): string {
   return sign + value.toFixed(2) + '%'
 }
 
+function abnormalLead(row: MoveEstimateRow): string {
+  if (row.abnormalPrice === null) return '--'
+  if (row.abnormalStatus === 'already') return formatPrice(row.abnormalPrice)
+  return formatPercent(row.abnormalPercent)
+}
+
 function abnormalMeta(row: MoveEstimateRow): string {
   if (row.abnormalPrice === null) return '历史数据不足'
-  if (row.abnormalStatus === 'already') return '不跌破即维持异动'
-  return `还需 ${formatPercent(row.abnormalPercent)}`
+  if (row.abnormalStatus === 'already') return '维持异动价 · 跌破退出'
+  return `触发价 ${formatPrice(row.abnormalPrice)}`
 }
 
 function badgeOf(row: MoveEstimateRow): string {
@@ -212,6 +219,7 @@ function tagOf(row: MoveEstimateRow): string {
 .move-block{display:flex;flex-direction:column;gap:1px;min-width:0}
 .move-label{font-size:9px;color:var(--text-muted)}
 .move-number{font-size:var(--fs-sm);font-weight:650;font-variant-numeric:tabular-nums}
+.move-pct{font-size:15px;line-height:1.1;font-weight:700;font-variant-numeric:tabular-nums}
 .move-meta{font-size:9px;color:var(--text-muted);font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .move-badge{position:absolute;right:0;top:2px;padding:0 4px;border-radius:3px;font-size:8px;line-height:13px;font-weight:700}
 .move-badge.already{color:var(--rise);background:var(--rise-soft)}
