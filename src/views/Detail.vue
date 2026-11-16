@@ -48,7 +48,20 @@
         </DetailChartToolbar>
 
         <div class="chart-area">
-          <div v-if="chartLoading" class="cl-empty chart-empty"><span class="cl-spinner"></span>加载图表中...</div>
+          <template v-if="activeTab === 'estimate'">
+            <div class="estimate-tab">
+              <DetailMoveEstimate
+                :code="code"
+                :name="detail.name"
+                :price="detail.price"
+                :change-percent="detail.changePercent"
+                :prev-close="detail.prevClose"
+                :day-points="klineCache.day ?? []"
+                :quote-time="detail.time"
+              />
+            </div>
+          </template>
+          <div v-else-if="chartLoading" class="cl-empty chart-empty"><span class="cl-spinner"></span>加载图表中...</div>
 
           <template v-else-if="activeTab === 'minute'">
             <div v-if="minuteChartModel" class="minute-layout">
@@ -372,15 +385,6 @@
         </div>
       </section>
 
-      <DetailMoveEstimate
-        :code="code"
-        :name="detail.name"
-        :price="detail.price"
-        :change-percent="detail.changePercent"
-        :prev-close="detail.prevClose"
-        :day-points="klineCache.day ?? []"
-      />
-
       <DetailCompanyInfo
         ref="companyInfoRef"
         :profile="companyProfile"
@@ -465,7 +469,8 @@ import {
 } from '../utils/format'
 import { isPageVisible, onPageVisibilityChange } from '../utils/windowLifecycle'
 
-type TabKey = 'minute' | 'day' | 'week' | 'month' | 'quarter' | 'year'
+type TabKey = 'minute' | 'estimate' | 'day' | 'week' | 'month' | 'quarter' | 'year'
+type KlineTab = Exclude<TabKey, 'minute' | 'estimate'>
 
 interface TabItem {
   key: TabKey
@@ -558,7 +563,7 @@ interface KlinePanState {
   pointerId: number
   startClientX: number
   startViewport: KlineViewport
-  tab: Exclude<TabKey, 'minute'>
+  tab: KlineTab
   visibleCount: number
 }
 
@@ -571,7 +576,8 @@ const tabs: TabItem[] = [
   { key: 'week', label: '周K', period: 'week' },
   { key: 'month', label: '月K', period: 'month' },
   { key: 'quarter', label: '季K', period: 'month' },
-  { key: 'year', label: '年K', period: 'month' }
+  { key: 'year', label: '年K', period: 'month' },
+  { key: 'estimate', label: '异动测算' }
 ]
 
 const props = defineProps<{ code: string }>()
@@ -585,8 +591,8 @@ const detailRefreshError = ref('')
 const activeTab = ref<TabKey>('minute')
 const loading = ref(false)
 const chartLoading = ref(false)
-const klineCache = ref<Partial<Record<Exclude<TabKey, 'minute'>, KlinePoint[]>>>({})
-const klineViewports = ref<Partial<Record<Exclude<TabKey, 'minute'>, KlineViewport>>>({})
+const klineCache = ref<Partial<Record<KlineTab, KlinePoint[]>>>({})
+const klineViewports = ref<Partial<Record<KlineTab, KlineViewport>>>({})
 const minuteHover = ref<MinuteHoverState | null>(null)
 const klineHover = ref<KlineHoverState | null>(null)
 const klinePanState = ref<KlinePanState | null>(null)
@@ -662,7 +668,7 @@ const orderBookBalance = computed(() => {
 })
 
 const currentKlinePoints = computed(() => {
-  if (activeTab.value === 'minute') return []
+  if (activeTab.value === 'minute' || activeTab.value === 'estimate') return []
 
   const dayPoints = klineCache.value.day ?? []
   const weekPoints = klineCache.value.week?.length ? klineCache.value.week : aggregateKlines(dayPoints, 'week')
@@ -686,7 +692,7 @@ const currentKlinePoints = computed(() => {
 
 const visibleKlinePoints = computed(() => {
   const points = currentKlinePoints.value
-  if (points.length === 0 || activeTab.value === 'minute') return []
+  if (points.length === 0 || activeTab.value === 'minute' || activeTab.value === 'estimate') return []
 
   const viewport = klineViewports.value[activeTab.value]
   if (!viewport) return points
@@ -781,7 +787,7 @@ const klineChartModel = computed<KlineChartModel | null>(() => {
   const points = visibleKlinePoints.value
   if (allPoints.length === 0 || points.length === 0) return null
 
-  const viewport = activeTab.value === 'minute'
+  const viewport = activeTab.value === 'minute' || activeTab.value === 'estimate'
     ? null
     : klineViewports.value[activeTab.value]
   const rangeStart = viewport ? clamp(Math.round(viewport.start), 0, Math.max(allPoints.length - 1, 0)) : 0
@@ -832,12 +838,13 @@ function clearChartHover() {
   klineHover.value = null
 }
 
-function getActiveKlineTab(): Exclude<TabKey, 'minute'> | null {
-  return activeTab.value === 'minute' ? null : activeTab.value
+function getActiveKlineTab(): KlineTab | null {
+  const tab = activeTab.value
+  return tab === 'minute' || tab === 'estimate' ? null : tab
 }
 
 
-function getResolvedKlineViewport(tab: Exclude<TabKey, 'minute'>, pointsLength: number): KlineViewport {
+function getResolvedKlineViewport(tab: KlineTab, pointsLength: number): KlineViewport {
   const viewport = klineViewports.value[tab]
   if (!viewport) return getDefaultKlineViewport(pointsLength)
 
@@ -846,7 +853,7 @@ function getResolvedKlineViewport(tab: Exclude<TabKey, 'minute'>, pointsLength: 
   return { start, end }
 }
 
-function setKlineViewport(tab: Exclude<TabKey, 'minute'>, pointsLength: number, nextStart: number, visibleCount: number) {
+function setKlineViewport(tab: KlineTab, pointsLength: number, nextStart: number, visibleCount: number) {
   const nextViewports = { ...klineViewports.value }
 
   if (visibleCount >= pointsLength) {
@@ -1216,6 +1223,11 @@ async function switchTab(tab: TabKey) {
   activeTab.value = tab
   clearChartHover()
 
+  if (tab === 'estimate') {
+    if (!(klineCache.value.day ?? []).length) await loadKline('day')
+    return
+  }
+
   if (tab !== 'minute' && !currentKlinePoints.value.length) {
     await loadKline(tab)
   }
@@ -1292,6 +1304,7 @@ onUnmounted(() => {
 .chart-card{flex:1;min-height:400px;display:flex;flex-direction:column;padding-top:8px}
 .legend-item{white-space:nowrap;flex:0 0 auto}
 .chart-area{flex:1;min-height:320px;position:relative}
+.estimate-tab{height:100%;min-height:0;display:flex;flex-direction:column;padding-top:6px}
 .minute-layout{display:flex;align-items:stretch;gap:16px;min-height:320px;height:100%}
 .minute-chart-panel{position:relative;flex:1;min-width:0;min-height:320px;height:100%}
 .chart-svg{width:100%;height:100%;display:block;min-height:320px}

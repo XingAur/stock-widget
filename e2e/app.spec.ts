@@ -472,11 +472,16 @@ test.describe('详情面板（长时间使用负载优化）', () => {
     await expect(page.locator('.minute-line.up').first()).toBeVisible()
     await expect(page.locator('.minute-area.up').first()).toBeVisible()
 
-    // 异动测算：当前价可用时给出未来一周的涨跌停阶梯
+    // 异动测算作为独立 tab：切换后展示未来一周的涨跌停阶梯
+    const estimateTab = page.locator('.tab-btn', { hasText: '异动测算' })
+    await expect(estimateTab).toBeVisible()
+    await estimateTab.click()
     const estimate = page.locator('.move-estimate')
     await expect(estimate).toBeVisible()
-    await expect(estimate).toContainText('异动测算')
+    await expect(estimate).toHaveAttribute('aria-label', '异动测算')
+    await expect(estimate.locator('.move-summary-main')).toContainText('异动')
     await expect(estimate.locator('.move-row.future')).toHaveCount(5)
+    await expect(page.locator('.tab-btn', { hasText: '异动测算' })).toHaveClass(/active/)
   })
 })
 
