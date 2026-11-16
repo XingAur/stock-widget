@@ -35,7 +35,7 @@
         <DetailChartToolbar :tabs="tabs" :active-tab="activeTab" @switch="onChartTabSwitch">
         <div class="cl-legend cl-legend--dot chart-meta-slot">
           <template v-if="activeTab === 'minute' && minuteChartModel">
-            <span class="legend-item" style="--c: var(--accent)">最新 {{ minuteChartModel.latestPrice.toFixed(2) }}</span>
+            <span class="legend-item" :style="{ '--c': minuteLineTone }">最新 {{ minuteChartModel.latestPrice.toFixed(2) }}</span>
             <span class="legend-item" style="--c: var(--series-avg)">均价 {{ minuteChartModel.avgPrice.toFixed(2) }}</span>
           </template>
           <template v-else-if="klineChartModel">
@@ -78,7 +78,16 @@
                   >
                     {{ tick.label }}
                   </text>
-                  <path class="cl-chart__area area-fill" :d="minuteChartModel.areaPath" />
+                  <template v-if="minuteChartModel.signAreas.length > 0">
+                    <path
+                      v-for="(area, areaIndex) in minuteChartModel.signAreas"
+                      :key="`minute-area-${areaIndex}`"
+                      class="cl-chart__area minute-area"
+                      :class="area.tone"
+                      :d="area.path"
+                    />
+                  </template>
+                  <path v-else class="cl-chart__area area-fill" :d="minuteChartModel.areaPath" />
                   <line
                     class="minute-volume-divider"
                     :x1="CHART_PADDING.left"
@@ -103,7 +112,16 @@
                     :width="bar.width"
                     :height="bar.height"
                   />
-                  <polyline class="cl-chart__line chart-line chart-line-latest" :points="minuteChartModel.latestPath" />
+                  <template v-if="minuteChartModel.signPaths.length > 0">
+                    <polyline
+                      v-for="(segment, segmentIndex) in minuteChartModel.signPaths"
+                      :key="`minute-segment-${segmentIndex}`"
+                      class="cl-chart__line chart-line minute-line"
+                      :class="segment.tone"
+                      :points="segment.points"
+                    />
+                  </template>
+                  <polyline v-else class="cl-chart__line chart-line chart-line-latest" :points="minuteChartModel.latestPath" />
                   <polyline class="cl-chart__line chart-line chart-line-avg" :points="minuteChartModel.avgPath" />
                   <template v-if="minuteChartModel.zeroY !== null">
                     <line class="cl-chart__baseline chart-zero-line" :x1="CHART_PADDING.left" :x2="minuteChartModel.viewWidth - CHART_PADDING.right" :y1="minuteChartModel.zeroY" :y2="minuteChartModel.zeroY" />
@@ -354,6 +372,15 @@
         </div>
       </section>
 
+      <DetailMoveEstimate
+        :code="code"
+        :name="detail.name"
+        :price="detail.price"
+        :change-percent="detail.changePercent"
+        :prev-close="detail.prevClose"
+        :day-points="klineCache.day ?? []"
+      />
+
       <DetailCompanyInfo
         ref="companyInfoRef"
         :profile="companyProfile"
@@ -372,6 +399,7 @@ import DetailQuoteHeader from '../components/detail/DetailQuoteHeader.vue'
 import DetailOrderBook from '../components/detail/DetailOrderBook.vue'
 import DetailChartToolbar from '../components/detail/DetailChartToolbar.vue'
 import DetailCompanyInfo from '../components/detail/DetailCompanyInfo.vue'
+import DetailMoveEstimate from '../components/detail/DetailMoveEstimate.vue'
 import {
   fetchIndices,
   fetchKlineData,
@@ -382,7 +410,6 @@ import {
   type IndexData,
   type KlinePoint,
   type MinutePoint,
-  type OrderLevel,
   type StockDetail
 } from '../api/stock'
 import { useSettingsStore } from '../stores/settings'
@@ -392,9 +419,39 @@ import {
   createMovingAverage,
   getRange,
   getRobustVolumeCeiling,
-  parseChartDate,
   type MinuteChartGeometry
 } from '../utils/chart'
+import {
+  CHART_HEIGHT,
+  CHART_PADDING,
+  CHART_WIDTH,
+  MIN_VISIBLE_KLINE_POINTS,
+  clamp,
+  createCandles,
+  createMinuteAreaPath,
+  createMinutePolyline,
+  createMinuteYTicks,
+  createMinuteSignPaths,
+  createMinuteSignAreas,
+  createOrderBookRows,
+  createPolyline,
+  createXTicks,
+  createYTicks,
+  getDefaultKlineViewport,
+  getHoverIndexFromClientX,
+  getKlineYTickCount,
+  getMinuteY,
+  getPlotWidth,
+  getX,
+  getY,
+  type CandleBar,
+  type KlineViewport,
+  type MinuteSignPath,
+  type MinuteSignArea,
+  type MinuteVolumeBar,
+  type XTick,
+  type YTick
+} from '../utils/detailChart'
 import {
   formatAmount,
   formatMA,
@@ -416,15 +473,7 @@ interface TabItem {
   period?: ChartPeriod
 }
 
-interface XTick {
-  label: string
-  x: number
-}
 
-interface YTick {
-  label: string
-  y: number
-}
 
 interface MinuteChartModel {
   viewWidth: number
@@ -438,6 +487,8 @@ interface MinuteChartModel {
   zeroPrice: number | null
   zeroY: number | null
   latestPath: string
+  signPaths: MinuteSignPath[]
+  signAreas: MinuteSignArea[]
   avgPath: string
   areaPath: string
   yTicks: YTick[]
@@ -446,26 +497,6 @@ interface MinuteChartModel {
   volumeBars: MinuteVolumeBar[]
 }
 
-interface MinuteVolumeBar {
-  key: string
-  x: number
-  y: number
-  width: number
-  height: number
-  tone: 'up' | 'down' | 'flat'
-}
-
-interface CandleBar {
-  x: number
-  bodyWidth: number
-  bodyY: number
-  bodyHeight: number
-  wickTop: number
-  wickBottom: number
-  openY: number
-  closeY: number
-  isUp: boolean
-}
 
 interface KlineChartModel {
   points: KlinePoint[]
@@ -521,20 +552,7 @@ interface KlineHoverState {
   tooltipTop: number
 }
 
-type OrderBookSide = 'buy' | 'sell'
 
-interface OrderBookDisplayRow {
-  label: string
-  priceText: string
-  volumeText: string
-  side: OrderBookSide
-  depthPercent: number
-}
-
-interface KlineViewport {
-  start: number
-  end: number
-}
 
 interface KlinePanState {
   pointerId: number
@@ -544,10 +562,6 @@ interface KlinePanState {
   visibleCount: number
 }
 
-const CHART_WIDTH = 720
-const CHART_HEIGHT = 320
-const CHART_PADDING = { top: 18, right: 24, bottom: 44, left: 64 }
-const MIN_VISIBLE_KLINE_POINTS = 12
 // K 线是历史数据，无需跟着 30 秒行情节奏全量重拉；5 分钟同步一次足够。
 const KLINE_REFRESH_INTERVAL_MS = 5 * 60 * 1000
 
@@ -682,6 +696,16 @@ const visibleKlinePoints = computed(() => {
   return points.slice(start, end)
 })
 
+const minuteLineTone = computed(() => {
+  const current = detail.value
+  if (!current || !Number.isFinite(current.price) || !Number.isFinite(current.prevClose) || current.prevClose <= 0) {
+    return 'var(--accent)'
+  }
+  if (current.price > current.prevClose) return 'var(--rise)'
+  if (current.price < current.prevClose) return 'var(--fall)'
+  return 'var(--text-muted)'
+})
+
 const minuteChartModel = computed<MinuteChartModel | null>(() => {
   const points = detail.value?.minute ?? []
   if (points.length === 0) return null
@@ -722,6 +746,13 @@ const minuteChartModel = computed<MinuteChartModel | null>(() => {
     }
   })
 
+  const signAreas = zeroPrice === null
+    ? []
+    : createMinuteSignAreas(points.map((point) => point.price), zeroPrice, minPrice, maxPrice, viewWidth, geometry)
+  const signPaths = zeroPrice === null
+    ? []
+    : createMinuteSignPaths(points.map((point) => point.price), zeroPrice, minPrice, maxPrice, viewWidth, geometry)
+
   return {
     viewWidth,
     geometry,
@@ -734,6 +765,8 @@ const minuteChartModel = computed<MinuteChartModel | null>(() => {
     zeroPrice,
     zeroY: zeroPrice === null ? null : getMinuteY(zeroPrice, minPrice, maxPrice, geometry),
     latestPath: createMinutePolyline(points.map((point) => point.price), minPrice, maxPrice, viewWidth, geometry),
+    signPaths,
+    signAreas,
     avgPath: createMinutePolyline(avgPrices, minPrice, maxPrice, viewWidth, geometry),
     areaPath: createMinuteAreaPath(points.map((point) => point.price), minPrice, maxPrice, viewWidth, geometry),
     yTicks: createMinuteYTicks(minPrice, maxPrice, minuteYTickCount.value, geometry),
@@ -792,31 +825,7 @@ const klineChartModel = computed<KlineChartModel | null>(() => {
   }
 })
 
-function createOrderBookRows(
-  levels: OrderLevel[],
-  side: OrderBookSide,
-  maxVolume: number
-): OrderBookDisplayRow[] {
-  const labels = side === 'sell' ? ['卖5', '卖4', '卖3', '卖2', '卖1'] : ['买1', '买2', '买3', '买4', '买5']
-  const orderedLevels = side === 'sell'
-    ? [...Array.from({ length: 5 }, (_, index) => levels[index] ?? null)].reverse()
-    : Array.from({ length: 5 }, (_, index) => levels[index] ?? null)
 
-  return labels.map((label, index) => {
-    const level = orderedLevels[index]
-    return {
-      label,
-      priceText: level ? formatPrice(level.price) : '--',
-      volumeText: level ? formatOrderBookVolume(level.volume) : '--',
-      side,
-      depthPercent: level ? clamp(level.volume / maxVolume * 100, 2, 100) : 0
-    }
-  })
-}
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(Math.max(value, min), max)
-}
 
 function clearChartHover() {
   minuteHover.value = null
@@ -827,12 +836,6 @@ function getActiveKlineTab(): Exclude<TabKey, 'minute'> | null {
   return activeTab.value === 'minute' ? null : activeTab.value
 }
 
-function getDefaultKlineViewport(pointsLength: number): KlineViewport {
-  return {
-    start: 0,
-    end: pointsLength
-  }
-}
 
 function getResolvedKlineViewport(tab: Exclude<TabKey, 'minute'>, pointsLength: number): KlineViewport {
   const viewport = klineViewports.value[tab]
@@ -864,194 +867,29 @@ function syncMinuteChartPanelSize() {
   minuteChartPanelHeight.value = minuteChartPanelRef.value?.clientHeight ?? 0
 }
 
-function getPlotWidth(viewWidth = CHART_WIDTH): number {
-  return viewWidth - CHART_PADDING.left - CHART_PADDING.right
-}
 
-function getPlotHeight(): number {
-  return CHART_HEIGHT - CHART_PADDING.top - CHART_PADDING.bottom
-}
 
-function getX(index: number, total: number, viewWidth = CHART_WIDTH): number {
-  if (total <= 1) return CHART_PADDING.left + getPlotWidth(viewWidth) / 2
-  return CHART_PADDING.left + (index / (total - 1)) * getPlotWidth(viewWidth)
-}
 
-function getY(value: number, min: number, max: number): number {
-  return CHART_PADDING.top + (1 - (value - min) / (max - min)) * getPlotHeight()
-}
 
-function getMinuteY(value: number, min: number, max: number, geometry: MinuteChartGeometry): number {
-  return CHART_PADDING.top
-    + (1 - (value - min) / (max - min)) * (geometry.priceBottom - CHART_PADDING.top)
-}
 
-function getCandleBodyWidth(total: number): number {
-  if (total <= 1) return 10
-  const step = getPlotWidth() / (total - 1)
-  return clamp(step * 0.62, 4, 14)
-}
 
-function createCandles(points: KlinePoint[], min: number, max: number): CandleBar[] {
-  const minBodyHeight = 1.5
-  const bodyWidth = getCandleBodyWidth(points.length)
 
-  return points.map((point, index): CandleBar => {
-    const x = getX(index, points.length)
-    const openY = getY(point.open, min, max)
-    const closeY = getY(point.close, min, max)
-    const highY = getY(point.high, min, max)
-    const lowY = getY(point.low, min, max)
-    const bodyY = Math.min(openY, closeY)
-    const rawBodyHeight = Math.abs(openY - closeY)
 
-    return {
-      x,
-      bodyWidth,
-      bodyY: rawBodyHeight < minBodyHeight ? bodyY - (minBodyHeight - rawBodyHeight) / 2 : bodyY,
-      bodyHeight: Math.max(rawBodyHeight, minBodyHeight),
-      wickTop: Math.min(highY, openY, closeY),
-      wickBottom: Math.max(lowY, openY, closeY),
-      openY,
-      closeY,
-      isUp: point.close >= point.open
-    }
-  })
-}
 
-function createPolyline(values: number[], min: number, max: number, viewWidth = CHART_WIDTH): string {
-  return values
-    .map((value, index) => {
-      if (Number.isNaN(value)) return null
-      return `${getX(index, values.length, viewWidth).toFixed(2)},${getY(value, min, max).toFixed(2)}`
-    })
-    .filter((item): item is string => Boolean(item))
-    .join(' ')
-}
 
-function createMinutePolyline(
-  values: number[],
-  min: number,
-  max: number,
-  viewWidth: number,
-  geometry: MinuteChartGeometry
-): string {
-  return values
-    .map((value, index) => {
-      if (Number.isNaN(value)) return null
-      return `${getX(index, values.length, viewWidth).toFixed(2)},${getMinuteY(value, min, max, geometry).toFixed(2)}`
-    })
-    .filter((item): item is string => Boolean(item))
-    .join(' ')
-}
 
-function createMinuteAreaPath(
-  values: number[],
-  min: number,
-  max: number,
-  viewWidth: number,
-  geometry: MinuteChartGeometry
-): string {
-  const visibleValues = values
-    .map((value, index) => Number.isNaN(value) ? null : ({ index, value }))
-    .filter((item): item is { index: number; value: number } => Boolean(item))
-  if (visibleValues.length === 0) return ''
 
-  const startX = getX(visibleValues[0].index, values.length, viewWidth)
-  const endX = getX(visibleValues[visibleValues.length - 1].index, values.length, viewWidth)
-  const path = visibleValues
-    .map((item, index) => `${index === 0 ? 'M' : 'L'}${getX(item.index, values.length, viewWidth).toFixed(2)} ${getMinuteY(item.value, min, max, geometry).toFixed(2)}`)
-    .join(' ')
-  return `${path} L${endX.toFixed(2)} ${geometry.priceBottom} L${startX.toFixed(2)} ${geometry.priceBottom} Z`
-}
 
-function formatXAxisLabel(value: string): string {
-  const date = parseChartDate(value)
-  if (!date) return value
-  return `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')}`
-}
 
-function createXTicks(labels: string[], maxCount = 5, viewWidth = CHART_WIDTH): XTick[] {
-  if (labels.length === 0) return []
-  if (labels.length === 1) {
-    return [{ label: formatXAxisLabel(labels[0]), x: getX(0, 1, viewWidth) }]
-  }
 
-  const desiredTickCount = Math.min(maxCount, labels.length)
-  const maxIndex = labels.length - 1
-  const indexes: number[] = []
-
-  for (let step = 0; step < desiredTickCount; step += 1) {
-    indexes.push(Math.round((maxIndex * step) / (desiredTickCount - 1)))
-  }
-
-  return Array.from(new Set(indexes)).map((index) => ({
-    label: formatXAxisLabel(labels[index]),
-    x: getX(index, labels.length, viewWidth)
-  }))
-}
-
-function formatYAxisLabel(value: number): string {
-  return formatPrice(value)
-}
-
-function getKlineYTickCount(tab: TabKey): number {
-  switch (tab) {
-    case 'day':
-      return 4
-    case 'week':
-    case 'month':
-      return 5
-    case 'quarter':
-    case 'year':
-      return 6
-    default:
-      return 4
-  }
-}
-
-function createYTicks(min: number, max: number, steps = 4, _viewWidth = CHART_WIDTH): YTick[] {
-  return Array.from({ length: steps }, (_, index) => {
-    const ratio = index / (steps - 1)
-    const value = max - (max - min) * ratio
-    return {
-      label: activeTab.value === 'minute' ? formatPrice(value) : formatYAxisLabel(value),
-      y: getY(value, min, max)
-    }
-  })
-}
-
-function createMinuteYTicks(
-  min: number,
-  max: number,
-  steps: number,
-  geometry: MinuteChartGeometry
-): YTick[] {
-  return Array.from({ length: steps }, (_, index) => {
-    const ratio = index / (steps - 1)
-    const value = max - (max - min) * ratio
-    return {
-      label: formatPrice(value),
-      y: getMinuteY(value, min, max, geometry)
-    }
-  })
-}
 
 function getHoverIndex(event: MouseEvent, total: number, viewWidth = CHART_WIDTH) {
   const svg = event.currentTarget as SVGSVGElement
   const rect = svg.getBoundingClientRect()
   if (total <= 0 || rect.width <= 0 || rect.height <= 0) return null
 
-  const rawViewX = ((event.clientX - rect.left) / rect.width) * viewWidth
-  const clampedViewX = clamp(rawViewX, CHART_PADDING.left, viewWidth - CHART_PADDING.right)
-  const ratio = getPlotWidth(viewWidth) === 0 ? 0 : (clampedViewX - CHART_PADDING.left) / getPlotWidth(viewWidth)
-  const index = clamp(Math.round(ratio * (total - 1)), 0, total - 1)
-
-  return {
-    rect,
-    index,
-    pointX: getX(index, total, viewWidth)
-  }
+  const hit = getHoverIndexFromClientX(event.clientX, rect, total, viewWidth)
+  return hit ? { rect, index: hit.index, pointX: hit.pointX } : null
 }
 
 function getTooltipPosition(
@@ -1462,6 +1300,12 @@ onUnmounted(() => {
 .minute-volume-divider{stroke:var(--chart-grid);stroke-width:1}
 .minute-volume-title,.minute-volume-value{fill:var(--chart-axis);font-size:10px;font-weight:650}
 .chart-line-latest{stroke:var(--accent)}
+.minute-line{stroke-width:1.6}
+.minute-line.up{stroke:var(--rise)}
+.minute-line.down{stroke:var(--fall)}
+.minute-line.flat{stroke:var(--text-muted)}
+.minute-area.up{fill:var(--rise);opacity:.14}
+.minute-area.down{fill:var(--fall);opacity:.14}
 .chart-line-avg{stroke:var(--series-avg);stroke-dasharray:4 3;opacity:.85}
 .ma5-line{stroke:var(--series-1)}
 .ma10-line{stroke:var(--series-2)}

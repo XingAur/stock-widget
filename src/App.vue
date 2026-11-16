@@ -116,7 +116,7 @@ import { useStockStore } from './stores/stock'
 import type { AssetType } from './api/stock'
 import { getAssetTitle, getNextAssetType } from './utils/assets'
 import { focusFirstModalControl, trapModalFocus } from './utils/modalFocus'
-import { isTauriRuntime } from './utils/persistence'
+import { flushPersistedState, isTauriRuntime } from './utils/persistence'
 import { rememberWatchlistView } from './utils/market'
 import { logError, logInfo } from './utils/logger'
 import { startWindowDrag } from './utils/windowDrag'
@@ -440,6 +440,7 @@ function syncMinimumWindowSize(): Promise<void> {
 }
 
 async function handleClose() {
+  void flushPersistedState()
   try {
     await invoke('close_window')
   } catch (error) {
@@ -448,6 +449,7 @@ async function handleClose() {
 }
 
 async function handleMinimize() {
+  void flushPersistedState()
   const command = settingsStore.settings.minimizeToTray ? 'minimize_to_tray' : 'minimize_window'
 
   try {

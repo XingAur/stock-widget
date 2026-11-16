@@ -87,6 +87,7 @@ describe('stock store refresh', () => {
 
   it('skips auto refresh ticks while the document is hidden', async () => {
     vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-09-24T02:00:00.000Z'))
     const store = useStockStore()
     store.watchList = ['000001']
     vi.mocked(fetchStocks).mockResolvedValue([createStock()])
@@ -112,6 +113,7 @@ describe('stock store refresh', () => {
 
   it('refreshes on an auto refresh tick while the document is visible', async () => {
     vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-09-24T02:00:00.000Z'))
     const store = useStockStore()
     store.watchList = ['000001']
     vi.mocked(fetchStocks).mockResolvedValue([createStock()])
@@ -128,6 +130,71 @@ describe('stock store refresh', () => {
       expect(fetchMinuteData).not.toHaveBeenCalled()
     } finally {
       store.stopAutoRefresh()
+      vi.useRealTimers()
+    }
+  })
+
+  it('slows quote polling outside trading hours', async () => {
+    vi.useFakeTimers()
+    // 2026-09-26 是周六 12:00（Asia/Shanghai），休市
+    vi.setSystemTime(new Date('2026-09-26T04:00:00.000Z'))
+    const store = useStockStore()
+    store.watchList = ['000001']
+    vi.mocked(fetchStocks).mockResolvedValue([createStock()])
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      get: () => 'visible'
+    })
+
+    try {
+      store.startAutoRefresh()
+      await vi.advanceTimersByTimeAsync(30_000)
+      expect(fetchStocks).not.toHaveBeenCalled()
+      await vi.advanceTimersByTimeAsync(600_000)
+      expect(fetchStocks).toHaveBeenCalled()
+    } finally {
+      store.stopAutoRefresh()
+      vi.useRealTimers()
+    }
+  })
+
+  it('does not poll sparklines outside trading hours', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-09-26T04:00:00.000Z'))
+    const store = useStockStore()
+    store.watchList = ['000001']
+    vi.mocked(fetchStocks).mockResolvedValue([createStock()])
+    vi.mocked(fetchMinuteData).mockResolvedValue([])
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      get: () => 'visible'
+    })
+
+    try {
+      store.startAutoRefresh()
+      await vi.advanceTimersByTimeAsync(180_000)
+      expect(fetchMinuteData).not.toHaveBeenCalled()
+    } finally {
+      store.stopAutoRefresh()
+      vi.useRealTimers()
+    }
+  })
+
+  it('exposes per-stock freshness from the quote source time', () => {
+    vi.useFakeTimers()
+    // 交易日 10:10（Asia/Shanghai）
+    vi.setSystemTime(new Date('2026-09-24T02:10:00.000Z'))
+    const store = useStockStore()
+    store.stocks = new Map([
+      ['600000', createStock({ code: '600000', time: '20260924100930' })],
+      ['600001', createStock({ code: '600001', time: '20260924100700' })]
+    ])
+
+    try {
+      expect(store.getStockFreshness('600000')?.level).toBe('live')
+      expect(store.getStockFreshness('600001')?.level).toBe('delayed')
+      expect(store.getStockFreshness('999999')).toBeNull()
+    } finally {
       vi.useRealTimers()
     }
   })
@@ -404,7 +471,7 @@ describe('state persistence across restarts', () => {
   it('returns a retired persisted view to stocks and preserves positions', async () => {
     localStorage.setItem(PERSIST_SHADOW_KEY, JSON.stringify({
       schemaVersion: 2,
-      activeAssetType: 'quant',
+      activeAssetType: 'research',
       watchList: ['600000'],
       stockPositions: { '600000': { costPrice: 10, shares: 100 } }
     }))
@@ -418,7 +485,7 @@ describe('state persistence across restarts', () => {
   })
 
   it('returns a retired legacy localStorage view to stocks', () => {
-    localStorage.setItem('activeAssetType', 'quant')
+    localStorage.setItem('activeAssetType', 'research')
     const store = useStockStore()
     store.loadStoredState()
     expect(store.activeAssetType).toBe('stock')

@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   PERSIST_SCHEMA_VERSION,
@@ -6,9 +7,14 @@ import {
   buildPersistPayload,
   flushPersistedState,
   parsePersistedState,
+  readPersistedState,
   resetPersistenceForTests,
   updatePersistedSlice
 } from './persistence'
+
+vi.mock('@tauri-apps/api/core', () => ({
+  invoke: vi.fn(async () => null)
+}))
 
 function createLocalStorage(): Storage {
   const values = new Map<string, string>()
@@ -65,19 +71,63 @@ describe('persistence payload', () => {
   it('drops retired research slices without losing holdings or settings', () => {
     const payload = parsePersistedState(JSON.stringify({
       schemaVersion: 2,
-      quantTopN: 5,
-      importedQuantReport: { nav: [1, 1.1] },
+      retiredResearchTopN: 5,
+      importedResearchReport: { nav: [1, 1.1] },
       watchList: ['600000'],
       stockPositions: { '600000': { costPrice: 10, shares: 100 } },
       settings: { theme: 'dark' }
     }))!
     adoptPersistedSlices(payload)
     const saved = buildPersistPayload()
-    expect(saved).not.toHaveProperty('quantTopN')
-    expect(saved).not.toHaveProperty('importedQuantReport')
+    expect(saved).not.toHaveProperty('retiredResearchTopN')
+    expect(saved).not.toHaveProperty('importedResearchReport')
     expect(saved.watchList).toEqual(['600000'])
     expect(saved.stockPositions).toEqual({ '600000': { costPrice: 10, shares: 100 } })
     expect(saved.settings).toEqual({ theme: 'dark' })
+  })
+
+  it('prefers the shadow copy when it has a newer revision than the file', async () => {
+    const core = await import('@tauri-apps/api/core')
+    vi.mocked(core.invoke).mockResolvedValue(JSON.stringify({
+      schemaVersion: PERSIST_SCHEMA_VERSION,
+      revision: 3,
+      watchList: ['600000']
+    }))
+    Object.defineProperty(globalThis, '__TAURI_INTERNALS__', { configurable: true, value: {} })
+    localStorage.setItem(PERSIST_SHADOW_KEY, JSON.stringify({
+      schemaVersion: PERSIST_SCHEMA_VERSION,
+      revision: 4,
+      watchList: ['600001']
+    }))
+
+    try {
+      const state = await readPersistedState()
+      expect(state?.revision).toBe(4)
+      expect(state?.watchList).toEqual(['600001'])
+    } finally {
+      delete (globalThis as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__
+    }
+  })
+
+  it('keeps a migrated v1 file even when a stale shadow exists', async () => {
+    const core = await import('@tauri-apps/api/core')
+    vi.mocked(core.invoke).mockResolvedValue(JSON.stringify({
+      schemaVersion: 1,
+      watchList: ['600000']
+    }))
+    Object.defineProperty(globalThis, '__TAURI_INTERNALS__', { configurable: true, value: {} })
+    localStorage.setItem(PERSIST_SHADOW_KEY, JSON.stringify({
+      schemaVersion: PERSIST_SCHEMA_VERSION,
+      revision: 3,
+      watchList: ['600001']
+    }))
+
+    try {
+      const state = await readPersistedState()
+      expect(state?.watchList).toEqual(['600000'])
+    } finally {
+      delete (globalThis as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__
+    }
   })
 
   it('accepts a well-formed payload', () => {

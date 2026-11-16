@@ -22,9 +22,9 @@ import {
   type FundTransactionInput
 } from '../utils/fundLedger'
 import { logError } from '../utils/logger'
-import { shouldRefreshSparkline } from '../utils/tradingSession'
+import { quoteIntervalMs, shouldRefreshSparkline, sparklineIntervalMs } from '../utils/tradingSession'
 import { mapPool } from '../utils/taskPool'
-import { worstQuoteFreshness } from '../utils/quoteFreshness'
+import { quoteFreshness as computeQuoteFreshness, worstQuoteFreshness, type QuoteFreshness } from '../utils/quoteFreshness'
 import { moveItem } from '../utils/list'
 import {
   PERSIST_SHADOW_KEY,
@@ -215,6 +215,10 @@ export const useStockStore = defineStore('stock', () => {
 
   let refreshTimer: number | null = null
   let sparklineTimer: number | null = null
+  let quoteRefreshInFlight = false
+  let sparklineRefreshInFlight = false
+  // 休市时 sparkline 不刷新，但仍需要一个低频探针在开盘后自动恢复。
+  const SESSION_PROBE_MS = 60_000
   const sparklineFetchedAt = new Map<string, number>()
 
   const loading = computed(() => stockLoading.value || fundLoading.value)
@@ -231,6 +235,16 @@ export const useStockStore = defineStore('stock', () => {
   const quoteFreshness = computed(() => worstQuoteFreshness(
     [...stocks.value.values()].map((stock) => stock.time)
   ))
+
+  // 每只股票按行情源时间计算新鲜度；报价刷新（stocks 变化）时会自动重算。
+  const stockFreshness = computed(() => {
+    const entries = new Map<string, QuoteFreshness>()
+    for (const [code, stock] of stocks.value) {
+      entries.set(code, computeQuoteFreshness(stock.time))
+    }
+    return entries
+  })
+  const getStockFreshness = computed(() => (code: string) => stockFreshness.value.get(code) ?? null)
 
   watch(watchList, (nextWatchList) => {
     updatePersistedSlice('watchList', nextWatchList)
@@ -434,31 +448,83 @@ export const useStockStore = defineStore('stock', () => {
     await Promise.all(tasks)
   }
 
+  /**
+   * 报价刷新按交易时段自适应（集合竞价/开盘 30s、午休 120s、休市 600s），
+   * 每轮结束后重新计算下一次间隔，跨越开盘/收盘时不需要重启调度。
+   */
+  function scheduleQuoteRefresh(delayMs = quoteIntervalMs()) {
+    if (refreshTimer !== null) {
+      clearTimeout(refreshTimer)
+    }
+    refreshTimer = window.setTimeout(() => {
+      refreshTimer = null
+      if (!isPageVisible()) {
+        scheduleQuoteRefresh()
+        return
+      }
+      void runScheduledQuoteRefresh()
+    }, delayMs)
+  }
+
+  async function runScheduledQuoteRefresh() {
+    if (quoteRefreshInFlight) {
+      scheduleQuoteRefresh()
+      return
+    }
+    quoteRefreshInFlight = true
+    try {
+      await refreshAll({ sparklines: false })
+    } finally {
+      quoteRefreshInFlight = false
+      scheduleQuoteRefresh()
+    }
+  }
+
+  function scheduleSparklineRefresh(delayMs = sparklineIntervalMs()) {
+    if (sparklineTimer !== null) {
+      clearTimeout(sparklineTimer)
+    }
+    sparklineTimer = window.setTimeout(() => {
+      sparklineTimer = null
+      if (!isPageVisible() || !shouldRefreshSparkline()) {
+        scheduleSparklineRefresh()
+        return
+      }
+      void runScheduledSparklineRefresh()
+    }, delayMs > 0 ? delayMs : SESSION_PROBE_MS)
+  }
+
+  async function runScheduledSparklineRefresh() {
+    if (sparklineRefreshInFlight) {
+      scheduleSparklineRefresh()
+      return
+    }
+    sparklineRefreshInFlight = true
+    try {
+      await fetchAllSparklines()
+    } finally {
+      sparklineRefreshInFlight = false
+      scheduleSparklineRefresh()
+    }
+  }
+
   function startAutoRefresh() {
     stopAutoRefresh()
-    refreshTimer = window.setInterval(() => {
-      if (!isPageVisible()) {
-        return
-      }
-      void refreshAll({ sparklines: false })
-    }, 30000)
-    sparklineTimer = window.setInterval(() => {
-      if (!isPageVisible() || !shouldRefreshSparkline()) {
-        return
-      }
-      void fetchAllSparklines()
-    }, 90_000)
+    scheduleQuoteRefresh()
+    scheduleSparklineRefresh()
   }
 
   function stopAutoRefresh() {
-    if (refreshTimer) {
-      clearInterval(refreshTimer)
+    if (refreshTimer !== null) {
+      clearTimeout(refreshTimer)
       refreshTimer = null
     }
-    if (sparklineTimer) {
-      clearInterval(sparklineTimer)
+    if (sparklineTimer !== null) {
+      clearTimeout(sparklineTimer)
       sparklineTimer = null
     }
+    quoteRefreshInFlight = false
+    sparklineRefreshInFlight = false
   }
 
   function setActiveAssetType(assetType: AssetType) {
@@ -824,6 +890,7 @@ export const useStockStore = defineStore('stock', () => {
     activeRefreshError,
     activeDataStale,
     quoteFreshness,
+    getStockFreshness,
     stockList,
     fundList,
     init,

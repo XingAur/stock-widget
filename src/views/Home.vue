@@ -1,25 +1,5 @@
 <template>
   <div class="home-view" @click="closeContextMenu">
-    <!-- 资产切换已移到标题栏（点击标题），这里保留入口但默认不渲染 -->
-    <div v-if="false" class="cl-segmented cl-segmented--subtle cl-segmented--block asset-tabs" @click.stop>
-      <button
-        class="cl-segmented__item asset-tab"
-        :aria-pressed="stockStore.activeAssetType === 'stock'"
-        type="button"
-        @click="switchAssetType('stock')"
-      >
-        股票
-      </button>
-      <button
-        class="cl-segmented__item asset-tab"
-        :aria-pressed="stockStore.activeAssetType === 'fund'"
-        type="button"
-        @click="switchAssetType('fund')"
-      >
-        基金
-      </button>
-    </div>
-
     <div ref="listRef" class="cl-list cl-list--dense stock-list" @scroll="closeContextMenu">
       <div v-if="activeListLength === 0" class="cl-empty empty-state">
         <div class="cl-empty__icon"><Star aria-hidden="true" /></div>
@@ -47,6 +27,7 @@
           @contextmenu="openContextMenu($event, 'stock', stock.code, index)"
           @start-drag="startDrag($event, 'stock', stock.code, index)"
           @remove="handleRemoveAsset('stock', stock.code)"
+          :freshness="stockStore.getStockFreshness(stock.code)"
         />
       </template>
       <template v-if="stockStore.activeAssetType === 'fund'">
@@ -215,7 +196,6 @@ const EDGE_SCROLL_ZONE = 28
 const props = defineProps<{ selectedCode: string }>()
 const emit = defineEmits<{
   selectDetail: [selection: { assetType: AssetType; code: string }]
-  assetTypeChange: [assetType: AssetType]
 }>()
 
 const stockStore = useStockStore()
@@ -353,21 +333,6 @@ function resetSearchState() {
 
 function closeContextMenu() {
   contextMenu.value.visible = false
-}
-
-function switchAssetType(assetType: AssetType) {
-  if (stockStore.activeAssetType === assetType) {
-    return
-  }
-
-  closeContextMenu()
-  cancelDrag()
-  resetSearchState()
-  hoveredStockCode.value = ''
-  hoveredFundCode.value = ''
-  searchQuery.value = ''
-  stockStore.setActiveAssetType(assetType)
-  emit('assetTypeChange', assetType)
 }
 
 function handleOpenDetail(code: string) {

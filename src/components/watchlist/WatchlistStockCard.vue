@@ -38,7 +38,16 @@
     <div class="cl-card__main stock-main">
       <div class="cl-card__info stock-info">
         <div class="cl-card__title stock-name" :title="stock.name">{{ stock.name }}</div>
-        <div class="cl-card__sub stock-code">{{ stock.code }}</div>
+        <div class="cl-card__sub stock-code">
+          <span>{{ stock.code }}</span>
+          <span
+            v-if="freshness && freshness.level !== 'live'"
+            class="stock-freshness"
+            :class="`is-${freshness.level}`"
+            :data-freshness="freshness.level"
+            :title="freshness.label || '行情源时间落后'"
+          >{{ freshnessShortLabel }}</span>
+        </div>
       </div>
       <div v-if="showSparkline && prices.length >= 2" class="cl-card__chart stock-sparkline-wrap">
         <WatchlistSparkline :prices="prices" :reference="stock.prevClose > 0 ? stock.prevClose : null" :tone="stock.changePercent >= 0 ? 'up' : 'down'" label="当日分时走势，虚线表示昨收价" />
@@ -72,6 +81,7 @@ import type { Stock } from '../../api/stock'
 import { useStockStore } from '../../stores/stock'
 import { formatOptionalNumber, formatSignedOptionalPercent, getSignedChangeTone } from '../../utils/format'
 import { calculateStockPositionMetrics, getProfitTone } from '../../utils/positions'
+import type { QuoteFreshness } from '../../utils/quoteFreshness'
 import { changeToneToTrend, profitToneToTrend } from '../../utils/tone'
 
 const props = defineProps<{
@@ -82,6 +92,7 @@ const props = defineProps<{
   dragOver: boolean
   showSparkline: boolean
   prices: readonly number[]
+  freshness?: QuoteFreshness | null
 }>()
 
 defineEmits<{
@@ -99,6 +110,10 @@ const metrics = computed(() => calculateStockPositionMetrics(stockStore.stockPos
 const hasPosition = computed(() => props.selected && Boolean(metrics.value))
 const stripClass = computed(() => 'is-' + profitToneToTrend(getProfitTone(metrics.value?.profit ?? 0)))
 const changeText = computed(() => formatSignedOptionalPercent(props.stock.changePercent))
+const freshnessShortLabel = computed(() => {
+  if (!props.freshness || props.freshness.level === 'live') return ''
+  return props.freshness.level === 'delayed' ? '延迟' : '陈旧'
+})
 const pillClass = computed(() => {
   const trend = changeToneToTrend(getSignedChangeTone(props.stock.changePercent))
   return trend ? `cl-pill--${trend}` : ''
@@ -112,3 +127,10 @@ function formatPercent(value: number | undefined): string {
   return formatSignedOptionalPercent(value)
 }
 </script>
+
+<style scoped>
+.stock-code{display:inline-flex;align-items:center;gap:4px}
+.stock-freshness{flex:0 0 auto;padding:0 3px;border-radius:4px;font-size:8px;line-height:12px;font-weight:700}
+.stock-freshness.is-delayed{background:rgba(245,158,11,.12);color:#fbbf57}
+.stock-freshness.is-stale{background:rgba(248,113,113,.14);color:#ff8c8c}
+</style>

@@ -467,6 +467,16 @@ test.describe('详情面板（长时间使用负载优化）', () => {
     await expect(page.locator('.tab-bar')).toBeVisible()
     const klineCalls = await countCommand(page, 'fetch_kline_data')
     expect(klineCalls).toBeGreaterThan(0)
+
+    // 分时线相对昨收分色：样例分钟点都高于昨收，应渲染上涨（红）段
+    await expect(page.locator('.minute-line.up').first()).toBeVisible()
+    await expect(page.locator('.minute-area.up').first()).toBeVisible()
+
+    // 异动测算：当前价可用时给出未来一周的涨跌停阶梯
+    const estimate = page.locator('.move-estimate')
+    await expect(estimate).toBeVisible()
+    await expect(estimate).toContainText('异动测算')
+    await expect(estimate.locator('.move-row.future')).toHaveCount(5)
   })
 })
 
@@ -605,9 +615,9 @@ test('旧版研究页恢复到股票自选并保留持仓，A+回归整段标题
   await page.evaluate(() => {
     window.localStorage.setItem('__e2e_persisted_state__', JSON.stringify({
       schemaVersion: 2,
-      activeAssetType: 'quant',
-      quantTopN: 5,
-      importedQuantReport: { nav: [1, 1.1] },
+      activeAssetType: 'research',
+      retiredResearchTopN: 5,
+      importedResearchReport: { nav: [1, 1.1] },
       watchList: ['600000'],
       stockPositions: { '600000': { costPrice: 8, shares: 100 } }
     }))
@@ -629,8 +639,8 @@ test('旧版研究页恢复到股票自选并保留持仓，A+回归整段标题
   await expect(page.locator('.brand-plus')).toHaveCSS('color', red)
   const saved = await waitForPersistedState(page, (state) => state.activeAssetType === 'stock')
   expect(saved.stockPositions).toEqual({ '600000': { costPrice: 8, shares: 100 } })
-  expect(saved).not.toHaveProperty('quantTopN')
-  expect(saved).not.toHaveProperty('importedQuantReport')
+  expect(saved).not.toHaveProperty('retiredResearchTopN')
+  expect(saved).not.toHaveProperty('importedResearchReport')
   await page.locator('.app-title').click()
   await expect(page.locator('.app-title')).toHaveText('A+Fund Assistant')
   await expect(page.locator('.brand-plus')).toHaveCSS('color', red)

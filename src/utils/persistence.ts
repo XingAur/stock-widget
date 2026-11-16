@@ -82,10 +82,20 @@ function readShadowCopy(): string | null {
 
 export function readPersistedState(): Promise<PersistedAppState | null> {
   cachedRead ??= (async () => {
+    const fromShadow = parsePersistedState(readShadowCopy())
+
     if (isTauriRuntime()) {
       try {
         const raw = await invoke<string | null>('load_app_state')
         const fromFile = parsePersistedState(raw)
+        // 只有「文件本身已带 revision」且 shadow 更晚时才采用 shadow：
+        // 这样既能在崩溃后救回最后 300ms 的修改，又不会让残留 shadow 盖过
+        // v1 迁移数据或外部写入的状态文件。
+        if (fromFile && fromShadow) {
+          const fileRevision = fromFile.revision ?? 0
+          const shadowRevision = fromShadow.revision ?? 0
+          return fileRevision > 0 && shadowRevision > fileRevision ? fromShadow : fromFile
+        }
         if (fromFile) {
           return fromFile
         }
@@ -94,7 +104,7 @@ export function readPersistedState(): Promise<PersistedAppState | null> {
       }
     }
 
-    return parsePersistedState(readShadowCopy())
+    return fromShadow
   })()
 
   return cachedRead
@@ -177,6 +187,7 @@ export async function flushPersistedState(): Promise<void> {
     }
   }
 }
+
 
 export function resetPersistenceForTests(): void {
   cachedRead = null
