@@ -175,8 +175,24 @@ export const initScript = `
             { time: '09:31', price: 10.1, volume: 30, averagePrice: 10.05 }
           ];
         }
-        case 'fetch_kline_data':
-          return [];
+        case 'fetch_kline_data': {
+          var klineCode = String(args && args.code ? args.code : '');
+          var isIndex = /^(sh|sz)(000|399)/.test(klineCode);
+          var tradingDates = [];
+          var klineCursor = new Date(2026, 10, 16);
+          while (tradingDates.length < 80) {
+            if (klineCursor.getDay() !== 0 && klineCursor.getDay() !== 6) {
+              tradingDates.unshift(
+                klineCursor.getFullYear() + '-' + String(klineCursor.getMonth() + 1).padStart(2, '0') + '-' + String(klineCursor.getDate()).padStart(2, '0')
+              );
+            }
+            klineCursor.setDate(klineCursor.getDate() - 1);
+          }
+          return tradingDates.map(function (date, index) {
+            var close = Number((isIndex ? 3400 + index * 2 : 8 + index * 0.03).toFixed(2));
+            return { time: date, open: close, close: close, high: close, low: close, volume: 1000 };
+          });
+        }
         case 'fetch_indices':
           return [];
         case 'fetch_global_indices': {

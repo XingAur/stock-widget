@@ -216,6 +216,11 @@ export async function fetchKlineData(code: string, period: ChartPeriod = 'day'):
   return normalizeKlinePoints(points)
 }
 
+export async function fetchIndexKline(code: string): Promise<KlinePoint[]> {
+  const points = await invokeSafe('fetch_kline_data', { code, ktype: 'day' }, [])
+  return normalizeKlinePoints(points)
+}
+
 export async function fetchStockDetail(code: string): Promise<StockDetail | null> {
   const [stocks, minute] = await Promise.all([
     fetchStocks([code]),

@@ -472,7 +472,7 @@ test.describe('详情面板（长时间使用负载优化）', () => {
     await expect(page.locator('.minute-line.up').first()).toBeVisible()
     await expect(page.locator('.minute-area.up').first()).toBeVisible()
 
-    // 异动测算作为独立 tab：切换后展示未来一周的涨跌停阶梯
+    // 异动测算作为独立 tab：严重异常波动 100%/200% 两条规则分别模拟
     const estimateTab = page.locator('.tab-btn', { hasText: '异动测算' })
     await expect(estimateTab).toBeVisible()
     await estimateTab.click()
@@ -480,7 +480,10 @@ test.describe('详情面板（长时间使用负载优化）', () => {
     await expect(estimate).toBeVisible()
     await expect(estimate).toHaveAttribute('aria-label', '异动测算')
     await expect(estimate.locator('.move-summary-main')).toContainText('异动')
-    await expect(estimate.locator('.move-row.future')).toHaveCount(5)
+    await expect(estimate.locator('.move-summary')).toContainText('同向异动')
+    await expect(estimate.locator('.move-table-head')).toContainText('100% 规则')
+    await expect(estimate.locator('.move-table-head')).toContainText('200% 规则')
+    await expect(estimate.locator('.move-row')).toHaveCount(15)
     await expect(page.locator('.tab-btn', { hasText: '异动测算' })).toHaveClass(/active/)
   })
 })

@@ -57,6 +57,7 @@
                 :change-percent="detail.changePercent"
                 :prev-close="detail.prevClose"
                 :day-points="klineCache.day ?? []"
+                :index-points="indexKline"
                 :quote-time="detail.time"
               />
             </div>
@@ -405,6 +406,7 @@ import DetailChartToolbar from '../components/detail/DetailChartToolbar.vue'
 import DetailCompanyInfo from '../components/detail/DetailCompanyInfo.vue'
 import DetailMoveEstimate from '../components/detail/DetailMoveEstimate.vue'
 import {
+  fetchIndexKline,
   fetchIndices,
   fetchKlineData,
   fetchStockDetail,
@@ -417,6 +419,7 @@ import {
   type StockDetail
 } from '../api/stock'
 import { useSettingsStore } from '../stores/settings'
+import { boardProfile } from '../utils/moveEstimate'
 import {
   aggregateKlines,
   createMinuteChartGeometry,
@@ -1126,12 +1129,32 @@ function scrollToCompanyInfo() {
   element?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
 
+const indexKline = ref<KlinePoint[]>([])
+let indexKlineCode = ''
+
+async function loadIndexKline(code: string, name: string) {
+  const profile = boardProfile(code, name)
+  if (profile.kind === 'bse') {
+    indexKline.value = []
+    return
+  }
+  if (indexKlineCode === profile.indexCode && indexKline.value.length > 0) return
+  indexKlineCode = profile.indexCode
+  try {
+    indexKline.value = await fetchIndexKline(profile.indexCode)
+  } catch (error) {
+    indexKline.value = []
+    console.error('Load index kline error:', error)
+  }
+}
+
 async function loadBaseDetail() {
   try {
     const nextDetail = await fetchStockDetail(props.code)
     if (nextDetail) {
       detail.value = nextDetail
       detailRefreshError.value = ''
+      void loadIndexKline(props.code, nextDetail.name)
       return
     }
     detailRefreshError.value = detail.value
@@ -1239,6 +1262,8 @@ watch(() => props.code, async () => {
   detailRefreshError.value = ''
   klineCache.value = {}
   klineViewports.value = {}
+  indexKline.value = []
+  indexKlineCode = ''
   lastKlineLoadedAt = 0
   companyProfile.value = null
   void loadCompanyProfile()
