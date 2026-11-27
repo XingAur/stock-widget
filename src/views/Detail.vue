@@ -56,9 +56,18 @@
                 :price="detail.price"
                 :change-percent="detail.changePercent"
                 :prev-close="detail.prevClose"
-                :day-points="klineCache.day ?? []"
+                :volume="detail.volume"
+                :turnover-rate="detail.turnoverRate"
+                :limit-up="detail.limitUp"
+                :limit-down="detail.limitDown"
+                :has-price-limit="detail.hasPriceLimit"
+                :listing-date="companyProfile?.listingDate"
+                :announcements="companyProfile?.announcements"
+                :day-points="moveKline.length ? moveKline : klineCache.day ?? []"
                 :index-points="indexKline"
                 :quote-time="detail.time"
+                :loading="moveLoading"
+                @refresh="refreshMoveEstimate"
               />
             </div>
           </template>
@@ -406,9 +415,9 @@ import DetailChartToolbar from '../components/detail/DetailChartToolbar.vue'
 import DetailCompanyInfo from '../components/detail/DetailCompanyInfo.vue'
 import DetailMoveEstimate from '../components/detail/DetailMoveEstimate.vue'
 import {
-  fetchIndexKline,
   fetchIndices,
   fetchKlineData,
+  fetchMoveKline,
   fetchStockDetail,
   fetchStockProfile,
   type StockProfile,
@@ -1130,37 +1139,48 @@ function scrollToCompanyInfo() {
 }
 
 const indexKline = ref<KlinePoint[]>([])
-let indexKlineCode = ''
+const moveKline = ref<KlinePoint[]>([])
+const moveLoading = ref(false)
+let moveRequestId = 0
 
-async function loadIndexKline(code: string, name: string) {
-  const profile = boardProfile(code, name)
-  if (profile.kind === 'bse') {
-    indexKline.value = []
-    return
-  }
-  if (indexKlineCode === profile.indexCode && indexKline.value.length > 0) return
-  indexKlineCode = profile.indexCode
+async function loadMoveEstimate() {
+  if (moveLoading.value) return
+  const requestId = ++moveRequestId
+  const code = props.code
+  const { indexCode } = boardProfile(code, detail.value?.name ?? '')
+  moveLoading.value = true
   try {
-    indexKline.value = await fetchIndexKline(profile.indexCode)
-  } catch (error) {
-    indexKline.value = []
-    console.error('Load index kline error:', error)
+    const [stock, index] = await Promise.all([
+      fetchMoveKline(code),
+      fetchMoveKline(indexCode).then((points) => points.length ? points : fetchKlineData(indexCode))
+    ])
+    if (requestId !== moveRequestId) return
+    if (stock.length) moveKline.value = stock
+    if (index.length) indexKline.value = index
+  } finally {
+    if (requestId === moveRequestId) moveLoading.value = false
   }
 }
 
+async function refreshMoveEstimate() {
+  await Promise.all([loadBaseDetail(), loadMoveEstimate(), loadCompanyProfile()])
+}
+
 async function loadBaseDetail() {
+  const code = props.code
   try {
-    const nextDetail = await fetchStockDetail(props.code)
+    const nextDetail = await fetchStockDetail(code)
+    if (props.code !== code) return
     if (nextDetail) {
       detail.value = nextDetail
       detailRefreshError.value = ''
-      void loadIndexKline(props.code, nextDetail.name)
       return
     }
     detailRefreshError.value = detail.value
       ? '股票详情刷新失败，正在显示上次结果'
       : '股票详情刷新失败，请稍后重试'
   } catch (error) {
+    if (props.code !== code) return
     detailRefreshError.value = detail.value
       ? '股票详情刷新失败，正在显示上次结果'
       : '股票详情刷新失败，请稍后重试'
@@ -1168,11 +1188,13 @@ async function loadBaseDetail() {
   }
 }
 
-async function loadKline(tab: Exclude<TabKey, 'minute'>) {
+async function loadKline(tab: KlineTab) {
+  const code = props.code
   chartLoading.value = true
   try {
     const period = tabs.find((item) => item.key === tab)?.period ?? 'day'
-    const result = await fetchKlineData(props.code, period)
+    const result = await fetchKlineData(code, period)
+    if (props.code !== code) return
     const normalizedResult = result.length || period === 'day'
       ? result
       : tab === 'week'
@@ -1191,18 +1213,20 @@ async function loadKline(tab: Exclude<TabKey, 'minute'>) {
 
     klineCache.value = nextCache
   } finally {
-    chartLoading.value = false
+    if (props.code === code) chartLoading.value = false
   }
 }
 
 async function preloadKlines() {
+  const code = props.code
   chartLoading.value = true
   try {
     const [day, week, month] = await Promise.all([
-      fetchKlineData(props.code, 'day'),
-      fetchKlineData(props.code, 'week'),
-      fetchKlineData(props.code, 'month')
+      fetchKlineData(code, 'day'),
+      fetchKlineData(code, 'week'),
+      fetchKlineData(code, 'month')
     ])
+    if (props.code !== code) return
     const normalizedDay = day.length ? day : detail.value?.kline ?? []
     const normalizedWeek = week.length ? week : aggregateKlines(normalizedDay, 'week')
     const normalizedMonth = month.length ? month : aggregateKlines(normalizedDay, 'month')
@@ -1215,13 +1239,14 @@ async function preloadKlines() {
       year: normalizedMonth
     }
   } finally {
-    chartLoading.value = false
+    if (props.code === code) chartLoading.value = false
   }
 }
 
 async function loadAll() {
   loading.value = true
   const tasks: Promise<void>[] = [loadBaseDetail(), loadIndices()]
+  if (activeTab.value === 'estimate') tasks.push(loadMoveEstimate())
   if (Date.now() - lastKlineLoadedAt >= KLINE_REFRESH_INTERVAL_MS) {
     tasks.push(reloadKlines())
   }
@@ -1247,7 +1272,7 @@ async function switchTab(tab: TabKey) {
   clearChartHover()
 
   if (tab === 'estimate') {
-    if (!(klineCache.value.day ?? []).length) await loadKline('day')
+    await loadMoveEstimate()
     return
   }
 
@@ -1263,7 +1288,9 @@ watch(() => props.code, async () => {
   klineCache.value = {}
   klineViewports.value = {}
   indexKline.value = []
-  indexKlineCode = ''
+  moveKline.value = []
+  moveLoading.value = false
+  moveRequestId += 1
   lastKlineLoadedAt = 0
   companyProfile.value = null
   void loadCompanyProfile()

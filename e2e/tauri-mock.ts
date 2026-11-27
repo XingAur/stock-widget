@@ -175,11 +175,13 @@ export const initScript = `
             { time: '09:31', price: 10.1, volume: 30, averagePrice: 10.05 }
           ];
         }
+        case 'fetch_move_kline':
         case 'fetch_kline_data': {
           var klineCode = String(args && args.code ? args.code : '');
-          var isIndex = /^(sh|sz)(000|399)/.test(klineCode);
+          var isIndex = /^(sh|sz|bj)(000|399|899)/.test(klineCode);
           var tradingDates = [];
           var klineCursor = new Date(2026, 10, 16);
+          if (cmd === 'fetch_move_kline') klineCursor = new Date(2026, 8, 16);
           while (tradingDates.length < 80) {
             if (klineCursor.getDay() !== 0 && klineCursor.getDay() !== 6) {
               tradingDates.unshift(
@@ -190,7 +192,7 @@ export const initScript = `
           }
           return tradingDates.map(function (date, index) {
             var close = Number((isIndex ? 3400 + index * 2 : 8 + index * 0.03).toFixed(2));
-            return { time: date, open: close, close: close, high: close, low: close, volume: 1000 };
+            return { time: date, open: close, close: close, high: close, low: close, volume: 1000, turnoverRate: 0.6 };
           });
         }
         case 'fetch_indices':

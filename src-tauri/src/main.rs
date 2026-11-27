@@ -572,6 +572,8 @@ mod tests {
         parts[38] = "1.23";
         parts[44] = "6500";
         parts[45] = "3200";
+        parts[47] = "10.89";
+        parts[48] = "8.91";
         parts[49] = "0.88";
 
         let stock = parse_stock_from_parts(&parts, "sh600000").expect("valid payload should parse");
@@ -585,12 +587,21 @@ mod tests {
         assert_eq!(stock.circulation_market_cap, 6500.0);
         assert_eq!(stock.turnover_rate, 1.23);
         assert_eq!(stock.volume_ratio, 0.88);
+        assert_eq!(stock.limit_up, Some(10.89));
+        assert_eq!(stock.limit_down, Some(8.91));
+        assert_eq!(stock.has_price_limit, Some(true));
 
         let order_book = stock.order_book.expect("order book should parse");
         assert_eq!(order_book.bids[0].price, 10.10);
         assert_eq!(order_book.bids[0].volume, 100);
         assert_eq!(order_book.asks[0].price, 10.20);
         assert_eq!(order_book.asks[0].volume, 200);
+
+        parts[47] = "-1";
+        parts[48] = "-1";
+        let unlimited = parse_stock_from_parts(&parts, "sh600000").unwrap();
+        assert_eq!(unlimited.has_price_limit, Some(false));
+        assert_eq!(unlimited.limit_up, None);
     }
 
     #[test]
@@ -638,6 +649,9 @@ mod tests {
             total_market_cap: 0.0,
             circulation_market_cap: 0.0,
             turnover_rate: 0.0,
+            limit_up: None,
+            limit_down: None,
+            has_price_limit: None,
             volume_ratio: 0.0,
             order_book: None,
         }
@@ -1119,6 +1133,7 @@ fn main() {
             kline::fetch_index_history,
             kline::fetch_minute_data,
             kline::fetch_kline_data,
+            kline::fetch_move_kline,
             kline::fetch_indices,
             market::fetch_global_indices,
             stock_profile::fetch_stock_profile,

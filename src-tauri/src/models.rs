@@ -33,6 +33,9 @@ pub struct Stock {
     pub circulation_market_cap: f64,
     pub turnover_rate: f64,
     pub volume_ratio: f64,
+    pub limit_up: Option<f64>,
+    pub limit_down: Option<f64>,
+    pub has_price_limit: Option<bool>,
     pub order_book: Option<OrderBook>,
 }
 
@@ -133,6 +136,8 @@ pub struct KlinePoint {
     pub high: f64,
     pub low: f64,
     pub volume: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub turnover_rate: Option<f64>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

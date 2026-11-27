@@ -1,169 +1,164 @@
 import { describe, expect, it } from 'vitest'
-import {
-  buildSevereEstimate,
-  boardProfile,
-  nextTradingDay,
-  quoteTradeDate,
-  roundTick,
-  weekdayOf
-} from './moveEstimate'
+import { boardProfile, buildSevereEstimate, nextTradingDay, quoteTradeDate, roundTick } from './moveEstimate'
 import type { KlinePoint } from '../api/stock'
 
-function kline(date: string, close: number): KlinePoint {
-  return { time: date, open: close, close, high: close, low: close, volume: 1000 }
+function kline(time: string, close: number, turnoverRate = 1): KlinePoint {
+  return { time, open: close, close, high: close, low: close, volume: 1000, turnoverRate }
 }
 
-function weekdaysBack(endDate: string, count: number): string[] {
-  const dates: string[] = []
-  const cursor = new Date(endDate + 'T00:00:00')
-  while (dates.length < count) {
-    const day = cursor.getDay()
-    if (day !== 0 && day !== 6) {
-      dates.unshift([
-        cursor.getFullYear(),
-        String(cursor.getMonth() + 1).padStart(2, '0'),
-        String(cursor.getDate()).padStart(2, '0')
-      ].join('-'))
-    }
-    cursor.setDate(cursor.getDate() - 1)
+function fixture(count = 40) {
+  let date = '2026-08-03'
+  const dates = Array.from({ length: count }, (_, i) => i ? (date = nextTradingDay(date)) : date)
+  return {
+    code: '002579', name: '中京电子', price: 10, prevClose: 10, todayYmd: date,
+    dayPoints: dates.map((day) => kline(day, 10)),
+    indexPoints: dates.map((day) => kline(day, 1000))
   }
-  return dates
 }
 
-function buildSeries(endDate: string, count: number, close: (index: number) => number) {
-  const dates = weekdaysBack(endDate, count)
-  return dates.map((date, index) => kline(date, close(index)))
-}
-
-describe('boardProfile', () => {
-  it('maps boards to official benchmark indices', () => {
-    expect(boardProfile('600715', '文投控股')).toMatchObject({ kind: 'sh-main', indexCode: 'sh000002', indexName: '上证A指', limitRatio: 0.1, sameDirectionLimit: 4 })
-    expect(boardProfile('000001', '平安银行')).toMatchObject({ kind: 'sz-main', indexCode: 'sz399107', indexName: '深证A指' })
-    expect(boardProfile('300750', '宁德时代')).toMatchObject({ kind: 'chinext', indexCode: 'sz399102', limitRatio: 0.2, sameDirectionLimit: 3 })
-    expect(boardProfile('688981', '中芯国际')).toMatchObject({ kind: 'star', indexCode: 'sh000688', indexName: '科创50' })
-    expect(boardProfile('830799', '艾融软件')).toMatchObject({ kind: 'bse', indexCode: 'bj899050', limitRatio: 0.3 })
+describe('2026 年交易规则', () => {
+  it('selects the benchmarks and board thresholds', () => {
+    expect(boardProfile('600000', '浦发银行').indexCode).toBe('sh000002')
+    expect(boardProfile('000001', '平安银行').indexCode).toBe('sz399107')
+    expect(boardProfile('300750', '宁德时代')).toMatchObject({
+      indexCode: 'sz399102', abnormal3dThreshold: 30, limitRatio: 0.2, sameDirectionLimit: 3, turnoverRule: false
+    })
+    expect(boardProfile('688981', '中芯国际').indexCode).toBe('sh000688')
+    expect(boardProfile('920799', '艾融软件')).toMatchObject({
+      indexCode: 'bj899050', abnormal3dThreshold: 40, limitRatio: 0.3, sameDirectionLimit: 3, ipoNoLimitDays: 1,
+      severeRules: [{ days: 10, up: 150, down: -60 }, { days: 30, up: 300, down: -75 }]
+    })
   })
 
-  it('tightens limit and 3-day threshold for ST main-board names', () => {
-    expect(boardProfile('600000', 'ST九有')).toMatchObject({ limitRatio: 0.05, abnormal3dThreshold: 12 })
-    expect(boardProfile('300750', '*ST宁德')).toMatchObject({ limitRatio: 0.2, abnormal3dThreshold: 30 })
+  it('applies the main-board ST change from July 6 onward', () => {
+    expect(boardProfile('600000', '*ST样例', '2026-07-03')).toMatchObject({ limitRatio: 0.05, abnormal3dThreshold: 12 })
+    expect(boardProfile('000001', '*ST样例', '2026-07-06')).toMatchObject({ limitRatio: 0.1, abnormal3dThreshold: 20 })
+    expect(boardProfile('300750', '*ST样例')).toMatchObject({ limitRatio: 0.2, abnormal3dThreshold: 30 })
   })
 })
 
-describe('severe abnormal fluctuation rule', () => {
-  const endDate = '2026-11-16'
-
-  it('computes the critical price with the index subtracted', () => {
-    // 个股横盘 10 元、指数从 1000 跌到 950（-5%），100% 规则的临界价 = 10 × (1 + 100% - 5%) = 19.5
-    const stock = buildSeries(endDate, 40, () => 10)
-    const index = buildSeries(endDate, 40, () => 1000)
-    index[index.length - 1] = kline(index.at(-1)!.time, 950)
-    const estimate = buildSevereEstimate({
-      code: '600715', name: '文投控股', price: 18, prevClose: 18,
-      dayPoints: stock, indexPoints: index, todayYmd: endDate
-    })
-    expect(estimate.indexReady).toBe(true)
-    // 第一个交易日：基准取 9 个交易日前的 1000 点，未来指数按 950 点不变，
-    // 100% 临界价 = 10 × (1 + 100% - 5%) = 19.5；涨停价 19.8 ≥ 19.5 → 触发
-    expect(estimate.rows[0].cells[0]).toMatchObject({ kind: 'trigger', price: 19.5 })
-    expect(estimate.rows[0].cells[0].percent).toBeCloseTo((19.5 / 18 - 1) * 100, 5)
+describe('异动测算', () => {
+  it('shows the strongest shorter window alongside the full window and uses interval returns', () => {
+    const input = fixture()
+    const n = input.dayPoints.length
+    input.dayPoints[n - 8].close = 10.9
+    for (let i = n - 7; i < n; i++) input.dayPoints[i].close = 12 + (i - (n - 7)) * 1.206
+    for (let i = 0; i < n - 8; i++) input.dayPoints[i].close = 11.64
+    input.dayPoints[n - 2].close = 19.23
+    input.indexPoints[n - 8].close = 2000
+    for (let i = 0; i < n - 8; i++) input.indexPoints[i].close = 2068.19
+    for (let i = n - 7; i < n; i++) input.indexPoints[i].close = 1892.6
+    const estimate = buildSevereEstimate({ ...input, price: 20.36, prevClose: 19.23, limitUp: 21.15 })
+    const [short, long] = estimate.today.up
+    expect(short.current?.value).toBeCloseTo(92.16)
+    expect(short.current?.baseDate).toBe(input.dayPoints[n - 8].time)
+    expect(short.fullWindow?.value).toBeCloseTo(83.40)
+    expect(short).toMatchObject({ price: 21.22, limitPrice: 21.15, reached: false, reachable: false })
+    expect(long.price).toBe(32.12)
   })
 
-  it('keeps limit-up simulation while the critical price is far away', () => {
-    const stock = buildSeries(endDate, 40, () => 10)
-    const index = buildSeries(endDate, 40, () => 1000)
-    const estimate = buildSevereEstimate({
-      code: '600715', name: '文投控股', price: 10, prevClose: 10,
-      dayPoints: stock, indexPoints: index, todayYmd: endDate
-    })
-
-    // 第一个交易日：涨停 11.00，远低于 100% 临界价 20 → 涨停不触发
-    expect(estimate.rows[0].cells[0]).toMatchObject({ kind: 'limit', price: 11, badge: '涨停不触发' })
-    expect(estimate.rows[0].cells[0].percent).toBeCloseTo(10, 5)
-    // 今日收盘 10 元，今日涨停 11 元不触发严重异动
-    expect(estimate.today.badges[0]).toBe('今日涨停不触发100%规则')
+  it('rounds up for positive thresholds and down for negative thresholds', () => {
+    const input = fixture()
+    input.indexPoints.at(-1)!.close = 1000.4
+    const estimate = buildSevereEstimate(input)
+    expect(estimate.rows[0].up[0].price).toBe(20.01)
+    expect(estimate.rows[0].down[0].price).toBe(5)
+    expect(estimate.rows[0].down[1].price).toBe(3)
     expect(estimate.today.triggered).toBe(false)
   })
 
-  it('caps the simulated close at the highest non-trigger price', () => {
-    const stock = buildSeries(endDate, 40, () => 10)
-    const index = buildSeries(endDate, 40, () => 1000)
-    const estimate = buildSevereEstimate({
-      code: '600715', name: '文投控股', price: 10.9, prevClose: 10,
-      dayPoints: stock, indexPoints: index, todayYmd: endDate
-    })
-    const triggerRow = estimate.rows.find((row) => row.cells[0].kind === 'trigger')!
-    expect(triggerRow.cells[0].price).toBe(20)
-    // 触发日的模拟收盘 = 触发价 - 0.01，用于次日推演
-    const nextRow = estimate.rows[estimate.rows.indexOf(triggerRow) + 1]
-    expect(nextRow.cells[0].prevClose).toBe(19.99)
-    expect(triggerRow.cells[0].badge).toBe('达到即触发')
+  it('rolls the next projected session from a tradable price one tick below the upper trigger', () => {
+    const estimate = buildSevereEstimate(fixture())
+    const row = estimate.rows.findIndex((row) => row.up[0].reachable)
+    expect(row).toBe(8)
+    expect(estimate.rows[row].up[0].price).toBe(20)
+    expect(estimate.rows[row + 1].up[0].limitPrice).toBe(21.99)
+    expect(estimate.rows[row + 1].up[1].reachable).toBe(false)
   })
 
-  it('flags 200% rule later than the 100% rule', () => {
-    const stock = buildSeries(endDate, 60, () => 10)
-    const index = buildSeries(endDate, 60, () => 1000)
-    const estimate = buildSevereEstimate({
-      code: '600715', name: '文投控股', price: 10, prevClose: 10,
-      dayPoints: stock, indexPoints: index, todayYmd: endDate, days: 25
-    })
-    const first100 = estimate.rows.findIndex((row) => row.cells[0].kind === 'trigger')
-    const first200 = estimate.rows.findIndex((row) => row.cells[1].kind === 'trigger')
-    expect(first100).toBeGreaterThanOrEqual(0)
-    expect(first200).toBeGreaterThan(first100)
+  it('detects ordinary abnormal moves inside three sessions and avoids overlapping events', () => {
+    const input = fixture()
+    input.dayPoints.at(-3)!.close = 11
+    input.dayPoints.at(-2)!.close = 12.1
+    const first = buildSevereEstimate({ ...input, price: 12.1, prevClose: 12.1 })
+    expect(first.ordinary.direction).toBeNull()
+    expect(first.sameDirection.up).toBe(1)
+    expect(buildSevereEstimate(fixture()).sameDirection.projected.up).toBe(8)
+    expect(buildSevereEstimate({ ...fixture(), code: '300750' }).sameDirection.projected.up).toBe(6)
   })
 
-it('counts same-direction abnormal events in the last 10 trading days', () => {
-    // 连续涨停路径下，3 日累计偏离会不断触发 20% 同向异常波动；主板 10 日内 4 次即达上限
-    const stock = buildSeries(endDate, 40, () => 10)
-    const index = buildSeries(endDate, 40, () => 1000)
-    const estimate = buildSevereEstimate({
-      code: '600715', name: '文投控股', price: 10, prevClose: 10,
-      dayPoints: stock, indexPoints: index, todayYmd: endDate, days: 10
-    })
-    expect(estimate.sameDirection.limit).toBe(4)
-    expect(estimate.sameDirection.up).toBe(0)
-    // 连续涨停推演：第 5 个交易日累计 4 次同向异动，达到主板上限
-    expect(estimate.sameDirection.projectedTriggerDay).toBe(5)
-    expect(estimate.rows.filter((row) => row.sameDirectionEvent === 'up').length).toBe(1)
+  it('breaks a same-direction streak when an opposite ordinary event occurs', () => {
+    const input = fixture()
+    input.dayPoints.at(-5)!.close = 11
+    input.dayPoints.at(-4)!.close = 12.1
+    input.dayPoints.at(-3)!.close = 10.89
+    input.dayPoints.at(-2)!.close = 9.8
+    const estimate = buildSevereEstimate({ ...input, price: 8.82, prevClose: 9.8 })
+    expect(estimate.ordinary.direction).toBe('down')
+    expect(estimate.sameDirection).toMatchObject({ up: 0, down: 1 })
   })
 
-  it('uses 3 times for ChiNext same-direction limit', () => {
-    const stock = buildSeries(endDate, 40, () => 10)
-    const index = buildSeries(endDate, 40, () => 1000)
-    const estimate = buildSevereEstimate({
-      code: '300750', name: '宁德时代', price: 10, prevClose: 10,
-      dayPoints: stock, indexPoints: index, todayYmd: endDate, days: 10
-    })
-    expect(estimate.sameDirection.limit).toBe(3)
-    expect(estimate.sameDirection.projectedTriggerDay).toBe(4)
+  it('requires both turnover conditions and keeps turnover out of the same-direction count', () => {
+    const input = fixture()
+    input.dayPoints.slice(-8, -3).forEach((point) => { point.turnoverRate = 0.2 })
+    input.dayPoints.slice(-3).forEach((point) => { point.turnoverRate = 7 })
+    const estimate = buildSevereEstimate(input)
+    expect(estimate.ordinary.turnover).toEqual({ cumulative: 21, ratio: 35, triggered: true })
+    expect(estimate.sameDirection).toMatchObject({ up: 0, down: 0 })
+    expect(buildSevereEstimate({ ...input, turnoverRate: 5 }).ordinary.turnover?.triggered).toBe(false)
+    expect(buildSevereEstimate({ ...input, code: '300750' }).ordinary.turnover).toBeNull()
   })
 
-  it('reports unknown cells when history is too short', () => {
-    const stock = [kline('2026-11-16', 10)]
-    const index = [kline('2026-11-16', 1000)]
-    const estimate = buildSevereEstimate({
-      code: '600715', name: '文投控股', price: 10, prevClose: 10,
-      dayPoints: stock, indexPoints: index, todayYmd: endDate
+  it('restarts on the next session after a severe notice or on full-day suspension resumption', () => {
+    const input = fixture()
+    input.dayPoints.at(-2)!.close = 15
+    const before = buildSevereEstimate({ ...input, price: 15, prevClose: 15 })
+    expect(before.today.up[0].current?.value).toBeCloseTo(50)
+    const announced = buildSevereEstimate({
+      ...input, price: 15, prevClose: 15, announcements: [
+        { title: '股票交易严重异常波动公告', date: input.todayYmd, category: '', url: '' }
+      ]
     })
-    expect(estimate.rows[0].cells[0].kind).toBe('unknown')
-    expect(estimate.rows[0].cells[0].badge).toBe('数据不足')
+    expect(announced.today.up[0].current?.value).toBeCloseTo(0)
+    expect(announced.sameDirection).toMatchObject({ up: 0, down: 0 })
+    input.dayPoints.splice(-2, 1)
+    const resumed = buildSevereEstimate(input)
+    expect(resumed.today.up[0].fullWindow).toBeNull()
+    expect(resumed.today.up[0].current?.value).toBeCloseTo(0)
+  })
+
+  it('excludes initial no-limit sessions and uses the last excluded close as the next baseline', () => {
+    const input = fixture(5)
+    const listingDate = input.dayPoints[0].time
+    const excluded = buildSevereEstimate({ ...input, listingDate })
+    expect(excluded.today.unavailable).toBe('无涨跌幅限制')
+    expect(excluded.today.up[0].price).toBeNull()
+    expect(buildSevereEstimate({ ...input, listingDate, code: '920799' }).today.up[0].price).toBe(25)
+    expect(buildSevereEstimate({ ...fixture(6), listingDate }).today.up[0]).toMatchObject({
+      fullWindow: null, current: { baseDate: input.todayYmd }
+    })
+  })
+
+  it('does not substitute an old index quote or calculate a no-trade day', () => {
+    const input = fixture()
+    expect(buildSevereEstimate({ ...input, volume: 0 }).today.unavailable).toBe('该日暂无成交')
+    input.indexPoints.pop()
+    const estimate = buildSevereEstimate(input)
+    expect(estimate.today.unavailable).toBe('缺少同日基准指数')
+    expect(estimate.rows[1].up[0].price).toBeNull()
   })
 })
 
-describe('calendar helpers', () => {
-  it('skips weekends', () => {
-    expect(nextTradingDay('2026-11-16')).toBe('2026-11-17')
-    expect(nextTradingDay('2026-11-20')).toBe('2026-11-23')
-    expect(weekdayOf('2026-11-23')).toBe('周一')
+describe('交易日与最小报价单位', () => {
+  it('skips weekends and announced holidays', () => {
+    expect(nextTradingDay('2026-11-27')).toBe('2026-11-30')
+    expect(nextTradingDay('2026-09-30')).toBe('2026-10-08')
+    expect(nextTradingDay('2026-12-31')).toBe('2027-01-04')
   })
 
-  it('parses quote time', () => {
+  it('validates the quote date and rounds limit prices half-up', () => {
     expect(quoteTradeDate('20261116145000')).toBe('2026-11-16')
-    expect(quoteTradeDate('bad')).toBeNull()
-  })
-
-  it('rounds to the 0.01 tick half-up', () => {
+    expect(quoteTradeDate('20260231145000')).toBeNull()
     expect(roundTick(4.565)).toBe(4.57)
     expect(roundTick(19.995)).toBe(20)
   })

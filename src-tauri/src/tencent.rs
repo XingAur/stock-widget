@@ -79,6 +79,14 @@ pub fn parse_stock_from_parts(parts: &[&str], code: &str) -> Option<Stock> {
     let circulation_market_cap = parse_f64(parts.get(44).copied());
     let total_market_cap = parse_f64(parts.get(45).copied());
     let volume_ratio = parse_f64(parts.get(49).copied());
+    let quote_limit = |index: usize| parts.get(index)?.parse::<f64>().ok();
+    let limit_up = quote_limit(47).filter(|value| value.is_finite() && *value > 0.0);
+    let limit_down = quote_limit(48).filter(|value| value.is_finite() && *value > 0.0);
+    let has_price_limit = match (quote_limit(47), quote_limit(48)) {
+        (Some(up), Some(down)) if up == -1.0 && down == -1.0 => Some(false),
+        _ if limit_up.is_some() && limit_down.is_some() => Some(true),
+        _ => None,
+    };
 
     Some(Stock {
         code: code.replace("sh", "").replace("sz", ""),
@@ -97,6 +105,9 @@ pub fn parse_stock_from_parts(parts: &[&str], code: &str) -> Option<Stock> {
         circulation_market_cap,
         turnover_rate,
         volume_ratio,
+        limit_up,
+        limit_down,
+        has_price_limit,
         order_book: parse_order_book(parts),
     })
 }

@@ -29,6 +29,9 @@ export interface Stock {
   circulationMarketCap: number
   turnoverRate: number
   volumeRatio: number
+  limitUp?: number | null
+  limitDown?: number | null
+  hasPriceLimit?: boolean | null
   orderBook?: OrderBook
 }
 
@@ -46,6 +49,7 @@ export interface KlinePoint {
   high: number
   low: number
   volume: number
+  turnoverRate?: number
 }
 
 export interface StockDetail extends Stock {
@@ -216,8 +220,8 @@ export async function fetchKlineData(code: string, period: ChartPeriod = 'day'):
   return normalizeKlinePoints(points)
 }
 
-export async function fetchIndexKline(code: string): Promise<KlinePoint[]> {
-  const points = await invokeSafe('fetch_kline_data', { code, ktype: 'day' }, [])
+export async function fetchMoveKline(code: string): Promise<KlinePoint[]> {
+  const points = await invokeSafe<KlinePoint[]>('fetch_move_kline', { code }, [])
   return normalizeKlinePoints(points)
 }
 

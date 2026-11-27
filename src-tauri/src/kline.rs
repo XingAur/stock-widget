@@ -60,6 +60,42 @@ pub async fn fetch_kline_data(code: String, ktype: String) -> AppResult<Vec<Klin
                 high: get_text(3)?.parse::<f64>().ok()?,
                 low: get_text(4)?.parse::<f64>().ok()?,
                 volume: get_text(5)?.parse::<f64>().ok()? as i64,
+                turnover_rate: None,
+            })
+        })
+        .collect())
+}
+
+#[tauri::command]
+pub async fn fetch_move_kline(code: String) -> AppResult<Vec<KlinePoint>> {
+    let tencent_code = to_tencent_code(&code);
+    let (exchange, digits) = tencent_code.split_at(2);
+    if digits.len() != 6 || !digits.bytes().all(|digit| digit.is_ascii_digit()) {
+        return Err("股票或指数代码不合法".to_string());
+    }
+    let market = u8::from(exchange == "sh");
+    let url = format!(
+        "https://push2his.eastmoney.com/api/qt/stock/kline/get?secid={market}.{digits}&klt=101&fqt=2&lmt=120&end=20500101&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f61"
+    );
+    let text = fetch_text(&url, Some("https://quote.eastmoney.com/")).await?;
+    let data: Value = serde_json::from_str(&text).map_err(|error| error.to_string())?;
+    Ok(data["data"]["klines"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|row| {
+            let fields: Vec<_> = row.as_str()?.split(',').collect();
+            Some(KlinePoint {
+                time: fields.first()?.to_string(),
+                open: fields.get(1)?.parse().ok()?,
+                close: fields.get(2)?.parse().ok()?,
+                high: fields.get(3)?.parse().ok()?,
+                low: fields.get(4)?.parse().ok()?,
+                volume: fields.get(5)?.parse().ok()?,
+                turnover_rate: fields
+                    .get(6)
+                    .and_then(|field| field.parse::<f64>().ok())
+                    .filter(|value| value.is_finite() && *value >= 0.0),
             })
         })
         .collect())
